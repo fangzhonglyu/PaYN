@@ -1,0 +1,12 @@
+#!/bin/bash
+# Parameterized PaYN SC array for the tile-config sweep. Shape is set per run via
+# SYN_DEFINES, e.g. SYN_DEFINES="PAYN_K=8 PAYN_M=8 PAYN_NH=4 PAYN_NW=4"
+# (the payn_array default params are `ifndef-driven). Same library/knobs as
+# PAYN_SC (svt_c30 / sc7mcpp140z). No fixed RTL preflight — the driver runs a
+# per-config bit-exact cosim instead.
+export TOP=payn_array
+export TECH=TSMC22
+export SRC_SV="payn/payn_array.sv"
+export PERIOD=2.5
+export MULTIBIT_INFER=1
+export CLOCK_GATE=1

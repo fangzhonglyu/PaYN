@@ -1,0 +1,12 @@
+#!/bin/bash
+# APR for the PaYN SC tile-config sweep (see syn/targets/TSMC22/PAYN_SC_SWEEP).
+# Shape is baked into the synth netlist; APR just places+routes it. Same recipe
+# as PAYN_SC. Use RUN_NAME=<cfg> to name each config's run dir.
+export TARGET=TSMC22/PAYN_SC_SWEEP
+export SYNTH_RUN=${SYNTH_RUN:?set SYNTH_RUN to the synthesis run name}
+export TOP=payn_array
+export TECH=TSMC22
+export PERIOD=2.5
+export POST_LOAD_SCRIPT=apr/scripts/set_clock_uncertainty.tcl
+export CORE_UTIL=${CORE_UTIL:-0.70}
+export CORE_ASPECT=${CORE_ASPECT:-1.000}

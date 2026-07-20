@@ -7,6 +7,23 @@
 `include "payn/pe_peripheral.sv"
 `include "payn/inner_pe.sv"
 
+// Default shape is `ifndef-driven so the synth flow can sweep configs via
+// SYN_DEFINES (e.g. SYN_DEFINES="PAYN_K=8 PAYN_M=8 PAYN_NH=4 PAYN_NW=4").
+// Defaults are unchanged (K6/M16/9x9); benches pass explicit params, so this
+// only affects synthesis elaboration.
+`ifndef PAYN_K
+`define PAYN_K 6
+`endif
+`ifndef PAYN_M
+`define PAYN_M 16
+`endif
+`ifndef PAYN_NH
+`define PAYN_NH 9
+`endif
+`ifndef PAYN_NW
+`define PAYN_NW 9
+`endif
+
 // PaYN SC array: shared Sobol banks + edge peripheral + one InnerPE tile grid,
 // wired into a single synth/PnR/power target. Binary edge operands
 // (magnitude + sign) enter; the two Sobol banks drive the peripheral's
@@ -17,10 +34,10 @@
 // DVs seed 0x9d/0x2b; peripheral salts 0 / 2^(WIDTH-1)) matches the sc_kernel.py
 // ArrayCfg defaults so the array is bit-exact against the Python reference.
 module payn_array #(
-    parameter int K = 6,
-    parameter int M = 16,
-    parameter int N_H = 9,
-    parameter int N_W = 9,
+    parameter int K = `PAYN_K,
+    parameter int M = `PAYN_M,
+    parameter int N_H = `PAYN_NH,
+    parameter int N_W = `PAYN_NW,
     parameter int WIDTH = 8,
     parameter int OWIDTH = 24,
     parameter logic SCRAMBLE_ENABLE = 1'b1,

@@ -19,10 +19,10 @@ each with a one-line repro. Numbers are headline results; full tables in `doc/re
 
 | role | file |
 |---|---|
-| design | `array_8.sv` (+ `array_8_native.sv` → `array_8_int7/int6`) |
-| functional TB | `tb/test_array_8_power_workload.sv` |
-| power bench | `power/power_array_8.sv` (per-cycle check vs in-TB systolic golden) |
-| targets | `BP_ARRAY`, `BP_ARRAY_INT7`, `BP_ARRAY_INT6` |
+| design | `array_8.sv` · native `array_8_native.sv` (`int7/int6`) · asym `array_8_asym_corr_v2.sv` |
+| functional TB | `tb/test_array_8_power_workload.sv` (asym: `tb/tb_asym_peripheral_v2.sv`) |
+| power bench | `power/power_array_8.sv` (per-cycle golden check); asym: `power/power_array_8_asym_corr_v2.sv` (X-check only) |
+| targets | `BP_ARRAY`, `BP_ARRAY_INT7`, `BP_ARRAY_INT6`, `BP_ARRAY_ASYM` |
 
 **INT8 baseline** — 10.60 mW
 
@@ -43,12 +43,22 @@ for W in 7 6; do
 done
 ```
 
-**INT8 HW fed INT8 / INT7 / INT6 inputs** (signed & all-positive) — input precision on the *fixed* INT8 netlist
+**BP + asymmetric zero-point correction** — 11.62 mW / 0.454 pJ/MAC (+10% vs plain BP; separate design, X-checked bench)
 
 ```
-bash sweeps/run_bp_regimes.sh                                          # RTL functional
-EXTRA="GL=apr TARGET=TSMC22/BP_ARRAY RUN=<apr_run>" bash sweeps/run_bp_regimes.sh   # gate power
+make synth TARGET=TSMC22/BP_ARRAY_ASYM
+make apr   TARGET=TSMC22/BP_ARRAY_ASYM SYNTH_RUN=<synth_run>
+make sim   GL=apr TARGET=TSMC22/BP_ARRAY_ASYM RUN=<apr_run> USE_DW=1 \
+           TB=designs/baselines/binary_parallel/power/power_array_8_asym_corr_v2.sv
+make power_apr TARGET=TSMC22/BP_ARRAY_ASYM RUN=<apr_run> SAIF=<dut.saif> SAIF_STRIP_PATH=Top/dut
 ```
+
+**INT8 HW fed INT8 / INT7 / INT6 inputs** (signed & all-positive) — input precision on the *fixed* INT8 netlist. Signed ≈ flat (10.60→10.42 mW); all-positive is the lever (INT6-allpos 7.75 mW, −27%).
+
+```
+bash sweeps/run_bp_input_power.sh     # GL=apr + PT-PX, 6 regimes -> build/power_char/bp_input_regimes.csv
+```
+(RTL functional variants: `bash sweeps/run_bp_regimes.sh`.)
 
 ---
 

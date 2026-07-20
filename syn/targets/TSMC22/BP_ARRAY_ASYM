@@ -1,0 +1,12 @@
+#!/bin/bash
+# Binary-parallel 8x8 with asymmetric zero-point correction
+# (array_8_asym_corr_v2 = array_8 + asym_activation_sum_v2 + asym_column_correction_v1).
+# Separate design from the plain BP baseline (BP_ARRAY); matches SCArch's
+# "BP + asym correction" baseline. Same library/knobs as BP_ARRAY.
+export TOP=array_8_asym_corr_v2
+export TECH=TSMC22
+export SRC_SV="baselines/binary_parallel/array_8_asym_corr_v2.sv"
+export PERIOD=2.5
+export MULTIBIT_INFER=1
+export CLOCK_GATE=1
+export RTL_PREFLIGHT_CMD="make --no-print-directory sim GL= TARGET= TOP=Top TB=designs/baselines/binary_parallel/power/power_array_8_asym_corr_v2.sv BUILD_DIR=build/rtl_preflight/bp_asym"
