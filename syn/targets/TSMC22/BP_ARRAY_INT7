@@ -1,0 +1,9 @@
+#!/bin/bash
+# Binary-parallel 8x8, native INT7 datapath.
+export TOP=array_8_int7
+export TECH=TSMC22
+export SRC_SV="baselines/binary_parallel/array_8_native.sv"
+export PERIOD=2.5
+export MULTIBIT_INFER=1
+export CLOCK_GATE=1
+export RTL_PREFLIGHT_CMD="make --no-print-directory sim GL= TARGET= TOP=Top TB=designs/baselines/binary_parallel/power/power_array_8.sv VCS_ARGS='+define+BP_IWIDTH=7' BUILD_DIR=build/rtl_preflight/bp_int7"

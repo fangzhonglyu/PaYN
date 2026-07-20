@@ -1,0 +1,12 @@
+#!/bin/bash
+# Standalone InnerPE (the SC PE compute core: 9x9 tile grid, K6/M16/OW24) synth.
+# Isolates the compute-core power to compare against payn_array's embedded u_pe.
+# The M=16 stochastic streams enter as ports here (driven on-chip by the
+# peripheral in the full array). Same standard-cell library / knobs as PAYN_SC
+# (svt_c30 / sc7mcpp140z) so the PE-vs-array comparison is apples-to-apples.
+export TOP=sc_inner_pe_manual_k6m16n9_ow24
+export TECH=TSMC22
+export SRC_SV="payn/inner_pe.sv"
+export PERIOD=2.5
+export MULTIBIT_INFER=1
+export CLOCK_GATE=1

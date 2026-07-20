@@ -1,0 +1,10 @@
+#!/bin/bash
+# Binary-serial 8x8 baseline APR.
+export TARGET=TSMC22/BS_ARRAY
+export SYNTH_RUN=${SYNTH_RUN:?set SYNTH_RUN to the synthesis run name}
+export TOP=array_8
+export TECH=TSMC22
+export PERIOD=2.5
+export CORE_UTIL=${CORE_UTIL:-0.75}
+export CORE_ASPECT=${CORE_ASPECT:-1.000}
+export POST_LOAD_SCRIPT=apr/scripts/set_clock_uncertainty.tcl

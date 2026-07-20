@@ -1,0 +1,19 @@
+#!/bin/bash
+# PaYN SC accelerator (payn_array K6/M16/9x9) APR.
+# Stock recipe (no PRESERVE_MODULE_PORTS): preserving the peripheral->InnerPE
+# module boundary blocked APR from optimizing the a_bits/w_bits pipe paths across
+# it, leaving them unclosed (-0.868 ns setup). The feedthrough-X hazard preserve
+# originally guarded against is now handled by the benign-persistent-X SAIF
+# methodology + negedge input driving, so the boundary can be optimized. Clock
+# uncertainty is restored in APR (SDC omits it) like the baselines.
+export TARGET=TSMC22/PAYN_SC
+export SYNTH_RUN=${SYNTH_RUN:?set SYNTH_RUN to the synthesis run name}
+export TOP=payn_array
+export TECH=TSMC22
+export PERIOD=2.5
+# Same standard-cell library as the baselines (defaults sc7mcpp140z / svt_c30)
+# for an apples-to-apples power comparison; SVT/7-track is also faster, which
+# closes the a_bits_pipe path that HVT/6.5-track could not at 2.5 ns.
+export POST_LOAD_SCRIPT=apr/scripts/set_clock_uncertainty.tcl
+export CORE_UTIL=${CORE_UTIL:-0.70}
+export CORE_ASPECT=${CORE_ASPECT:-1.000}

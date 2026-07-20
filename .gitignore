@@ -1,0 +1,38 @@
+# Build / flow artifacts (regenerable — never committed)
+build/
+syn/build/
+apr/build/
+build_check/
+
+# Tool logs / dumps
+*.log
+*.saif
+*.fsdb
+*.vpd
+*.vcd
+
+# VCS
+csrc/
+simv
+simv.*
+*.daidir/
+ucli.key
+vc_hdrs.h
+DVEfiles/
+novas*
+verdi*
+.fsm.sched.*
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Matplotlib scratch
+.mpl_cache/
+
+# EDA tool root cruft (innovus / VCS run byproducts)
+*.slk.gz
+innovus.cmd*
+innovus.log*
+*.cmd[0-9]*
