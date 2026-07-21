@@ -107,6 +107,11 @@ The 1.45×→2.11× widening is **PnR wire cap on the M=16-wide stochastic buses
 | `u_peripheral` — binary→stochastic | 1.28 mW | 5.4% |
 | `u_w_rng` / `u_a_rng` — Sobol banks | 0.50 / 0.46 mW | 4.1% |
 
+For the **functional** decomposition (cutting the total along compute vs. bit-pipes vs.
+accumulators vs. clock — ~64–66% combinational for both the reference and the best sweep
+config `k8·m16·n8`, bit-pipe power switching-dominated on the weight side) see
+[`doc/SC_breakdown.md`](SC_breakdown.md).
+
 ## SC tile-config sweep (K∈{4,6,8} · M∈{8,16} · N∈{2,4,8}, OW24, T=128)
 
 Trends the wiring/PnR cost vs array shape. **Complete: 18/18.** Full CSV: `build/power_char/sc_sweep.csv` (+ `sc_sweep_synpwr.csv`); per-config target = `PAYN_SC_SWEEP` driven by `SYN_DEFINES`/`RUN_NAME`. All configs cosim-verified (RTL + GL).
