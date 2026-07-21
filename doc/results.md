@@ -106,3 +106,32 @@ The 1.45×→2.11× widening is **PnR wire cap on the M=16-wide stochastic buses
 | `u_pe` — InnerPE compute grid | 21.2 mW | 90.0% |
 | `u_peripheral` — binary→stochastic | 1.28 mW | 5.4% |
 | `u_w_rng` / `u_a_rng` — Sobol banks | 0.50 / 0.46 mW | 4.1% |
+
+## SC tile-config sweep (K∈{4,6,8} · M∈{8,16} · N∈{2,4,8}, OW24, T=128)
+
+Trends the wiring/PnR cost vs array shape. **Complete: 18/18.** Full CSV: `build/power_char/sc_sweep.csv` (+ `sc_sweep_synpwr.csv`); per-config target = `PAYN_SC_SWEEP` driven by `SYN_DEFINES`/`RUN_NAME`. All configs cosim-verified (RTL + GL).
+
+pJ/MAC given as **synth → APR (PnR inflation ×)**; synth = unit-delay, drain-cosim-verified.
+
+| cfg (K·M·N) | area syn→APR (µm²) | WNS | mW | pJ/MAC syn→APR (×) | net-sw% |
+|---|---|---|---|---|---|
+| 4·8·2 | 2 672 → 5 384 | +0.96 | 0.90 | 1.33 → 2.26 (1.7) | 43 |
+| 4·8·4 | 6 006 → 11 300 | +0.89 | 2.01 | 0.71 → 1.26 (1.8) | 46 |
+| 4·8·8 | 17 394 → 32 808 | +0.68 | 7.19 | 0.52 → 1.12 (2.2) | 50 |
+| 4·16·2 | 4 480 → 8 164 | +0.83 | 1.63 | 1.21 → 2.03 (1.7) | 42 |
+| 4·16·4 | 9 618 → 16 685 | +0.73 | 3.40 | 0.59 → 1.06 (1.8) | 47 |
+| 4·16·8 | 27 044 → 41 082 | +0.40 | 11.78 | 0.40 → 0.92 (2.3) | 50 |
+| 6·8·2 | 3 357 → 6 319 | +0.83 | 1.10 | 1.04 → 1.83 (1.8) | 43 |
+| 6·8·4 | 7 913 → 14 572 | +0.68 | 2.64 | 0.58 → 1.10 (1.9) | 48 |
+| 6·8·8 | 23 801 → 36 295 | +0.42 | 10.72 | 0.45 → 1.12 (2.5) | 49 |
+| 6·16·2 | 5 809 → 10 168 | +0.78 | 1.97 | 0.95 → 1.64 (1.7) | 44 |
+| 6·16·4 | 13 028 → 22 291 | +0.53 | 4.38 | 0.49 → 0.91 (1.9) | 49 |
+| 6·16·8 | 37 452 → 53 822 | +0.25 | 16.34 | 0.35 → 0.85 (2.4) | 53 |
+| 8·8·2 | 4 118 → 7 576 | +0.77 | 1.28 | 0.92 → 1.60 (1.7) | 44 |
+| 8·8·4 | 9 820 → 17 867 | +0.69 | 3.46 | 0.53 → 1.08 (2.0) | 50 |
+| 8·8·8 | 29 702 → 44 682 | +0.33 | 14.17 | 0.41 → 1.11 (2.7) | 50 |
+| 8·16·2 | 7 154 → 12 392 | +0.57 | 2.40 | 0.85 → 1.50 (1.8) | 46 |
+| 8·16·4 | 16 877 → 26 274 | +0.46 | 6.00 | 0.47 → 0.94 (2.0) | 50 |
+| 8·16·8 | 47 849 → 67 920 | +0.21 | 19.84 | 0.33 → 0.78 (2.4) | 54 |
+
+Trends (full grid): **pJ/MAC ↓ with size** — 2.26 (smallest) → **0.78** at 8·16·8 (intrinsic 0.33); M16 beats M8 ~10–15%; K and N amortize, diminishing after N4. **PnR inflation ↑ with size** — synth→APR ratio **1.7× (small) → 2.7× (8·8·8)**: the biggest / N8 configs route worst, so the configs with the best *intrinsic* pJ/MAC take the largest routing hit (amortization partly clawed back by wiring). Corroborated by **net-switching** (42 → 54%) and **WNS** (+0.96 → **+0.21** at 8·16·8, near the 9×9's +0.083). Net: bigger arrays give the best pJ/MAC but the worst wiring metrics — routing is the SC's scaling limiter.

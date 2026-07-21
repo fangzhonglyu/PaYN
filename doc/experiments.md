@@ -135,7 +135,12 @@ make sim GL=syn TARGET=TSMC22/SC_INNER_PE RUN=<synth_run> USE_DW=1 \
 make power TARGET=TSMC22/SC_INNER_PE RUN=<synth_run> SAIF=<dut.saif> SAIF_STRIP_PATH=Top/dut
 ```
 
-**Tile-config sweep** M∈{8,16} × N∈{4,8,12} — ⏳ planned (needs param mechanism: define-driven defaults on `payn_array`, or wrapper tops).
+**Tile-config sweep** — 18 configs (K∈{4,6,8} × M∈{8,16} × N∈{2,4,8}), each synth+APR+GL, cosim-verified. pJ/MAC 0.78 (8·16·8) → 2.26 (4·8·2); PnR inflation 1.7×→2.7× with size (the wiring limiter). `payn_array` shape is `` `ifndef ``-driven so one target sweeps all shapes.
+
+```
+bash sweeps/run_sc_tile_sweep.sh      # synth→APR→GL→PT-PX per config (MAX-wide), -> build/power_char/sc_sweep.csv
+bash sweeps/run_sc_tile_synpwr.sh     # unit-delay synth pJ/MAC per config    -> build/power_char/sc_sweep_synpwr.csv
+```
 
 ---
 
