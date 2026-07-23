@@ -1,5 +1,7 @@
 `timescale 1ns/1ps
 
+`include "common/clk_util.sv"
+
 // PE-level power + output-checking bench for the InnerPE tile grid (the SC PE).
 //
 // The M=16 stochastic bit-pairs per operand are generated the SAME way the array
@@ -71,8 +73,7 @@ module Top;
     localparam int SETTLE = `SC_SETTLE;
     localparam real PERIOD = `ASTRAEA_CLK_PERIOD_NS;
 
-    logic clk = 1'b0;
-    logic reset = 1'b0;
+    logic clk, reset, timeout;
     logic rng_en = 1'b0, mac_en = 1'b0, shift_in = 1'b0;
     logic load_a = 1'b0, load_w = 1'b0, load_a_sign = 1'b0, load_w_sign = 1'b0;
 
@@ -101,7 +102,9 @@ module Top;
     int seed_state;
     bit monitor_x = 1'b0;
 
-    always #(PERIOD/2.0) clk = ~clk;
+    ClkUtils #(.TIMEOUT(WARMUP + T + N + 2048)) clk_utils (
+        .clk, .reset, .timeout
+    );
 
     always @(acc_out_east)
         if (monitor_x && $isunknown(acc_out_east))
@@ -166,12 +169,11 @@ module Top;
             w_signs_in[i] = $urandom & 1;
         end
 
-        // reset (async for peripheral + Sobol, sync for InnerPE)
-        @(negedge clk);
-        reset = 1'b1;
-        @(posedge clk);
-        @(negedge clk);
-        reset = 1'b0;
+        // Reset is asynchronous for the peripheral/Sobol generators and
+        // synchronous for the InnerPE. The common utility holds it across two
+        // active clock edges for reliable routed gate-level initialization.
+        clk_utils.set_clock(PERIOD);
+        clk_utils.do_reset();
 
         // latch operands into the peripheral (control launched at the NEGEDGE:
         // full half-cycle setup, clears the clock-tree insertion by construction)

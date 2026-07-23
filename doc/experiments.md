@@ -21,7 +21,7 @@ each with a one-line repro. Numbers are headline results; full tables in `doc/re
 |---|---|
 | design | `array_8.sv` · native `array_8_native.sv` (`int7/int6`) · asym `array_8_asym_corr_v2.sv` |
 | functional TB | `tb/test_array_8_power_workload.sv` (asym: `tb/tb_asym_peripheral_v2.sv`) |
-| power bench | `power/power_array_8.sv` (per-cycle golden check); asym: `power/power_array_8_asym_corr_v2.sv` (X-check only) |
+| power bench | `power/power_array_8.sv`; asym: `power/power_array_8_asym_corr_v2.sv` (both per-cycle golden checked) |
 | targets | `BP_ARRAY`, `BP_ARRAY_INT7`, `BP_ARRAY_INT6`, `BP_ARRAY_ASYM` |
 
 **INT8 baseline** — 10.60 mW
@@ -43,7 +43,7 @@ for W in 7 6; do
 done
 ```
 
-**BP + asymmetric zero-point correction** — 11.62 mW / 0.454 pJ/MAC (+10% vs plain BP; separate design, X-checked bench)
+**BP + asymmetric zero-point correction** — 11.75 mW / 0.459 pJ/MAC (+11% vs plain BP; separate design, end-to-end output checked)
 
 ```
 make synth TARGET=TSMC22/BP_ARRAY_ASYM
@@ -140,6 +140,102 @@ make power TARGET=TSMC22/SC_INNER_PE RUN=<synth_run> SAIF=<dut.saif> SAIF_STRIP_
 ```
 bash sweeps/run_sc_tile_sweep.sh      # synth→APR→GL→PT-PX per config (MAX-wide), -> build/power_char/sc_sweep.csv
 bash sweeps/run_sc_tile_synpwr.sh     # unit-delay synth pJ/MAC per config    -> build/power_char/sc_sweep_synpwr.csv
+```
+
+**Wire-capacitance optimization** — row/column distribution guides are the
+accepted recipe: versus baseline they reduce routed wire 6.9%, total net
+capacitance 5.0%, and validated power 3.3%, while closing timing.  An explicit
+two-level A/W tree reduces root fanout 8→5 and combined root switching 36%
+relative to the guides, but branch overhead leaves whole-chip power tied and
+adds 1.4% area.  Tile-only guides and global `MAX_FANOUT=4` remain rejected.
+Full analysis is in [`doc/SC_wire_optimization.md`](SC_wire_optimization.md).
+
+```sh
+bash sweeps/run_sc_wire_opts.sh       # -> build/power_char/wire_opts/sc_wire_opts.csv
+```
+
+**W-bus temporal DBI design points** — two separate tops keep architecture
+selection out of the baseline RTL.  Both are bit-exact and close synthesis at
+K8·M16·8×8.  Routed direct XNOR decode proves that DBI works locally—W-root
+capacitance falls 90.2% and W-root switching falls 93.8%—but the added
+encode/decode/control network raises total capacitance 13.4% and validated
+power 21.2% (19.177→23.251 mW).  It remains timing-, DRC-, antenna-, SDF-, and
+cosim-clean in the analysis APR flow, but is rejected as a whole-chip power
+optimization for this workload.  Shared count correction is larger at
+synthesis and was not routed.  Equations, full metrics, and flow caveats are in
+[`doc/SC_dbi.md`](SC_dbi.md).
+
+```sh
+RUN_NAME=k8m16n8_wdbi \
+SYN_DEFINES='PAYN_K=8 PAYN_M=16 PAYN_NH=8 PAYN_NW=8' \
+make synth TARGET=TSMC22/PAYN_SC_WDBI_BITDECODE
+```
+
+**Exact signed segmented-accumulator follow-ups** — two additional tops keep
+the alternatives isolated from the baseline and the earlier pending-bit
+implementation:
+
+- `PAYN_SC_SIGNED_SEGMENTED_DIRECT` retires a low-digit carry/borrow into the
+  high digit on the same edge, removing two pending-event flops per tile.
+- `PAYN_SC_SIGNED_SEGMENTED_CENTERED` additionally stores the low residue with
+  a fixed half-radix bias, moving zero away from the wrap boundary.
+
+Both pass a 4096-cycle bit-exact RTL stress test at LOW_W=7.  Synthesis
+workload PT-PX over LOW_W=7/8/9/10 selects direct LOW_W=8 at 7.3600 mW;
+centered LOW_W=8 is effectively tied but slightly worse at 7.3656 mW because
+the row-boundary recenter logic cancels the quieter high digit.  After a
+two-diode checkpoint ECO, the routed direct point closes STA and is clean for
+placement, DRC, connectivity, and antenna.  Its refreshed max-SDF simulation
+is bit-exact and produces a valid SAIF, although VCS still prints timing-check
+warnings inside MBFF-packed operand pipes.  It measures 17.54384 mW /
+0.68531 pJ/MAC: 8.52% below the 19.17723 mW distribution-guide baseline, but
+0.57% above the earlier pending-bit segmented route (17.44477 mW).  The
+pending-bit design therefore remains the routed winner.
+
+```sh
+RUN_NAME=direct_lw8 \
+SYN_DEFINES='PAYN_K=8 PAYN_M=16 PAYN_NH=8 PAYN_NW=8 PAYN_SEG_LOW_W=8' \
+make synth TARGET=TSMC22/PAYN_SC_SIGNED_SEGMENTED_DIRECT
+```
+
+**Signed heap/accumulator follow-ups** — three more separate tops test an
+unsigned compensated lane heap, a fused raw-product heap, and a recurrent
+carry-save low digit.  All are exact for arbitrary accumulation duration and
+pass RTL plus post-synthesis workload drain cosim.  The compensated LOW_W=8
+point initially wins at synthesis (7.2886 mW, -2.2%), but its routed wire grows
+to 1.302M um and routed power to 19.36658 mW / 0.75651 pJ/MAC (+11.0% versus
+the accepted pending-bit route).  Its route also retains 2 geometry and 72
+antenna violations, so it is rejected.  Fused LOW_W=9 saves 2.7% synthesis
+area but only 0.46% power and is not routed.  CSA LOW_W=8 is 9.4% larger and
+8.5% higher power at synthesis and is rejected before APR.  Full metrics are
+in [`doc/results.md`](results.md), with architecture proofs in each variant
+README.
+
+```sh
+RUN_NAME=comp_lw8 SYN_DEFINES='PAYN_SEG_LOW_W=8' \
+make synth TARGET=TSMC22/PAYN_SC_SIGNED_SEGMENTED_COMPENSATED
+
+RUN_NAME=fused_lw9 SYN_DEFINES='PAYN_FUSED_SEG_LOW_W=9' \
+make synth TARGET=TSMC22/PAYN_SC_SIGNED_SEGMENTED_FUSED
+
+RUN_NAME=csa_lw8 SYN_DEFINES='PAYN_SEG_LOW_W=8' \
+make synth TARGET=TSMC22/PAYN_SC_SIGNED_SEGMENTED_CSA
+```
+
+**GF22 combinational inner-tile soft errors** — the exact K6/M16/OW24 tile
+arithmetic cone and a signed binary INT8 MAC were rebuilt using only cells with
+current ROC sensitive-region characterization, routed at 1 ns, and checked with
+routed SDF.  In matched 10M-particle omnidirectional proton campaigns, PaYN and
+binary produced 193 and 182 observable errors (`1.93e-5` and `1.82e-5` per
+incident particle).  After physical area normalization, PaYN's effective error
+cross-section is 2.13x per evaluation and 2.84x per equivalent MAC at T=128.
+Vectorless routed power is 0.263 mW versus 0.123 mW; workload activity remains
+to be measured.  Full methodology and caveats are in
+[`doc/ROC_inner_tile.md`](ROC_inner_tile.md).
+
+```sh
+ROC_ANGLE=omni ROC_TRIALS=10000000 bash sweeps/run_roc_inner_tile.sh all
+ROC_ANGLE=omni ROC_TRIALS=10000000 bash sweeps/run_roc_binary_mac.sh all
 ```
 
 ---

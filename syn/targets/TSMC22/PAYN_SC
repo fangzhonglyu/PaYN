@@ -5,6 +5,7 @@ export TOP=payn_array
 export TECH=TSMC22
 export SRC_SV="payn/payn_array.sv"
 export PERIOD=2.5
+export TSMC22_HPK=1
 export MULTIBIT_INFER=1
 export CLOCK_GATE=1
 # Use the same standard-cell library as the baselines (flow defaults:

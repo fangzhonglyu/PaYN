@@ -1,5 +1,7 @@
 `timescale 1ns/1ps
 
+`include "common/clk_util.sv"
+
 // Power + output-checking bench for the integrated SC array (payn_array).
 //
 // Captures dut.saif over the T-cycle stochastic-MAC window, then drains the
@@ -14,7 +16,13 @@
 // Needs DesignWare for the RTL InnerTile heap: make sim ... USE_DW=1
 
 `ifndef GL_SIM
+`ifndef PAYN_ARRAY_EXTERNAL_RTL
 `include "payn/payn_array.sv"
+`endif
+`endif
+
+`ifndef PAYN_ARRAY_DUT
+`define PAYN_ARRAY_DUT payn_array
 `endif
 
 `ifndef SC_K
@@ -68,10 +76,12 @@ module Top;
     localparam int SETTLE = `SC_SETTLE;
     localparam real PERIOD = `ASTRAEA_CLK_PERIOD_NS;
 
-    logic clk = 1'b0;
-    logic reset = 1'b0;
+    logic clk, reset, timeout;
     logic rng_en = 1'b0, mac_en = 1'b0, shift_in = 1'b0;
     logic load_a = 1'b0, load_w = 1'b0, load_a_sign = 1'b0, load_w_sign = 1'b0;
+`ifdef PAYN_BLOCK_FINALIZE
+    logic block_finalize = 1'b0;
+`endif
 
     logic [N_H*K*WIDTH-1:0] a_binary_in = '0;
     logic [N_H*K-1:0]       a_signs_in = '0;
@@ -85,21 +95,28 @@ module Top;
     int seed_state;
     bit monitor_x = 1'b0;
 
-    always #(PERIOD/2.0) clk = ~clk;
+    ClkUtils #(.TIMEOUT(WARMUP + T + N_W + 2048)) clk_utils (
+        .clk, .reset, .timeout
+    );
 
     always @(acc_out_east)
         if (monitor_x && $isunknown(acc_out_east))
             $fatal(1, "[X-FAIL] SC drain rail entered X during SAIF: %h", acc_out_east);
 
-    payn_array #(
+    `PAYN_ARRAY_DUT #(
         .K(K), .M(M), .N_H(N_H), .N_W(N_W), .WIDTH(WIDTH), .OWIDTH(OWIDTH)
+`ifdef PAYN_BLOCK_FINALIZE
+        , .BLOCK_T(T)
+`endif
     ) dut (.*);
 
 `ifdef GL_SIM
     initial begin
+`ifndef NO_SDF
 `ifdef SDF_FILE
         $display("[INFO] $sdf_annotate(`SDF_FILE, dut)");
         $sdf_annotate(`SDF_FILE, dut);
+`endif
 `endif
     end
 `endif
@@ -116,12 +133,8 @@ module Top;
             w_signs_in[i] = $urandom & 1;
         end
 
-        // reset
-        @(negedge clk);
-        reset = 1'b1;
-        @(posedge clk);
-        @(negedge clk);
-        reset = 1'b0;
+        clk_utils.set_clock(PERIOD);
+        clk_utils.do_reset();
 
         // latch operands (control launched at the NEGEDGE: full half-cycle setup,
         // stable across the posedge -> posedge+insertion capture window, so it
@@ -144,11 +157,39 @@ module Top;
             if (c == WARMUP)          monitor_x = 1'b1;
             if (c == WARMUP + SETTLE) $toggle_start;
             mac_en = (c >= WARMUP);
-            @(posedge clk); @(negedge clk);
+            @(posedge clk);
+`ifdef PAYN_BLOCK_FINALIZE
+            if (c == WARMUP + T - 1) begin
+                // Launch the correction immediately after the final MAC edge.
+                // This preserves the last MAC capture and gives the distributed
+                // finalize control plus upper-segment subtract a full cycle.
+                // Launch after the routed clock insertion/hold window.  A
+                // real controller flop on the same tree changes after its
+                // local clock edge and clock-to-Q delay, not at the source
+                // clock edge itself.
+                #300ps;
+                mac_en = 1'b0;
+                rng_en = 1'b0;
+                block_finalize = 1'b1;
+            end
+`endif
+            @(negedge clk);
         end
         mac_en = 1'b0;
         rng_en = 1'b0;
+`ifdef PAYN_BLOCK_FINALIZE
+        // The existing post-MAC idle cycle captures the block correction, so
+        // the SAIF includes its amortized cost without extending the window.
+        block_finalize = 1'b1;
+`endif
         @(negedge clk);
+`ifdef PAYN_BLOCK_FINALIZE
+        block_finalize = 1'b0;
+`endif
+        // Let the reporter observe the final control/clock events before
+        // closing the window.  Without this separation, VCS can omit the
+        // coincident final clock transition from the SAIF toggle count.
+        #1ps;
         $toggle_stop;
         monitor_x = 1'b0;
         $toggle_report("dut.saif", 1.0e-12, "Top.dut");

@@ -8,5 +8,6 @@ export TOP=sc_inner_pe_manual_k6m16n9_ow24
 export TECH=TSMC22
 export SRC_SV="payn/inner_pe.sv"
 export PERIOD=2.5
+export TSMC22_HPK=1
 export MULTIBIT_INFER=1
 export CLOCK_GATE=1

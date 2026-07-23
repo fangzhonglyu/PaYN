@@ -27,7 +27,7 @@ Notes: SC array closes with only +0.083 ns margin (the svt/sc7 switch was needed
 | BP INT8 | 4096 | 10.60 | 0.414 |
 | BP INT7 native | 4096 | 9.53 | 0.372 |
 | BP INT6 native | 4096 | 8.16 | 0.319 |
-| BP + asym corr | 4096 | 11.62 | 0.454 |
+| BP + asym corr | 4096 | 11.75 | 0.459 |
 | BS | 4096 | 5.95 | 1.860 |
 | UR | 64 / 128 / 256 | 2.84 / 2.83 / 2.83 | 7.10 / 14.17 / 28.34 |
 | UT | 64 / 128 / 256 | 2.48 / 2.03 / 1.92 | 6.20 / 10.17 / 19.23 |
@@ -44,7 +44,7 @@ Dynamic = net-switching + cell-internal. Leakage is <2% everywhere. (BP/BS at T=
 | BP INT8 | 4.79 (45%) | 5.76 (54%) | 0.053 | 10.60 |
 | BP INT7 native | 4.21 | 5.27 | 0.050 | 9.53 |
 | BP INT6 native | 3.53 | 4.58 | 0.045 | 8.16 |
-| BP + asym | 5.26 | 6.31 | 0.061 | 11.62 |
+| BP + asym | 5.31 | 6.38 | 0.062 | 11.75 |
 | BS | 2.52 | 3.38 | 0.046 | 5.95 |
 | UR | 1.14 | 1.66 | 0.035 | 2.83 |
 | UT | 0.79 | 1.10 | 0.032 | 1.92 |
@@ -140,3 +140,105 @@ pJ/MAC given as **synth → APR (PnR inflation ×)**; synth = unit-delay, drain-
 | 8·16·8 | 47 849 → 67 920 | +0.21 | 19.84 | 0.33 → 0.78 (2.4) | 54 |
 
 Trends (full grid): **pJ/MAC ↓ with size** — 2.26 (smallest) → **0.78** at 8·16·8 (intrinsic 0.33); M16 beats M8 ~10–15%; K and N amortize, diminishing after N4. **PnR inflation ↑ with size** — synth→APR ratio **1.7× (small) → 2.7× (8·8·8)**: the biggest / N8 configs route worst, so the configs with the best *intrinsic* pJ/MAC take the largest routing hit (amortization partly clawed back by wiring). Corroborated by **net-switching** (42 → 54%) and **WNS** (+0.96 → **+0.21** at 8·16·8, near the 9×9's +0.083). Net: bigger arrays give the best pJ/MAC but the worst wiring metrics — routing is the SC's scaling limiter.
+
+Follow-up physical experiments on K8·M16·8×8 found a successful row/column
+distribution-guide recipe: routed wire 1.196M→1.113M µm, net capacitance
+293.1→278.4 pF, and validated power 19.840→19.177 mW with positive setup/hold
+WNS.  The measured two-level A/W tree cuts root fanout 8→5 but does not improve
+whole-chip power beyond the guides.  See
+[`doc/SC_wire_optimization.md`](SC_wire_optimization.md) for the full comparison.
+
+## SC exact signed segmented accumulators
+
+K8·M16·8×8, OW24, T=128, MBFF inference and clock gating enabled.  All listed
+synthesis powers use the same validated unit-delay workload SAIF.  `Direct`
+removes the two pending carry/borrow bits per tile; `centered` also shifts the
+stored residue by half a radix.
+
+| design | LOW_W | synth area (µm²) | synth WNS | synth power (mW) | pJ/MAC |
+|---|---:|---:|---:|---:|---:|
+| direct | 7 | 47,397 | +0.52 | 7.4303 | 0.29025 |
+| direct | **8** | **47,312** | +0.76 | **7.3600** | **0.28750** |
+| direct | 9 | 47,352 | +0.77 | 7.3775 | 0.28818 |
+| direct | 10 | 47,319 | +0.78 | 7.3722 | 0.28798 |
+| centered | 7 | 47,638 | +0.52 | 7.4328 | 0.29034 |
+| centered | 8 | 47,544 | +0.76 | 7.3656 | 0.28772 |
+
+The centered code reduces high-digit activity but adds row-boundary conversion
+logic; at LOW_W=8 the net result is 0.08% more power than direct.  Direct
+LOW_W=8 was therefore the only point promoted to APR.
+
+| routed point | area (µm²) | setup / hold WNS | net / internal / leakage (mW) | total (mW) | pJ/MAC |
+|---|---:|---:|---:|---:|---:|
+| distribution-guide baseline | — | clean | — | 19.17723 | 0.74911 |
+| pending-bit signed segmented, LOW_W=9 | 52,185 | +0.558 / +0.019 | 9.14355 / 8.16030 / 0.14091 | **17.44477** | **0.68144** |
+| direct signed segmented, LOW_W=8 | 50,786 | +0.230 / +0.049 | 9.33385 / 8.07421 / 0.13577 | 17.54384 | 0.68531 |
+
+The direct route is 8.52% below the baseline but 0.57% above the pending-bit
+route.  Its final checkpoint adds two `ANTENNA2_A7PP140ZTS_C30` cells in place
+of adjacent fillers; final placement, DRC, connectivity, and antenna checks are
+clean.  The refreshed max-SDF netlist remains bit-exact with a validated SAIF,
+although VCS emits timing-check warnings inside MBFF-packed operand pipes
+despite positive routed STA.  The pending-bit LOW_W=9 implementation remains
+the recommended routed design.
+
+### Signed heap and recurrent-CSA follow-ups
+
+Three isolated experimental tops preserve arbitrary-duration exactness:
+
+- `compensated` replaces signed lane terms with `M-c` plus one shared
+  `-M*negative_count` correction;
+- `fused` puts all 128 compensated raw product bits in one heap; and
+- `CSA` stores the low digit in two carry-save rows with a four-bit high-debt
+  digit.
+
+All rows below use the same validated K8/M16/8x8/T128 post-synthesis workload
+SAIF methodology.
+
+| design | LOW_W | synth area (um2) | synth WNS | synth power (mW) | pJ/MAC |
+|---|---:|---:|---:|---:|---:|
+| pending-bit reference | 9 | 49,034 | +1.44 | 7.4536 | 0.29116 |
+| compensated | **8** | 48,904 | +1.44 | **7.2886** | **0.28471** |
+| compensated | 9 | 48,858 | +1.44 | 7.2959 | 0.28500 |
+| fused | 8 | 47,792 | +1.43 | 7.4221 | 0.28993 |
+| fused | **9** | **47,689** | +1.43 | **7.4190** | **0.28980** |
+| recurrent CSA | 8 | 53,657 | +0.59 | 8.0862 | 0.31587 |
+| recurrent CSA | 9 | 54,303 | +0.65 | 8.2882 | 0.32376 |
+
+Only compensated LOW_W=8 was promoted to the same row/column distribution-guide
+APR screen:
+
+| routed point | area (um2) | setup / hold WNS | routed wire (um) | net / internal / leakage (mW) | total (mW) | pJ/MAC |
+|---|---:|---:|---:|---:|---:|---:|
+| pending-bit LOW_W=9 | 52,185 | +0.558 / +0.019 | 1,121,179 | 9.14355 / 8.16030 / 0.14091 | **17.44477** | **0.68144** |
+| compensated LOW_W=8 | 52,333 | +0.321 / +0.038 | 1,302,466 | 10.78818 / 8.43735 / 0.14105 | 19.36658 | 0.75651 |
+
+Compensation reduces pre-layout power but introduces another heap operand plus
+`M-c` logic on every negative lane.  Physical routing exposes the cost: final
+wire is 16.2% longer and net switching power is 18.0% higher.  The 64 tiles
+rise from about 10.575 to 11.401 mW, and the rest of `u_pe`/distribution wiring
+accounts for most of the remaining increase.  The routed candidate passes
+setup, hold, connectivity, max-SDF drain cosim, and SAIF validation, but retains
+2 geometry DRC and 72 process-antenna violations.  It is an analysis-only
+rejected route; the pending-bit LOW_W=9 design remains the winner.
+
+## SC W-bus DBI candidates
+
+Two W-only temporal-DBI receivers were added as distinct architecture tops.
+Both are bit-exact at M=16 and close the 2.5 ns synthesis target.  Direct XNOR
+decode also completed routed SDF/cosim, validated SAIF, and PT-PX.
+
+| K·M·N | design | synth area (µm²) | vs baseline | synth slack (ns) |
+|---|---|---:|---:|---:|
+| 8·16·8 | baseline | 47,849 | — | +0.86 |
+| 8·16·8 | W-DBI direct XNOR decode | 54,871 | +14.7% | +0.77 |
+| 8·16·8 | W-DBI shared count correction | 56,337 | +17.7% | +0.76 |
+
+At the routed direct-decode point, W-root capacitance falls 31.48→3.08 pF and
+W-root switching falls 1.400→0.087 mW.  The added encode/decode/control network
+nevertheless raises total capacitance 278.38→315.77 pF and validated power
+19.177→23.251 mW (+21.2%); setup/hold remain positive at +0.140/+0.029 ns.
+Direct decode is rejected as a power optimization for this workload, and the
+larger count-correction design is not promoted to APR.  The DBI physical result
+is an analysis-only, no-filler checkpoint; see [`doc/SC_dbi.md`](SC_dbi.md) for
+the full metrics, equations, flow qualification, and reproduction commands.

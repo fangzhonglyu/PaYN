@@ -1,0 +1,10 @@
+#!/bin/bash
+# Exact blockwise-biased PaYN array with a full-width segmented accumulator.
+export TOP=payn_array_biased_segmented
+export TECH=TSMC22
+export SRC_SV="payn/variants/biased_segmented/payn_array_biased_segmented.sv"
+export PERIOD=2.5
+export TSMC22_HPK=1
+export MULTIBIT_INFER=1
+export CLOCK_GATE=1
+export RTL_PREFLIGHT_CMD="BUILD_DIR=build/rtl_preflight/biased_segmented SIM_SRCS=designs/payn/variants/biased_segmented/payn_array_biased_segmented.sv VCS_ARGS=+define+PAYN_ARRAY_EXTERNAL_RTL+PAYN_ARRAY_DUT=payn_array_biased_segmented+PAYN_BLOCK_FINALIZE bash designs/payn/cosim/run_array.sh"

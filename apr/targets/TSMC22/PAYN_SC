@@ -11,6 +11,7 @@ export SYNTH_RUN=${SYNTH_RUN:?set SYNTH_RUN to the synthesis run name}
 export TOP=payn_array
 export TECH=TSMC22
 export PERIOD=2.5
+export TSMC22_HPK=1
 # Same standard-cell library as the baselines (defaults sc7mcpp140z / svt_c30)
 # for an apples-to-apples power comparison; SVT/7-track is also faster, which
 # closes the a_bits_pipe path that HVT/6.5-track could not at 2.5 ns.

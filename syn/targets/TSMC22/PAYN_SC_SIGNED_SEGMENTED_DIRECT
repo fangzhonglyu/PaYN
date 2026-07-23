@@ -1,0 +1,11 @@
+#!/bin/bash
+# Exact PaYN array with a signed low-residue accumulator and direct-retire
+# carry/borrow events.  Override LOW_W with SYN_DEFINES=PAYN_SEG_LOW_W=<n>.
+export TOP=payn_array_signed_segmented_direct
+export TECH=TSMC22
+export SRC_SV="payn/variants/signed_segmented_direct/payn_array_signed_segmented_direct.sv"
+export PERIOD=2.5
+export TSMC22_HPK=1
+export MULTIBIT_INFER=1
+export CLOCK_GATE=1
+export RTL_PREFLIGHT_CMD=${RTL_PREFLIGHT_CMD:-"BUILD_DIR=build/rtl_preflight/signed_segmented_direct SIM_SRCS=designs/payn/variants/signed_segmented_direct/payn_array_signed_segmented_direct.sv VCS_ARGS=+define+PAYN_ARRAY_EXTERNAL_RTL+PAYN_ARRAY_DUT=payn_array_signed_segmented_direct+define+SC_K=8+define+SC_M=16+define+SC_NH=8+define+SC_NW=8+define+SC_OWIDTH=24+define+SC_T=128 bash designs/payn/cosim/run_array.sh"}

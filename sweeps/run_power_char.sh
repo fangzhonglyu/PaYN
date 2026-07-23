@@ -32,6 +32,7 @@ export USE_DW=1
 # name | target | top | power_bench | validator | Tdefine | Tvalues
 TABLE=(
   "BP_ARRAY|TSMC22/BP_ARRAY|array_8|designs/baselines/binary_parallel/power/power_array_8.sv|validate_power_saif.py|STIM_CYCLES_N|4096"
+  "BP_ARRAY_ASYM|TSMC22/BP_ARRAY_ASYM|array_8_asym_corr_v2|designs/baselines/binary_parallel/power/power_array_8_asym_corr_v2.sv|validate_power_saif.py|STIM_CYCLES_N|4096"
   "BS_ARRAY|TSMC22/BS_ARRAY|array_8|designs/baselines/binary_serial/power/power_array_8.sv|validate_power_saif.py|STIM_CYCLES_N|4096"
   "UR_ARRAY|TSMC22/UR_ARRAY|array_8|designs/baselines/unary_rate/power/power_array_8.sv|validate_power_saif.py|RATE_LEN_N|64,128,256"
   "UT_ARRAY|TSMC22/UT_ARRAY|array_8|designs/baselines/unary_temporal/power/power_array_8.sv|validate_power_saif.py|RATE_LEN_N|64,128,256"

@@ -1,0 +1,11 @@
+#!/bin/bash
+export TARGET=GF22FDX/BINARY_INT8_MAC_COMB_ROC
+: ${SYNTH_RUN:?Set SYNTH_RUN to the completed GF22 synthesis run}
+export SYNTH_RUN
+export TOP=binary_int8_mac_comb
+export TECH=GF22FDX
+export POST_LOAD_SCRIPT=GF22_limit_cell.tcl
+export COMB_ONLY=1
+export ANTENNA_CELL=UDBSLT20_TIEDIN_1
+: ${CORE_UTIL:=0.60}
+export CORE_UTIL

@@ -8,5 +8,8 @@ export TOP=payn_array
 export TECH=TSMC22
 export SRC_SV="payn/payn_array.sv"
 export PERIOD=2.5
+# The physically compatible HPK adds two-bit flop cells.  MULTIBIT_INFER alone
+# cannot bank registers when only the base library is loaded.
+export TSMC22_HPK=1
 export MULTIBIT_INFER=1
 export CLOCK_GATE=1

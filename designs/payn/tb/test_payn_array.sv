@@ -9,7 +9,13 @@
 // Needs the DesignWare sim library (InnerTile instantiates DW02_tree):
 //   make sim TB=designs/payn/tb/test_payn_array.sv USE_DW=1
 
+`ifndef PAYN_ARRAY_EXTERNAL_RTL
 `include "payn/payn_array.sv"
+`endif
+
+`ifndef PAYN_ARRAY_DUT
+`define PAYN_ARRAY_DUT payn_array
+`endif
 
 `ifndef SC_K
 `define SC_K 4
@@ -54,6 +60,9 @@ module Top;
     logic rng_en = 1'b0, mac_en = 1'b0, shift_in = 1'b0;
     logic load_a = 1'b0, load_w = 1'b0;
     logic load_a_sign = 1'b0, load_w_sign = 1'b0;
+`ifdef PAYN_BLOCK_FINALIZE
+    logic block_finalize = 1'b0;
+`endif
 
     logic [N_H*K*WIDTH-1:0] a_binary_in = '0;
     logic [N_H*K-1:0]       a_signs_in = '0;
@@ -68,8 +77,11 @@ module Top;
 
     always #1.25 clk = ~clk;
 
-    payn_array #(
+    `PAYN_ARRAY_DUT #(
         .K(K), .M(M), .N_H(N_H), .N_W(N_W), .WIDTH(WIDTH), .OWIDTH(OWIDTH)
+`ifdef PAYN_BLOCK_FINALIZE
+        , .BLOCK_T(T)
+`endif
     ) dut (.*);
 
     initial begin
@@ -113,6 +125,15 @@ module Top;
         end
         mac_en = 1'b0;
         rng_en = 1'b0;
+
+`ifdef PAYN_BLOCK_FINALIZE
+        // Restore the canonical signed accumulator while this block's signs
+        // are still resident in the InnerPE pipes.
+        block_finalize = 1'b1;
+        @(posedge clk);
+        @(negedge clk);
+        block_finalize = 1'b0;
+`endif
 
         // ---- row-serial drain (mirrors test_inner_pe.sv), zero-fill west -----
         acc_in_west = '0;

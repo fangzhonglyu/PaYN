@@ -70,6 +70,8 @@ foreach_in_collection c $seq_cells {
     if {[string match *clk_gate* $nm]} { set bucket other
     } elseif {[string match *a_bits_pipe_reg* $nm]} { set bucket in_bits
     } elseif {[string match *w_bits_pipe_reg* $nm]} { set bucket w_bits
+    } elseif {[string match *w_encoded_pipe_reg* $nm]} { set bucket w_bits
+    } elseif {[string match *w_keep_pipe_reg* $nm]} { set bucket w_bits
     } elseif {[string match *a_signs_pipe_reg* $nm]} { set bucket in_sign
     } elseif {[string match *w_signs_pipe_reg* $nm]} { set bucket w_sign
     } elseif {[string match *acc_out_reg* $nm]} { set bucket acc

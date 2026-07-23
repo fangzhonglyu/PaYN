@@ -1,5 +1,4 @@
 # APR post-load: restore clock uncertainty.
-#
 # The generated synthesis SDC omits clock uncertainty, so APR would otherwise
 # close timing at ~zero margin. At zero margin, a few-ps modeling delta between
 # STA and the routed-SDF gate sim (max-corner slew, timing-check notifier firing

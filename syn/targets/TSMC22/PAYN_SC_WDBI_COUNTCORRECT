@@ -1,0 +1,11 @@
+#!/bin/bash
+# K/M/N-parameterized PaYN array with W-only temporal DBI and shared A-count
+# correction instead of a bitwise decoder at every partial-product input.
+export TOP=payn_array_wdbi_countcorrect
+export TECH=TSMC22
+export SRC_SV="payn/variants/wdbi/countcorrect/payn_array_wdbi_countcorrect.sv"
+export PERIOD=2.5
+export TSMC22_HPK=1
+export MULTIBIT_INFER=1
+export CLOCK_GATE=1
+export RTL_PREFLIGHT_CMD="BUILD_DIR=build/rtl_preflight/wdbi_countcorrect SIM_SRCS=designs/payn/variants/wdbi/countcorrect/payn_array_wdbi_countcorrect.sv VCS_ARGS=+define+PAYN_ARRAY_EXTERNAL_RTL+PAYN_ARRAY_DUT=payn_array_wdbi_countcorrect bash designs/payn/cosim/run_array.sh"

@@ -1,0 +1,11 @@
+#!/bin/bash
+export TOP=payn_inner_tile_comb
+export TECH=GF22FDX
+export SRC_SV="payn/inner_tile_comb.sv"
+export PERIOD=1
+export POST_LOAD_SCRIPT=../../../PaYN/syn/scripts/GF22_limit_cell_roc.tcl
+export FLATTEN=1
+: ${PROCESS_CORNER:=TT}
+: ${VDD_CORNER:=0P80V}
+: ${TEMP_CORNER:=25C}
+export PROCESS_CORNER VDD_CORNER TEMP_CORNER

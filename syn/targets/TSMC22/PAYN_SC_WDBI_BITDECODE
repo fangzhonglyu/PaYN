@@ -1,0 +1,11 @@
+#!/bin/bash
+# K/M/N-parameterized PaYN array with W-only temporal DBI and bitwise decode
+# immediately before partial-product generation.
+export TOP=payn_array_wdbi_bitdecode
+export TECH=TSMC22
+export SRC_SV="payn/variants/wdbi/bitdecode/payn_array_wdbi_bitdecode.sv"
+export PERIOD=2.5
+export TSMC22_HPK=1
+export MULTIBIT_INFER=1
+export CLOCK_GATE=1
+export RTL_PREFLIGHT_CMD="BUILD_DIR=build/rtl_preflight/wdbi_bitdecode SIM_SRCS=designs/payn/variants/wdbi/bitdecode/payn_array_wdbi_bitdecode.sv VCS_ARGS=+define+PAYN_ARRAY_EXTERNAL_RTL+PAYN_ARRAY_DUT=payn_array_wdbi_bitdecode bash designs/payn/cosim/run_array.sh"

@@ -347,7 +347,7 @@ def parse_saif_activity(
 def parse_saif_stimulus_tc(
     path: Path | None, lines: list[str] | None = None
 ) -> tuple[float | None, float | None]:
-    """Return clock and top-level SC operand toggle counts.
+    """Return clock and observable SC stimulus toggle counts.
 
     TX records unknown-state occupancy; it is not a switching metric. These
     explicit TC checks prevent an all-static but fully known stimulus from
@@ -374,7 +374,13 @@ def parse_saif_stimulus_tc(
         if current_signal == "clk":
             clock_tc = max(clock_tc, tc)
         elif current_signal.startswith(
-            ("in_bits", "w_bits", "in_sign", "w_sign", "a_bits", "a_sign")
+            (
+                "in_bits", "w_bits", "in_sign", "w_sign", "a_bits", "a_sign",
+                # SDF-aware VCS optimization can remove the named comparator
+                # outputs from mapped SAIF even though the RNG bank remains
+                # visible and drives the same productive stochastic workload.
+                "random_values",
+            )
         ):
             operand_tc += tc
         current_signal = None

@@ -12,6 +12,7 @@ designs/
   common/                 shared bench utils (clk_util, defines)
   payn/                   the SC accelerator (manual tile / PE / peripheral)
     inner_tile.sv           InnerTile — output-stationary MAC + row-serial drain
+    inner_tile_comb.sv      combinational tile cone + flat GF22/ROC analysis top
     inner_pe.sv             InnerPE / InnerPEFlat — the N_H×N_W tile array
     pe_peripheral.sv        sc_pe_peripheral — binary→stochastic edge streams
     sobol.sv                sobol_generator / sobol_bank — shared Sobol RNGs
@@ -27,6 +28,7 @@ designs/
 syn/targets/TSMC22/         synthesis targets (parameterized)
 apr/targets/TSMC22/         place-and-route targets
 apr/scripts/                place_guides_sc_tiles.tcl
+roc_flow/configs/           PaYN-local configurations for sibling ROC_flow
 sweeps/                     power-characterization tooling (PT scripts, SAIF validators)
 ```
 
@@ -55,6 +57,13 @@ bash designs/payn/cosim/run_peripheral.sh
 make synth TARGET=TSMC22/BP_ARRAY
 make apr   TARGET=TSMC22/BP_ARRAY SYNTH_RUN=<run>
 make power_apr TARGET=TSMC22/BP_ARRAY ...
+
+# GF22 combinational inner-tile soft-error comparison (requires ../ROC_flow):
+ROC_ANGLE=omni ROC_TRIALS=10000000 bash sweeps/run_roc_inner_tile.sh all
+ROC_ANGLE=omni ROC_TRIALS=10000000 bash sweeps/run_roc_binary_mac.sh all
 ```
+
+The GF22 extraction, matched binary reference, results, and caveats are in
+[`doc/ROC_inner_tile.md`](doc/ROC_inner_tile.md).
 
 Build artifacts land under `build/`, `syn/build/`, `apr/build/` (all git-ignored).
