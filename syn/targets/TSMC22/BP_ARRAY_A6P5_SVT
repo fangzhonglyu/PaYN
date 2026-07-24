@@ -1,0 +1,14 @@
+#!/bin/bash
+# Binary-parallel INT8 technology control for the PaYN A6P5-SVT experiment.
+# The binary design is optimized naturally within the same 6.5-track SVT C30
+# base library; SC-specific X0P5 arithmetic constraints are not imposed.
+export TOP=array_8
+export TECH=TSMC22
+export SRC_SV="baselines/binary_parallel/array_8.sv"
+export PERIOD=2.5
+export TSMC22_CELL_TIER=sc6p5mcpp140z
+export TSMC22_LIB_FLAVORS=svt_c30
+export TSMC22_HPK=0
+export MULTIBIT_INFER=1
+export CLOCK_GATE=1
+export RTL_PREFLIGHT_CMD="make --no-print-directory sim GL= TARGET= TOP=Top TB=designs/baselines/binary_parallel/tb/test_array_8_power_workload.sv BUILD_DIR=build/rtl_preflight/bp_array_a6p5_svt"

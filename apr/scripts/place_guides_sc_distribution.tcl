@@ -11,6 +11,10 @@ set prefix u_pe/u_array_core
 if {[info exists env(SC_DIST_HIER_PREFIX)]} {
     set prefix $env(SC_DIST_HIER_PREFIX)
 }
+set name_separator /
+if {[info exists env(SC_DIST_NAME_SEPARATOR)]} {
+    set name_separator $env(SC_DIST_NAME_SEPARATOR)
+}
 set band_fraction 0.55
 set edge_margin 0.03
 set density 0.72
@@ -67,8 +71,8 @@ for {set h 0} {$h < $n_h} {incr h} {
         [expr {$llx+$edge_margin*$tile_w}] [expr {$y_center-$y_half}] \
         [expr {$urx-$edge_margin*$tile_w}] [expr {$y_center+$y_half}]]
     set source_patterns [list \
-        "${prefix}/a_bits_pipe_reg_${h}__*" \
-        "${prefix}/a_signs_pipe_reg_${h}__*"]
+        "${prefix}${name_separator}a_bits_pipe_reg_${h}__*" \
+        "${prefix}${name_separator}a_signs_pipe_reg_${h}__*"]
     set sources [matching_names $source_patterns]
     if {[llength $sources] == 0} {
         puts "ERROR: no A pipeline cells found for row $h"
@@ -88,11 +92,11 @@ for {set v 0} {$v < $n_w} {incr v} {
         [expr {$x_center-$x_half}] [expr {$lly+$edge_margin*$tile_h}] \
         [expr {$x_center+$x_half}] [expr {$ury-$edge_margin*$tile_h}]]
     set source_patterns [list \
-        "${prefix}/w_bits_pipe_reg_${v}__*" \
-        "${prefix}/w_encoded_pipe_reg_${v}__*" \
-        "${prefix}/w_signs_pipe_reg_${v}__*"]
+        "${prefix}${name_separator}w_bits_pipe_reg_${v}__*" \
+        "${prefix}${name_separator}w_encoded_pipe_reg_${v}__*" \
+        "${prefix}${name_separator}w_signs_pipe_reg_${v}__*"]
     set keep_patterns [list \
-        "${prefix}/w_keep_pipe_reg_${v}__*"]
+        "${prefix}${name_separator}w_keep_pipe_reg_${v}__*"]
     set sources [matching_names $source_patterns]
     set keepers [matching_names $keep_patterns]
     if {[llength $sources] == 0} {

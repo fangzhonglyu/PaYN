@@ -136,6 +136,58 @@ bash sweeps/run_power_char.sh PAYN_SC          # power
 bash designs/payn/cosim/run_power_array.sh     # 256-batch bit-exact drain check
 ```
 
+**A6P5/SVT library experiment** — separate targets keep the accepted A7/SVT
+checkpoint untouched.  PaYN uses the SCArch X0P5 ADDF/AND2 mapping; the binary
+INT8 control uses the same A6P5/SVT C30 library without SC-specific mapping
+constraints.
+
+```sh
+make synth TARGET=TSMC22/PAYN_SC_SIGNED_SEGMENTED_A6P5_SVT \
+           RUN_NAME=a6p5_svt_k8m16n8_lw9
+make synth TARGET=TSMC22/BP_ARRAY_A6P5_SVT \
+           RUN_NAME=a6p5_svt_int8
+
+SYNTH_RUN=a6p5_svt_k8m16n8_lw9 \
+RUN_NAME=a6p5_svt_k8m16n8_lw9_distguide \
+SC_DISTRIBUTION_GUIDES=1 SC_NH=8 SC_NW=8 \
+make apr TARGET=TSMC22/PAYN_SC_SIGNED_SEGMENTED_A6P5_SVT
+
+# K8.M16 symmetric-array synthesis screen (N=4,6,10,12,14).
+bash sweeps/run_a6p5_n_syn_screen.sh 4 6 10 12 14
+
+# Best fully power-qualified A6P5 route.
+PAYN_A6P5_N=10 \
+SYNTH_RUN=a6p5_svt_k8m16n10_lw9 \
+RUN_NAME=a6p5_svt_k8m16n10_lw9_distguide \
+SC_DISTRIBUTION_GUIDES=1 SC_NH=10 SC_NW=10 \
+make apr TARGET=TSMC22/PAYN_SC_SIGNED_SEGMENTED_A6P5_SVT
+
+SYNTH_RUN=a6p5_svt_int8 RUN_NAME=a6p5_svt_int8 \
+make apr TARGET=TSMC22/BP_ARRAY_A6P5_SVT
+```
+
+Matched synthesis power is 6.9159 mW for PaYN and 4.6367 mW for binary, 13.98%
+and 8.76% below their A7/SVT controls.  The guided 8×8 PaYN analysis route
+measures 17.18954 mW / 0.671466 pJ/MAC.  The fully qualified 10×10 route
+improves this to 25.64424 mW / 0.641106 pJ/MAC by amortizing the fixed
+peripheral and Sobol energy, but retains four geometry DRCs and 34 antenna
+violations.  The 12×12 route closes STA and its zero-delay netlist passes, but
+its max-SDF run misses high-segment updates; its SAIF is rejected.
+
+The N=10 placement-QoR controls stop after the normal pre-CTS optimization via
+`apr/scripts/stop_after_place.tcl`.  Their retained run names are
+`a6p5_svt_k8m16n10_lw9_unguided_placeonly`,
+`a6p5_svt_k8m16n10_lw9_flat_unguided_placeonly`, and
+`a6p5_svt_k8m16n10_lw9_flat_distguide_placeonly`.  The matched hierarchical
+guided placement is the `place.enc` checkpoint inside the full N=10 route.
+See [`A6P5_results.md`](A6P5_results.md) for estimated wire, overflow, density,
+and hotspot results.
+
+The binary analysis route measures 9.60705 mW / 0.375276 pJ/MAC and passes
+4,097 routed output checks; setup, hold, connectivity, and antenna are clean,
+with three local VIA1 cut-spacing DRCs remaining.  None of the A6P5 analysis
+routes replaces its accepted clean A7 checkpoint.
+
 **Accepted-route power versus T/reuse** — reuses the pending-bit LOW_W=9
 checkpoint, keeps 3,072 productive clocks per point, and runs max-SDF cosim,
 SAIF validation, and PT-PX for T=32/48/64/96/128.  No synthesis or APR is

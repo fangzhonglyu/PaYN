@@ -1,10 +1,10 @@
-# PaYN — Current Results
+# PaYN — Accepted A7/SVT Results
 
-Current routed, workload-driven results for TSMC22 at 0.80 V and 2.5 ns
-(400 MHz).  This file is intentionally limited to accepted results and the
-comparisons needed to interpret them.  Experiment commands and historical
-design points live in [`experiments.md`](experiments.md) and the linked design
-notes.
+Current routed, workload-driven A7/SVT results for TSMC22 at 0.80 V and
+2.5 ns (400 MHz).  This file is intentionally limited to accepted A7 results
+and the comparisons needed to interpret them.  Experiment commands and
+historical design points live in [`experiments.md`](experiments.md) and the
+linked design notes.
 
 ## Workload used for the accepted PaYN result
 
@@ -40,8 +40,8 @@ All designs operate at 400 MHz and retire 64 MAC/cycle.  Energy is therefore
 
 | design | routed area (µm²) | setup WNS (ns) | power (mW) | pJ/MAC |
 |---|---:|---:|---:|---:|
-| BP signed INT8 | 24,944 | +1.040 | 10.60000 | 0.41406 |
-| BP signed INT8 + asymmetric correction | 29,341 | +0.430 | 11.74739 | 0.45888 |
+| BP signed INT8 | 16,536 | +1.040 | 10.60000 | 0.41406 |
+| BP signed INT8 + asymmetric correction | 19,606 | +0.430 | 11.74739 | 0.45888 |
 | **PaYN pending-bit LOW_W=9** | **52,185** | **+0.558** | **18.67898** | **0.72965** |
 
 At equal useful throughput, the accepted PaYN point consumes:
@@ -62,9 +62,9 @@ values.  All measurements are routed and output-checked.
 
 | input precision | native HW area (µm²) | native HW mW / pJ/MAC | fixed INT8 HW, signed inputs mW / pJ/MAC | fixed INT8 HW, all-positive inputs mW / pJ/MAC |
 |---|---:|---:|---:|---:|
-| INT8 | 24,944 | 10.60 / 0.414 | 10.60 / 0.414 | 9.01 / 0.352 |
-| INT7 | 23,139 | 9.53 / 0.372 | 10.50 / 0.410 | 8.61 / 0.336 |
-| INT6 | 21,316 | 8.16 / 0.319 | 10.42 / 0.407 | 7.75 / 0.303 |
+| INT8 | 16,536 | 10.60 / 0.414 | 10.60 / 0.414 | 9.01 / 0.352 |
+| INT7 | 15,136 | 9.53 / 0.372 | 10.50 / 0.410 | 8.61 / 0.336 |
+| INT6 | 13,343 | 8.16 / 0.319 | 10.42 / 0.407 | 7.75 / 0.303 |
 
 Signed input narrowing on fixed INT8 hardware saves only about 2% from INT8 to
 INT6 because sign extension keeps upper bits active.  Native narrowing removes
@@ -89,6 +89,20 @@ The full-chip PT-PX split is:
 | net switching | 9.804828 | 52.49% |
 | cell internal | 8.733778 | 46.76% |
 | leakage | 0.140370 | 0.75% |
+
+Expressed as dynamic energy plus static leakage, the accepted result is:
+
+| metric | value |
+|---|---:|
+| dynamic power (net switching + cell internal) | 18.538606 mW |
+| **dynamic energy** | **0.724164 pJ/MAC** |
+| **static leakage** | **0.140370 mW** |
+| leakage energy at 25.6 GMAC/s | 0.005483 pJ/MAC |
+| total energy (dynamic + amortized leakage) | 0.729648 pJ/MAC |
+
+Dynamic energy is `(9.804828 + 8.733778) / 25.6`.  Leakage is reported
+separately in mW because it is paid with wall-clock time rather than per
+operation; the leakage-energy row is its throughput-dependent equivalent.
 
 Wire and net switching remain the main physical limiter.  The accepted
 row/column distribution guides reduce routed wire and capacitance without the
@@ -170,6 +184,17 @@ Two subsequent accumulator experiments did not beat pending:
   but matched synthesis power rose from 8.0398 to 8.3091 mW (**+3.35%**).
   Its biased `M-hit` negative operands switch too densely, so it was rejected
   before spending an APR run.
+
+Earlier binary tables mistakenly reported routed instance counts (24,944,
+23,139, and 21,316) as square-micron area.  They now use Innovus functional
+standard-cell area, excluding physical-only filler and antenna cells, which is
+the same metric used for the PaYN route comparisons.
+
+## Experimental library results
+
+A6P5/SVT measurements are intentionally excluded from the A7 headline and
+accepted-result tables in this document.  They are tracked separately in
+[`A6P5_results.md`](A6P5_results.md).
 
 ## Current architecture verdict
 

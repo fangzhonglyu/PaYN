@@ -1,0 +1,19 @@
+#!/bin/bash
+# Binary-parallel INT8 APR control in the TSMC22 6.5-track SVT C30 base
+# library.  Keep this separate from BP_ARRAY so the accepted A7 route remains
+# untouched.
+export TARGET=TSMC22/BP_ARRAY_A6P5_SVT
+export SYNTH_RUN=${SYNTH_RUN:?set SYNTH_RUN to the synthesis run name}
+export TOP=array_8
+export TECH=TSMC22
+export PERIOD=2.5
+export TSMC22_CELL_TIER=sc6p5mcpp140z
+export TSMC22_LIB_FLAVORS=svt_c30
+export TSMC22_HPK=0
+export CORE_UTIL=${CORE_UTIL:-0.75}
+export CORE_ASPECT=${CORE_ASPECT:-1.000}
+export POST_LOAD_SCRIPT=apr/scripts/set_clock_uncertainty.tcl
+# Verify the local detail-route repair before invoking the destructive
+# editDeleteViolations/globalDetailRoute fallback.  This avoids re-routing a
+# result that is already geometry-clean.
+export CONDITIONAL_FINAL_DRC=${CONDITIONAL_FINAL_DRC:-1}
