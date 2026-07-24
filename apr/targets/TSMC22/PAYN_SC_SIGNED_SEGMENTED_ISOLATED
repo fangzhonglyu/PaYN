@@ -1,0 +1,27 @@
+#!/bin/bash
+export TARGET=TSMC22/PAYN_SC_SIGNED_SEGMENTED_ISOLATED
+export SYNTH_RUN=${SYNTH_RUN:?set SYNTH_RUN to the synthesis run name}
+export TOP=payn_array_signed_segmented_isolated
+export TECH=TSMC22
+export PERIOD=2.5
+export TSMC22_HPK=1
+export POST_LOAD_SCRIPT=apr/scripts/set_clock_uncertainty.tcl
+export CORE_UTIL=${CORE_UTIL:-0.70}
+export CORE_ASPECT=${CORE_ASPECT:-1.000}
+
+if [ "${SC_PLACE_GUIDES:-0}" = "1" ] && \
+   [ "${SC_DISTRIBUTION_GUIDES:-0}" = "1" ]; then
+    echo "ERROR: choose tile guides or distribution guides, not both" >&2
+    return 2 2>/dev/null || exit 2
+elif [ "${SC_PLACE_GUIDES:-0}" = "1" ]; then
+    export SC_NH=${SC_NH:?set SC_NH when SC_PLACE_GUIDES=1}
+    export SC_NW=${SC_NW:?set SC_NW when SC_PLACE_GUIDES=1}
+    export SC_TILE_HIER_STYLE=manual
+    export SC_TILE_HIER_PREFIX=${SC_TILE_HIER_PREFIX:-u_pe/u_array_core}
+    export PRE_PLACE_SCRIPT=apr/scripts/place_guides_sc_tiles.tcl
+elif [ "${SC_DISTRIBUTION_GUIDES:-0}" = "1" ]; then
+    export SC_NH=${SC_NH:?set SC_NH when SC_DISTRIBUTION_GUIDES=1}
+    export SC_NW=${SC_NW:?set SC_NW when SC_DISTRIBUTION_GUIDES=1}
+    export SC_DIST_HIER_PREFIX=${SC_DIST_HIER_PREFIX:-u_pe/u_array_core}
+    export PRE_PLACE_SCRIPT=apr/scripts/place_guides_sc_distribution.tcl
+fi

@@ -192,7 +192,7 @@ run_variant() {
     # SAIF files are intentionally ignored by git, so include ignored build
     # products while keeping the search scoped to this variant's sim directory.
     saif=$(rg --files -uu "$sim_dir" 2>/dev/null | awk '/\/dut\.saif$/{print; exit}' || true)
-    trace=$(rg --files -uu "$sim_dir" 2>/dev/null | awk '/\/array_rtl\.txt$/{print; exit}' || true)
+    trace=$(rg --files -uu "$sim_dir" 2>/dev/null | awk '/\/array_streaming_rtl\.txt$/{print; exit}' || true)
     if [ -z "$saif" ] || [ -z "$trace" ]; then
         stage "$variant" "routed-SDF gate-level simulation"
         if ! make sim GL=apr TARGET="$TARGET" RUN="$apr_run" USE_DW=1 \
@@ -201,11 +201,11 @@ run_variant() {
             stage "$variant" "gate-level simulation returned nonzero; checking artifacts"
         fi
         saif=$(rg --files -uu "$sim_dir" | awk '/\/dut\.saif$/{print; exit}')
-        trace=$(rg --files -uu "$sim_dir" | awk '/\/array_rtl\.txt$/{print; exit}')
+        trace=$(rg --files -uu "$sim_dir" | awk '/\/array_streaming_rtl\.txt$/{print; exit}')
     fi
 
     local cosim=FAIL
-    if python3 designs/payn/cosim/cosim_array.py "$trace" 2>> "$log" | \
+    if python3 designs/payn/cosim/cosim_streaming.py "$trace" 2>> "$log" | \
         tee -a "$log" | rg -q '\[PASS\]'; then
         cosim=PASS
     fi

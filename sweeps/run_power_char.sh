@@ -100,6 +100,17 @@ for row in "${TABLE[@]}"; do
       grep -iE "FUNC-FAIL|X-FAIL|Error-|^Error|fatal" "$wlog/sim.log" | head -3
       echo "$name,$target,$T,,,,,SIM_FAIL,$saif" >> "$CSV"; overall=1; continue
     fi
+    if [ "$name" = PAYN_SC ] || [ "$name" = SC_INNER_PE ]; then
+      trace="$REPO/build/$bench/array_streaming_rtl.txt"
+      if [ ! -f "$trace" ] || \
+         ! python3 "$REPO/designs/payn/cosim/cosim_streaming.py" "$trace" \
+              >> "$wlog/sim.log" 2>&1; then
+        log "    STREAMING COSIM FAIL (see $wlog/sim.log)"
+        echo "$name,$target,$T,,,,,COSIM_FAIL,$saif" >> "$CSV"
+        overall=1
+        continue
+      fi
+    fi
 
     # validate + PT-PX back-annotation
     POWER_SAIF_VALIDATOR="$REPO/sweeps/$validator" \

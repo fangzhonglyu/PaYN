@@ -22,9 +22,10 @@ run_cfg() {
 
   # 1) RTL cosim fail-fast
   echo "[$cfg] RTL cosim" >> "$L"
-  make sim TB="$TB" USE_DW=1 BUILD_DIR="$bd/rtl" VCS_ARGS="$DEF +define+SC_T=64" >> "$L" 2>&1
-  local tr=$(find "$bd/rtl" -name array_rtl.txt 2>/dev/null | head -1)
-  if ! python3 designs/payn/cosim/cosim_array.py "$tr" 2>/dev/null | grep -q "\[PASS\]"; then
+  make sim TB="$TB" USE_DW=1 BUILD_DIR="$bd/rtl" \
+       VCS_ARGS="$DEF +define+SC_T=64 +define+SC_BATCHES=8" >> "$L" 2>&1
+  local tr=$(rg --files -uu "$bd/rtl" 2>/dev/null | awk '/\/array_streaming_rtl\\.txt$/{print; exit}')
+  if ! python3 designs/payn/cosim/cosim_streaming.py "$tr" 2>/dev/null | grep -q "\[PASS\]"; then
     echo "[$cfg] COSIM_FAIL" >> "$L"; echo "$cfg,$K,$M,$N,,,,,,,,FAIL,COSIM_FAIL" >> $CSV; return; fi
 
   # 2) synth
@@ -46,10 +47,10 @@ run_cfg() {
   # 4) GL sim (+ output cosim)
   echo "[$cfg] GL sim" >> "$L"
   make sim GL=apr TARGET=$ST RUN=$cfg USE_DW=1 BUILD_DIR="$bd/gl" TB="$TB" VCS_ARGS="$DEF +define+SC_T=128" >> "$L" 2>&1
-  local saif=$(find "$bd/gl" -name dut.saif 2>/dev/null | head -1)
-  local gtr=$(find "$bd/gl" -name array_rtl.txt 2>/dev/null | head -1)
+  local saif=$(rg --files -uu "$bd/gl" 2>/dev/null | awk '/\/dut\\.saif$/{print; exit}')
+  local gtr=$(rg --files -uu "$bd/gl" 2>/dev/null | awk '/\/array_streaming_rtl\\.txt$/{print; exit}')
   local cos=FAIL
-  [ -n "$gtr" ] && python3 designs/payn/cosim/cosim_array.py "$gtr" 2>/dev/null | grep -q "\[PASS\]" && cos=PASS
+  [ -n "$gtr" ] && python3 designs/payn/cosim/cosim_streaming.py "$gtr" 2>/dev/null | grep -q "\[PASS\]" && cos=PASS
   if [ -z "$saif" ] || grep -qE "X-FAIL|\\\$fatal" "$L"; then echo "$cfg,$K,$M,$N,$synA,$synSlk,$aprA,$aprWNS,128,,,$cos,SIM_FAIL" >> $CSV; return; fi
 
   # 5) power

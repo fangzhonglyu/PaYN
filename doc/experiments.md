@@ -1,8 +1,10 @@
 # PaYN — Experiment Index
 
-Handoff index for the PaYN SC accelerator + binary/unary baselines. For each design:
-a **map** (where the RTL / TB / power bench / target live) followed by its **experiments**,
-each with a one-line repro. Numbers are headline results; full tables in `doc/results.md`.
+Handoff index for the PaYN SC accelerator + binary/unary baselines. For each
+design: a **map** (where the RTL / TB / power bench / target live) followed by
+its **experiments**, each with a one-line repro.  The concise current signoff
+summary is in `doc/results.md`; historical detail remains here and in the
+design-specific notes.
 
 ## Entry points
 
@@ -109,15 +111,39 @@ bash sweeps/run_power_char.sh UR_ARRAY UT_ARRAY
 | design | `payn_array.sv` = `sobol.sv`×2 + `pe_peripheral.sv` + `inner_pe.sv` (`inner_tile.sv`) |
 | standalone PE top | `sc_inner_pe_manual_k6m16n9_ow24` (in `inner_pe.sv`) |
 | functional TB | `tb/test_payn_array.sv` (bit-exact vs cosim); also `test_inner_pe/peripheral/sobol.sv` |
-| power benches | `power/power_payn_array.sv` (array), `power/power_inner_pe.sv` (PE, real Sobol-driven) |
-| bit-exact model | `cosim/sc_kernel.py` + checker `cosim/cosim_array.py` |
+| power benches | `power/power_payn_array.sv` (array), `power/power_inner_pe.sv` (PE, real Sobol-driven); both run 256 batches by default |
+| bit-exact model | `cosim/sc_kernel.py`; fixed-input checker `cosim/cosim_array.py`; long-running power checker `cosim/cosim_streaming.py` |
 | targets | `PAYN_SC` (array), `SC_INNER_PE` (standalone PE) |
 
 **Array power vs T∈{64,128,256}** — 23.69 / 23.71 / 23.57 mW
 
+These headline sweep values predate the corrected workload schedule.  The
+current power bench holds binary magnitude and sign for exactly `T/M` clocks,
+advances Sobol and generates a fresh `M`-bit slice every clock, then reloads the
+next batch without a compute bubble.  `SC_BATCHES` controls run length and
+defaults to 256.  The accepted pending-bit K8/M16/8×8/T128 checkpoint has been
+regenerated with this schedule using the intended 7-bit unsigned magnitude plus
+separate sign distribution.  Each logical magnitude `m` is encoded as `m << 1`
+for the existing 8-bit comparator/Sobol hardware, preserving `m/128`
+probability.  It measures **18.67898 mW / 0.72965 pJ/MAC**.  This is a
+workload-correct result on the existing 8-bit netlist, not yet the result of
+physically narrowing the magnitude registers, comparators, and Sobol words.
+The older shape/T sweep still needs regeneration before its headline values
+are treated as final intended-workload power.
+
 ```
 bash sweeps/run_power_char.sh PAYN_SC          # power
-bash designs/payn/cosim/run_power_array.sh     # bit-exact drain check
+bash designs/payn/cosim/run_power_array.sh     # 256-batch bit-exact drain check
+```
+
+**Accepted-route power versus T/reuse** — reuses the pending-bit LOW_W=9
+checkpoint, keeps 3,072 productive clocks per point, and runs max-SDF cosim,
+SAIF validation, and PT-PX for T=32/48/64/96/128.  No synthesis or APR is
+performed, and per-T lightweight report views preserve the accepted reports.
+
+```sh
+bash sweeps/run_pending_t_reuse_power.sh
+# -> build/power_char/pending_t_reuse/results.csv
 ```
 
 **Internal breakdown** — compute PE 90% / peripheral 5% / Sobol 4%
@@ -144,10 +170,11 @@ bash sweeps/run_sc_tile_synpwr.sh     # unit-delay synth pJ/MAC per config    ->
 
 **Wire-capacitance optimization** — row/column distribution guides are the
 accepted recipe: versus baseline they reduce routed wire 6.9%, total net
-capacitance 5.0%, and validated power 3.3%, while closing timing.  An explicit
-two-level A/W tree reduces root fanout 8→5 and combined root switching 36%
-relative to the guides, but branch overhead leaves whole-chip power tied and
-adds 1.4% area.  Tile-only guides and global `MAX_FANOUT=4` remain rejected.
+capacitance 5.0%, and current-workload power 4.62%
+(21.62573→20.62757 mW), while closing timing.  An explicit two-level A/W tree
+reduces root fanout 8→5 and combined root switching 36% relative to the guides,
+but branch overhead raises whole-chip power to 21.61643 mW and adds 1.4% area.
+Tile-only guides and global `MAX_FANOUT=4` remain rejected.
 Full analysis is in [`doc/SC_wire_optimization.md`](SC_wire_optimization.md).
 
 ```sh
@@ -158,12 +185,12 @@ bash sweeps/run_sc_wire_opts.sh       # -> build/power_char/wire_opts/sc_wire_op
 selection out of the baseline RTL.  Both are bit-exact and close synthesis at
 K8·M16·8×8.  Routed direct XNOR decode proves that DBI works locally—W-root
 capacitance falls 90.2% and W-root switching falls 93.8%—but the added
-encode/decode/control network raises total capacitance 13.4% and validated
-power 21.2% (19.177→23.251 mW).  It remains timing-, DRC-, antenna-, SDF-, and
-cosim-clean in the analysis APR flow, but is rejected as a whole-chip power
-optimization for this workload.  Shared count correction is larger at
-synthesis and was not routed.  Equations, full metrics, and flow caveats are in
-[`doc/SC_dbi.md`](SC_dbi.md).
+encode/decode/control network raises total capacitance 13.4% and current-
+workload power 21.2% (20.62757→24.99178 mW).  It remains timing-, DRC-,
+antenna-, SDF-, and cosim-clean in the analysis APR flow, but is rejected as a
+whole-chip power optimization for this workload.  Shared count correction is
+larger at synthesis and was not routed.  Equations, full metrics, and flow
+caveats are in [`doc/SC_dbi.md`](SC_dbi.md).
 
 ```sh
 RUN_NAME=k8m16n8_wdbi \
@@ -187,10 +214,11 @@ the row-boundary recenter logic cancels the quieter high digit.  After a
 two-diode checkpoint ECO, the routed direct point closes STA and is clean for
 placement, DRC, connectivity, and antenna.  Its refreshed max-SDF simulation
 is bit-exact and produces a valid SAIF, although VCS still prints timing-check
-warnings inside MBFF-packed operand pipes.  It measures 17.54384 mW /
-0.68531 pJ/MAC: 8.52% below the 19.17723 mW distribution-guide baseline, but
-0.57% above the earlier pending-bit segmented route (17.44477 mW).  The
-pending-bit design therefore remains the routed winner.
+warnings inside MBFF-packed operand pipes.  Under the corrected 256-block
+workload its clean export measures 18.78374 mW / 0.73374 pJ/MAC: 8.94% below
+the 20.62757 mW distribution-guide baseline, but 0.56% above the pending-bit
+route (18.67898 mW).  The pending-bit design therefore remains the routed
+winner.
 
 ```sh
 RUN_NAME=direct_lw8 \
@@ -203,13 +231,13 @@ unsigned compensated lane heap, a fused raw-product heap, and a recurrent
 carry-save low digit.  All are exact for arbitrary accumulation duration and
 pass RTL plus post-synthesis workload drain cosim.  The compensated LOW_W=8
 point initially wins at synthesis (7.2886 mW, -2.2%), but its routed wire grows
-to 1.302M um and routed power to 19.36658 mW / 0.75651 pJ/MAC (+11.0% versus
-the accepted pending-bit route).  Its route also retains 2 geometry and 72
-antenna violations, so it is rejected.  Fused LOW_W=9 saves 2.7% synthesis
-area but only 0.46% power and is not routed.  CSA LOW_W=8 is 9.4% larger and
-8.5% higher power at synthesis and is rejected before APR.  Full metrics are
-in [`doc/results.md`](results.md), with architecture proofs in each variant
-README.
+to 1.302M um and current-workload routed power to 20.65121 mW /
+0.80669 pJ/MAC (+10.6% versus the accepted pending-bit route).  Its route also
+retains 2 geometry and 72 antenna violations, so it is rejected.  Fused
+LOW_W=9 saves 2.7% synthesis area but only 0.46% power and is not routed.  CSA
+LOW_W=8 is 9.4% larger and 8.5% higher power at synthesis and is rejected
+before APR.  Full metrics are in [`doc/results.md`](results.md), with
+architecture proofs in each variant README.
 
 ```sh
 RUN_NAME=comp_lw8 SYN_DEFINES='PAYN_SEG_LOW_W=8' \

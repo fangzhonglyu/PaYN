@@ -12,10 +12,12 @@
 // across 16 different RNGs -- NOT uniform-random bits. Only the InnerPE DUT is in
 // the toggle region, so the SAIF measures the compute core alone.
 //
+// One binary magnitude/sign batch is held for T/M cycles while Sobol advances
+// every cycle.  The measured workload runs many batches back-to-back, and its
+// array_streaming_rtl.txt trace is checked post-hoc by cosim_streaming.py.
 // Bank/peripheral config mirrors payn_array exactly (A: identity DVs 0x17/0x53;
-// W: decorrelated DVs 0x9d/0x2b; salts 0 / 2^(WIDTH-1)) so the drain is bit-exact
-// against sc_kernel.py -- checked post-hoc by cosim_array.py on array_rtl.txt.
-// All inputs launched at the NEGEDGE (insertion-independent); timing checks ON.
+// W: decorrelated DVs 0x9d/0x2b; salts 0 / 2^(WIDTH-1)).  All inputs launch at
+// the NEGEDGE (insertion-independent); timing checks remain ON.
 //
 // Needs DesignWare for the InnerTile heap: make sim ... USE_DW=1
 
@@ -37,20 +39,22 @@
 `ifndef SC_WIDTH
 `define SC_WIDTH 8
 `endif
+// Numeric workload precision: the bipolar operand is a MAG_WIDTH-bit unsigned
+// magnitude plus a separate sign bit.  The existing hardware comparator and
+// Sobol threshold remain WIDTH=8, so encode a logical magnitude m as
+// m << (WIDTH-MAG_WIDTH).  For the default 7-to-8-bit case this maps 0..127 to
+// even thresholds 0..254 and preserves P(bit=1)=m/128.
+`ifndef SC_MAG_WIDTH
+`define SC_MAG_WIDTH 7
+`endif
 `ifndef SC_OWIDTH
 `define SC_OWIDTH 24
 `endif
 `ifndef SC_T
 `define SC_T 128
 `endif
-`ifndef SC_WARMUP
-`define SC_WARMUP 2
-`endif
-// Cycles to skip at the start of the productive phase before opening the SAIF
-// window (startup transient on the resetless bit-pipes); the drain is still
-// output-X-checked over the whole productive phase. See power_payn_array.sv.
-`ifndef SC_SETTLE
-`define SC_SETTLE 8
+`ifndef SC_BATCHES
+`define SC_BATCHES 256
 `endif
 `ifndef SC_SEED
 `define SC_SEED 32'hDEAD_BEEF
@@ -67,10 +71,15 @@ module Top;
     localparam int M = `SC_M;
     localparam int N = `SC_N;              // N_H = N_W = N for the square PE
     localparam int WIDTH = `SC_WIDTH;
+    localparam int MAG_WIDTH = `SC_MAG_WIDTH;
+    localparam int MAG_SHIFT = WIDTH - MAG_WIDTH;
+    localparam logic [WIDTH-1:0] LOGICAL_MAG_MASK =
+        {WIDTH{1'b1}} >> (WIDTH - MAG_WIDTH);
     localparam int OWIDTH = `SC_OWIDTH;
     localparam int T = `SC_T;
-    localparam int WARMUP = `SC_WARMUP;
-    localparam int SETTLE = `SC_SETTLE;
+    localparam int MAC_CYCLES = T / M;
+    localparam int N_BATCHES = `SC_BATCHES;
+    localparam int TOTAL_MAC_CYCLES = N_BATCHES * MAC_CYCLES;
     localparam real PERIOD = `ASTRAEA_CLK_PERIOD_NS;
 
     logic clk, reset, timeout;
@@ -102,7 +111,7 @@ module Top;
     int seed_state;
     bit monitor_x = 1'b0;
 
-    ClkUtils #(.TIMEOUT(WARMUP + T + N + 2048)) clk_utils (
+    ClkUtils #(.TIMEOUT(TOTAL_MAC_CYCLES + N + 256)) clk_utils (
         .clk, .reset, .timeout
     );
 
@@ -157,17 +166,50 @@ module Top;
     end
 `endif
 
-    initial begin
-        seed_state = `SC_SEED;
-        void'($urandom(seed_state));
+    task automatic randomize_batch;
         for (int i = 0; i < N*K; i++) begin
-            a_binary_in[i*WIDTH +: WIDTH] = WIDTH'($urandom);
+            a_binary_in[i*WIDTH +: WIDTH] =
+                (WIDTH'($urandom) & LOGICAL_MAG_MASK) << MAG_SHIFT;
             a_signs_in[i] = $urandom & 1;
         end
         for (int i = 0; i < N*K; i++) begin
-            w_binary_in[i*WIDTH +: WIDTH] = WIDTH'($urandom);
+            w_binary_in[i*WIDTH +: WIDTH] =
+                (WIDTH'($urandom) & LOGICAL_MAG_MASK) << MAG_SHIFT;
             w_signs_in[i] = $urandom & 1;
         end
+    endtask
+
+    task automatic write_batch(input int batch);
+        $fwrite(trace_file, "BATCH %0d\nAMAG", batch);
+        for (int i = 0; i < N*K; i++)
+            $fwrite(trace_file, " %0d", a_binary_in[i*WIDTH +: WIDTH]);
+        $fwrite(trace_file, "\nASIGN");
+        for (int i = 0; i < N*K; i++)
+            $fwrite(trace_file, " %0d", a_signs_in[i]);
+        $fwrite(trace_file, "\nWMAG");
+        for (int i = 0; i < N*K; i++)
+            $fwrite(trace_file, " %0d", w_binary_in[i*WIDTH +: WIDTH]);
+        $fwrite(trace_file, "\nWSIGN");
+        for (int i = 0; i < N*K; i++)
+            $fwrite(trace_file, " %0d", w_signs_in[i]);
+        $fwrite(trace_file, "\n");
+    endtask
+
+    initial begin
+        int next_batch;
+
+        assert (T > 0 && M > 0 && (T % M) == 0)
+            else $fatal(1, "SC_T=%0d must be a positive multiple of M=%0d", T, M);
+        assert (MAG_WIDTH > 0 && MAG_WIDTH <= WIDTH)
+            else $fatal(1, "SC_MAG_WIDTH=%0d must be in [1, SC_WIDTH=%0d]",
+                        MAG_WIDTH, WIDTH);
+        assert (MAC_CYCLES >= 2)
+            else $fatal(1, "streaming bench requires T/M >= 2 for the two-cycle input pipeline");
+        assert (N_BATCHES > 0)
+            else $fatal(1, "SC_BATCHES must be positive");
+
+        seed_state = `SC_SEED;
+        void'($urandom(seed_state));
 
         // Reset is asynchronous for the peripheral/Sobol generators and
         // synchronous for the InnerPE. The common utility holds it across two
@@ -175,34 +217,73 @@ module Top;
         clk_utils.set_clock(PERIOD);
         clk_utils.do_reset();
 
-        // latch operands into the peripheral (control launched at the NEGEDGE:
-        // full half-cycle setup, clears the clock-tree insertion by construction)
-        @(posedge clk); @(negedge clk); load_a = 1'b1; load_w = 1'b1;
-        @(posedge clk); @(negedge clk); load_a = 1'b0; load_w = 1'b0;
-        @(posedge clk); @(negedge clk); load_a_sign = 1'b1; load_w_sign = 1'b1;
-        @(posedge clk); @(negedge clk);
-        @(posedge clk); @(negedge clk); load_a_sign = 1'b0; load_w_sign = 1'b0;
+        trace_file = $fopen("array_streaming_rtl.txt", "w");
+        assert (trace_file != 0)
+            else $fatal(1, "cannot open array_streaming_rtl.txt");
+        $fwrite(trace_file, "STREAMCFG %0d %0d %0d %0d %0d %0d %0d %0d\n",
+                K, M, N, N, WIDTH, OWIDTH, T, N_BATCHES);
 
-        // ---- SAIF window: WARMUP + T productive stochastic-MAC cycles ----
+        randomize_batch();
+        write_batch(0);
+        rng_en = 1'b1;
+        load_a = 1'b1;
+        load_w = 1'b1;
+        load_a_sign = 1'b1;
+        load_w_sign = 1'b1;
+        @(posedge clk);
+        @(negedge clk);
+        load_a = 1'b0;
+        load_w = 1'b0;
+        load_a_sign = 1'b0;
+        load_w_sign = 1'b0;
+        @(posedge clk);
+        @(negedge clk);
+
+        // ---- SAIF window: many contiguous T/M-cycle stochastic blocks ----
         $set_gate_level_monitoring("rtl_on");
         $set_toggle_region(dut);
-        rng_en = 1'b1;
-        for (int c = 0; c < WARMUP + T; c++) begin
-            if (c == WARMUP)          monitor_x = 1'b1;
-            if (c == WARMUP + SETTLE) $toggle_start;
-            mac_en = (c >= WARMUP);
-            @(posedge clk); @(negedge clk);
+        monitor_x = 1'b1;
+        mac_en = 1'b1;
+        $toggle_start;
+        next_batch = 1;
+
+        for (int cycle = 0; cycle < TOTAL_MAC_CYCLES; cycle++) begin
+            load_a = 1'b0;
+            load_w = 1'b0;
+            load_a_sign = 1'b0;
+            load_w_sign = 1'b0;
+
+            if ((cycle % MAC_CYCLES) == (MAC_CYCLES - 2) &&
+                next_batch < N_BATCHES) begin
+                randomize_batch();
+                write_batch(next_batch);
+                next_batch++;
+                load_a = 1'b1;
+                load_w = 1'b1;
+                load_a_sign = 1'b1;
+                load_w_sign = 1'b1;
+            end
+
+            @(posedge clk);
+            @(negedge clk);
         end
+
+        assert (next_batch == N_BATCHES)
+            else $fatal(1, "issued %0d of %0d streaming batches",
+                        next_batch, N_BATCHES);
         mac_en = 1'b0;
         rng_en = 1'b0;
-        @(negedge clk);
+        load_a = 1'b0;
+        load_w = 1'b0;
+        load_a_sign = 1'b0;
+        load_w_sign = 1'b0;
+        #1ps;
         $toggle_stop;
         monitor_x = 1'b0;
         $toggle_report("dut.saif", 1.0e-12, "Top.dut");
 
         // ---- drain (outside SAIF window) + dump trace for cosim check ----
         acc_in_west = '0;
-        @(negedge clk);
         shift_in = 1'b1;
         for (int s = 0; s < N; s++) begin
             @(posedge clk);
@@ -212,25 +293,14 @@ module Top;
         end
         shift_in = 1'b0;
 
-        trace_file = $fopen("array_rtl.txt", "w");
-        assert (trace_file != 0) else $fatal(1, "cannot open array_rtl.txt");
-        $fwrite(trace_file, "CFG %0d %0d %0d %0d %0d %0d %0d\n", K, M, N, N, WIDTH, OWIDTH, T);
-        $fwrite(trace_file, "AMAG");
-        for (int i = 0; i < N*K; i++) $fwrite(trace_file, " %0d", a_binary_in[i*WIDTH +: WIDTH]);
-        $fwrite(trace_file, "\nASIGN");
-        for (int i = 0; i < N*K; i++) $fwrite(trace_file, " %0d", a_signs_in[i]);
-        $fwrite(trace_file, "\nWMAG");
-        for (int i = 0; i < N*K; i++) $fwrite(trace_file, " %0d", w_binary_in[i*WIDTH +: WIDTH]);
-        $fwrite(trace_file, "\nWSIGN");
-        for (int i = 0; i < N*K; i++) $fwrite(trace_file, " %0d", w_signs_in[i]);
-        $fwrite(trace_file, "\nDRAIN");
+        $fwrite(trace_file, "DRAIN");
         for (int h = 0; h < N; h++)
             for (int v = 0; v < N; v++) $fwrite(trace_file, " %0d", drain[h][v]);
         $fwrite(trace_file, "\n");
         $fclose(trace_file);
 
-        $display("PASS: InnerPE PE-level power SAIF captured; drain dumped (K=%0d M=%0d N=%0dx%0d T=%0d) -> cosim_array.py",
-                 K, M, N, N, T);
+        $display("PASS: streaming InnerPE SAIF captured; %0d batches x %0d cycles, drain dumped -> cosim_streaming.py",
+                 N_BATCHES, MAC_CYCLES);
         $finish;
     end
 endmodule

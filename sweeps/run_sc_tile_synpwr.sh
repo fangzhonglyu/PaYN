@@ -20,8 +20,14 @@ syn_cfg() {
   local bd=build/synpwr/$cfg ; rm -rf "$bd"
   make sim GL=syn NO_SDF=1 TARGET=$ST RUN=$cfg USE_DW=1 BUILD_DIR="$bd" TB="$TB" \
        VCS_ARGS="+delay_mode_unit +notimingcheck $DEF" >> "$L" 2>&1
-  local saif=$(find "$bd" -name dut.saif 2>/dev/null | head -1)
+  local saif=$(rg --files -uu "$bd" 2>/dev/null | awk '/\/dut\\.saif$/{print; exit}')
+  local trace=$(rg --files -uu "$bd" 2>/dev/null | awk '/\/array_streaming_rtl\\.txt$/{print; exit}')
   if [ -z "$saif" ] || grep -q "X-FAIL" "$L"; then echo "$cfg,$K,$M,$N,,,SIM_FAIL" >> $CSV; return; fi
+  if [ -z "$trace" ] || \
+     ! python3 designs/payn/cosim/cosim_streaming.py "$trace" >> "$L" 2>&1; then
+    echo "$cfg,$K,$M,$N,,,COSIM_FAIL" >> $CSV
+    return
+  fi
   make power TARGET=$ST RUN=$cfg SAIF="$saif" SAIF_STRIP_PATH=Top/dut >> "$L" 2>&1
   local tot=$(python3 -c "
 import re
