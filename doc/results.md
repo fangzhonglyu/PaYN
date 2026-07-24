@@ -74,13 +74,19 @@ netlist consume less than the native signed-INT6 design.
 
 ## Accepted PaYN power breakdown
 
-| block | power (mW) | native energy | pJ/MAC equivalent |
-|---|---:|---:|---:|
-| InnerPE array (`u_pe`) | 15.964550 | 0.623615 pJ/MAC | 0.623615 |
-| binary-to-unary peripheral (`u_peripheral`) | 1.841643 | 0.002248 pJ/output bit | 0.071939 |
-| Sobol banks (`u_a_rng` + `u_w_rng`) | 0.729910 | 0.057024 pJ/Sobol word | 0.028512 |
-| shared/top-level overhead | 0.142877 | — | 0.005581 |
-| **full array** | **18.678980** | — | **0.729648** |
+| block | total power (mW) | dynamic energy (pJ/MAC) | static leakage (mW) | total energy (pJ/MAC) |
+|---|---:|---:|---:|---:|
+| InnerPE array (`u_pe`) | 15.964550 | **0.619704** | 0.100130 | 0.623615 |
+| binary-to-unary peripheral (`u_peripheral`) | 1.841643 | **0.070710** | 0.031457 | 0.071939 |
+| Sobol banks (`u_a_rng` + `u_w_rng`) | 0.729910 | **0.028301** | 0.005395 | 0.028512 |
+| shared/top-level overhead | 0.142877 | **0.005449** | 0.003388 | 0.005581 |
+| **full array** | **18.678980** | **0.724164** | **0.140370** | **0.729648** |
+
+Dynamic energy is each block's cell-internal plus net-switching power divided
+by 25.6 GMAC/s.  Static leakage remains in mW; total energy includes its
+throughput-amortized contribution.  In their native accounting, the
+converter's total is 0.002248 pJ/output bit and the Sobol banks' total is
+0.057024 pJ/Sobol word.
 
 The full-chip PT-PX split is:
 
@@ -142,6 +148,30 @@ For reference, the corresponding full-design results are:
 | 64 | 19.94216 | 0.389495 |
 | 96 | 19.10784 | 0.559800 |
 | 128 | 18.69109 | 0.730121 |
+
+The corresponding dynamic-energy split is:
+
+| T | PE core | conversion | Sobol | shared | **total dynamic** |
+|---:|---:|---:|---:|---:|---:|
+| 32 | 0.171510 | 0.036453 | 0.007075 | 0.002831 | **0.217869** |
+| 48 | 0.253612 | 0.042180 | 0.010613 | 0.003265 | **0.309671** |
+| 64 | 0.320964 | 0.047934 | 0.014151 | 0.003706 | **0.386754** |
+| 96 | 0.470482 | 0.059402 | 0.021226 | 0.004579 | **0.555689** |
+| 128 | 0.620126 | 0.070760 | 0.028301 | 0.005453 | **0.724640** |
+
+All entries above are pJ/MAC and exclude leakage.  Static leakage by component
+is:
+
+| T | PE core (mW) | conversion (mW) | Sobol (mW) | shared (mW) | **total leakage (mW)** |
+|---:|---:|---:|---:|---:|---:|
+| 32 | 0.100346 | 0.031338 | 0.005395 | 0.003388 | **0.140466** |
+| 48 | 0.100228 | 0.031392 | 0.005395 | 0.003388 | **0.140403** |
+| 64 | 0.100164 | 0.031413 | 0.005395 | 0.003389 | **0.140361** |
+| 96 | 0.100084 | 0.031441 | 0.005395 | 0.003388 | **0.140308** |
+| 128 | 0.100060 | 0.031456 | 0.005395 | 0.003389 | **0.140300** |
+
+These component values come from each saved `cell_power.rpt`; shared overhead
+is the full-chip PT-PX total minus the three named hierarchies.
 
 Shorter reuse raises instantaneous power because the held binary magnitudes and
 signs reload more frequently.  From T=128 to T=32, total power rises 20.1%,
