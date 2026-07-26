@@ -29,8 +29,21 @@ def parse_trace(path):
             parts = line.split()
             if parts:
                 fields[parts[0]] = parts[1:]
-    K, M, N_H, N_W, WIDTH, OWIDTH, T = (int(x) for x in fields["CFG"])
-    cfg = ArrayCfg(K=K, M=M, N_H=N_H, N_W=N_W, WIDTH=WIDTH, OWIDTH=OWIDTH, T=T)
+    values = [int(x) for x in fields["CFG"]]
+    if len(values) not in (7, 8):
+        raise ValueError("CFG requires K M NH NW WIDTH OWIDTH T [RNG_WRAP]")
+    K, M, N_H, N_W, WIDTH, OWIDTH, T = values[:7]
+    rng_wrap = bool(values[7]) if len(values) == 8 else False
+    cfg = ArrayCfg(
+        K=K,
+        M=M,
+        N_H=N_H,
+        N_W=N_W,
+        WIDTH=WIDTH,
+        OWIDTH=OWIDTH,
+        T=T,
+        RNG_FULL_PERIOD_WRAP=rng_wrap,
+    )
     a_mag = np.array(fields["AMAG"], dtype=np.int64).reshape(N_H, K)
     a_sign = np.array(fields["ASIGN"], dtype=np.uint8).reshape(N_H, K)
     w_mag = np.array(fields["WMAG"], dtype=np.int64).reshape(N_W, K)

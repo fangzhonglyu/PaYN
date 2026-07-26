@@ -42,17 +42,17 @@ All designs operate at 400 MHz and retire 64 MAC/cycle.  Energy is therefore
 |---|---:|---:|---:|---:|
 | BP signed INT8 | 16,536 | +1.040 | 10.60000 | 0.41406 |
 | BP signed INT8 + asymmetric correction | 19,606 | +0.430 | 11.74739 | 0.45888 |
-| **PaYN pending-bit LOW_W=9** | **52,185** | **+0.558** | **18.67898** | **0.72965** |
+| **PaYN pending-bit LOW_W=9** | **51,871** | **+0.627** | **18.53117** | **0.72387** |
 
 At equal useful throughput, the accepted PaYN point consumes:
 
-- 1.76× the energy of plain signed INT8 BP (+76.2%).
-- 1.59× the energy of BP with asymmetric zero-point correction (+59.0%).
+- 1.75× the energy of plain signed INT8 BP (+74.8%).
+- 1.58× the energy of BP with asymmetric zero-point correction (+57.7%).
 
 The asymmetric correction costs BP 10.8% over its plain signed implementation.
 The binary benches use long-running, output-checked signed INT8 workloads and
 do not require stochastic probability scaling.  The accepted PaYN route also
-has +0.019 ns hold WNS.
+has +0.029 ns hold WNS.
 
 ## Binary precision: native hardware versus fixed INT8 hardware
 
@@ -76,43 +76,45 @@ netlist consume less than the native signed-INT6 design.
 
 | block | total power (mW) | dynamic energy (pJ/MAC) | static leakage (mW) | total energy (pJ/MAC) |
 |---|---:|---:|---:|---:|
-| InnerPE array (`u_pe`) | 15.964550 | **0.619704** | 0.100130 | 0.623615 |
-| binary-to-unary peripheral (`u_peripheral`) | 1.841643 | **0.070710** | 0.031457 | 0.071939 |
-| Sobol banks (`u_a_rng` + `u_w_rng`) | 0.729910 | **0.028301** | 0.005395 | 0.028512 |
-| shared/top-level overhead | 0.142877 | **0.005449** | 0.003388 | 0.005581 |
-| **full array** | **18.678980** | **0.724164** | **0.140370** | **0.729648** |
+| InnerPE array (`u_pe`) | 15.824571 | **0.613971** | 0.106901 | 0.618147 |
+| binary-to-unary peripheral (`u_peripheral`) | 1.840630 | **0.070468** | 0.036652 | 0.071900 |
+| Sobol banks (`u_a_rng` + `u_w_rng`) | 0.721971 | **0.027954** | 0.006356 | 0.028202 |
+| shared/top-level overhead | 0.144001 | **0.005460** | 0.004214 | 0.005625 |
+| **full array** | **18.531170** | **0.717854** | **0.154123** | **0.723874** |
 
 Dynamic energy is each block's cell-internal plus net-switching power divided
 by 25.6 GMAC/s.  Static leakage remains in mW; total energy includes its
 throughput-amortized contribution.  In their native accounting, the
-converter's total is 0.002248 pJ/output bit and the Sobol banks' total is
-0.057024 pJ/Sobol word.
+converter's total is 0.002247 pJ/output bit and the Sobol banks' total is
+0.056404 pJ/Sobol word.
 
 The full-chip PT-PX split is:
 
 | component | power (mW) | share |
 |---|---:|---:|
-| net switching | 9.804828 | 52.49% |
-| cell internal | 8.733778 | 46.76% |
-| leakage | 0.140370 | 0.75% |
+| net switching | 9.804754 | 52.91% |
+| cell internal | 8.572295 | 46.26% |
+| leakage | 0.154123 | 0.83% |
 
 Expressed as dynamic energy plus static leakage, the accepted result is:
 
 | metric | value |
 |---|---:|
-| dynamic power (net switching + cell internal) | 18.538606 mW |
-| **dynamic energy** | **0.724164 pJ/MAC** |
-| **static leakage** | **0.140370 mW** |
-| leakage energy at 25.6 GMAC/s | 0.005483 pJ/MAC |
-| total energy (dynamic + amortized leakage) | 0.729648 pJ/MAC |
+| dynamic power (net switching + cell internal) | 18.377049 mW |
+| **dynamic energy** | **0.717854 pJ/MAC** |
+| **static leakage** | **0.154123 mW** |
+| leakage energy at 25.6 GMAC/s | 0.006020 pJ/MAC |
+| total energy (dynamic + amortized leakage) | 0.723874 pJ/MAC |
 
-Dynamic energy is `(9.804828 + 8.733778) / 25.6`.  Leakage is reported
+Dynamic energy is `(9.804754 + 8.572295) / 25.6`.  Leakage is reported
 separately in mW because it is paid with wall-clock time rather than per
 operation; the leakage-energy row is its throughput-dependent equivalent.
 
 Wire and net switching remain the main physical limiter.  The accepted
-row/column distribution guides reduce routed wire and capacitance without the
-area overhead of an explicit distribution tree; see
+row/column distribution guides are combined with workload-aware dynamic-power
+optimization and high-effort detailed wirelength placement.  Relative to the
+previous accepted route, the new route cuts total capacitance 0.99%, cell
+internal power 1.85%, and total power 0.79%; see
 [`SC_wire_optimization.md`](SC_wire_optimization.md).
 
 ## Routed power versus stochastic length
@@ -177,7 +179,9 @@ Shorter reuse raises instantaneous power because the held binary magnitudes and
 signs reload more frequently.  From T=128 to T=32, total power rises 20.1%,
 but useful throughput rises 4x, so energy per completed MAC falls 70.0%.
 Sobol power stays constant at 0.72991 mW because it advances every cycle.
-The matched T=128 control is within 0.07% of the accepted 18.67898 mW run.
+The T sweep reuses the previous accepted route.  Its matched T=128 control is
+within 0.07% of that route's 18.67898 mW result; it has not been regenerated
+on the new 18.53117 mW workload-aware route.
 
 ## Routed PaYN checkpoint comparison
 
@@ -187,7 +191,8 @@ Energy uses the common 25.6 GMAC/s useful rate.
 
 | routed checkpoint | area (µm²) | setup / hold WNS (ns) | power (mW) | pJ/MAC | physical status |
 |---|---:|---:|---:|---:|---|
-| **pending-bit, LOW_W=9 + row/column guides** | **52,185** | **+0.558 / +0.019** | **18.67898** | **0.729648** | clean |
+| **pending-bit, LOW_W=9 + workload power opt + guides** | **51,871** | **+0.627 / +0.029** | **18.53117** | **0.723874** | clean |
+| pending-bit, LOW_W=9 + guides (prior route) | 52,185 | +0.558 / +0.019 | 18.67898 | 0.729648 | clean |
 | direct segmented, LOW_W=8 + guides | 50,786 | +0.230 / +0.049 | 18.78374 | 0.733740 | clean antenna-ECO export |
 | baseline + row/column guides | 51,023 | +0.279 / +0.029 | 20.62757 | 0.805764 | 9 antenna violations |
 | compensated segmented, LOW_W=8 + guides | 52,333 | +0.321 / +0.038 | 20.65121 | 0.806688 | 2 DRC, 72 antenna violations |
@@ -226,26 +231,33 @@ A6P5/SVT measurements are intentionally excluded from the A7 headline and
 accepted-result tables in this document.  They are tracked separately in
 [`A6P5_results.md`](A6P5_results.md).
 
+The rejected physical native-seven-bit A7 experiment reduced routed area by
+4.83% and wire by 9.24%, but changed stochastic-stream activity, increased
+energy by 5.02%, and retained four geometry plus 28 antenna violations.  Its
+implementation was removed after this result was recorded.
+
 ## Current architecture verdict
 
 | design point | status | reason |
 |---|---|---|
 | pending-bit signed segmented, `LOW_W=9` | **accepted** | best clean routed PaYN checkpoint; current workload rerun complete |
+| native 7-bit converter/Sobol | rejected | 4.83% smaller routed area, but InnerPE activity raises energy 5.02%; route also has DRC/antenna violations |
 | direct / centered segmented | rejected | direct is 0.56% higher energy than pending after the clean-route rerun |
 | compensated / fused / recurrent CSA heaps | rejected | compensated is 10.6% above pending; other pre-layout gains did not survive |
 | 24-bit drain-chain source isolation | rejected | matched routed energy is 2.74% higher and routed wire is 4.54% longer |
 | block-retired sign compensation | rejected before APR | 2.40% smaller at synthesis, but matched synthesis power is 3.35% higher |
 | W-bus temporal DBI | rejected | clean routed WDBI is 21.2% above the guided baseline |
 | explicit two-level A/W tree | rejected | 4.8% above simple guides and 1.4% larger |
+| projected 7-bit converter | rejected | matched routed energy is 3.36% above pending |
+| W-only distribution tree | rejected | matched routed energy is 3.04% above pending |
+| registered-delta pipeline | rejected | matched routed energy is 24.9% above pending |
+| grouped G2/G4 heaps | rejected at N=1 | both routed screens consume more energy than the lane-popcount control |
 | zero-extended 7-bit power workload | invalid | halved stochastic density by comparing `0..127` directly against 8-bit thresholds |
 
 Architecture details:
 
 - Pending accumulator: [`signed_segmented/README.md`](../designs/payn/variants/signed_segmented/README.md)
-- Drain-chain isolation: [`signed_segmented_isolated/README.md`](../designs/payn/variants/signed_segmented_isolated/README.md)
-- Block-retired compensation: [`signed_segmented_block_retired/README.md`](../designs/payn/variants/signed_segmented_block_retired/README.md)
 - Wire placement: [`SC_wire_optimization.md`](SC_wire_optimization.md)
-- DBI: [`SC_dbi.md`](SC_dbi.md)
 - Timing and multibit flops: [`SC_timing_multibit.md`](SC_timing_multibit.md)
 - Power anatomy: [`SC_breakdown.md`](SC_breakdown.md)
 

@@ -9,7 +9,8 @@
 module sobol_generator #(
     parameter int WIDTH = 8,
     parameter int DIRECTION_SET = 0,
-    parameter logic [WIDTH-1:0] DIGITAL_SHIFT = '0
+    parameter logic [WIDTH-1:0] DIGITAL_SHIFT = '0,
+    parameter logic FULL_PERIOD_WRAP = 1'b0
 ) (
     input logic clk,
     input logic reset,
@@ -39,7 +40,11 @@ module sobol_generator #(
                     7: decorrelated_vector = 8'hff;
                     default: decorrelated_vector = '0;
                 endcase
-                direction_vector = WIDTH'(decorrelated_vector);
+                if (WIDTH == 8)
+                    direction_vector = WIDTH'(decorrelated_vector);
+                else
+                    direction_vector =
+                        WIDTH'(decorrelated_vector >> (8 - WIDTH));
             end
         end
     endfunction
@@ -49,8 +54,8 @@ module sobol_generator #(
         assert (DIRECTION_SET inside {0, 1})
             else $error("DIRECTION_SET must be 0 or 1");
         if (DIRECTION_SET == 1)
-            assert (WIDTH == 8)
-                else $error("DIRECTION_SET=1 requires WIDTH=8");
+            assert (WIDTH inside {7, 8})
+                else $error("DIRECTION_SET=1 requires WIDTH=7 or WIDTH=8");
     end
 
     // Select the direction vector indexed by the least-significant zero in
@@ -64,6 +69,13 @@ module sobol_generator #(
                 direction_found = 1'b1;
             end
         end
+        // The legacy generator deliberately holds its final value when count
+        // is all ones.  A native WIDTH-bit full-period stream instead returns
+        // to DIGITAL_SHIFT on that last update, so all 2**WIDTH thresholds
+        // appear exactly once.  Keep the corrected behavior opt-in so existing
+        // checkpoints and their bit-exact traces are unchanged.
+        if (FULL_PERIOD_WRAP && !direction_found)
+            selected_direction = direction_vector(WIDTH - 1);
     end
 
     always_ff @(posedge clk or posedge reset) begin
@@ -86,7 +98,8 @@ module sobol_bank #(
     parameter int M = 16,
     parameter int DIRECTION_SET = 0,
     parameter logic [WIDTH-1:0] DIGITAL_SHIFT_BASE = 'h17,
-    parameter logic [WIDTH-1:0] DIGITAL_SHIFT_STRIDE = 'h53
+    parameter logic [WIDTH-1:0] DIGITAL_SHIFT_STRIDE = 'h53,
+    parameter logic FULL_PERIOD_WRAP = 1'b0
 ) (
     input logic clk,
     input logic reset,
@@ -104,7 +117,8 @@ module sobol_bank #(
         sobol_generator #(
             .WIDTH(WIDTH),
             .DIRECTION_SET(DIRECTION_SET),
-            .DIGITAL_SHIFT(LANE_SHIFT)
+            .DIGITAL_SHIFT(LANE_SHIFT),
+            .FULL_PERIOD_WRAP(FULL_PERIOD_WRAP)
         ) u_generator (
             .clk,
             .reset,

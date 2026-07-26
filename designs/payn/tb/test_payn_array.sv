@@ -44,6 +44,9 @@
 `ifndef SC_SEED
 `define SC_SEED 32'hDEAD_BEEF
 `endif
+`ifndef SC_RNG_FULL_PERIOD_WRAP
+`define SC_RNG_FULL_PERIOD_WRAP 0
+`endif
 
 module Top;
     localparam int K = `SC_K;
@@ -54,6 +57,7 @@ module Top;
     localparam int OWIDTH = `SC_OWIDTH;
     localparam int T = `SC_T;
     localparam int WARMUP = `SC_WARMUP;
+    localparam bit RNG_FULL_PERIOD_WRAP = `SC_RNG_FULL_PERIOD_WRAP;
 
     logic clk = 1'b0;
     logic reset = 1'b0;
@@ -153,8 +157,9 @@ module Top;
         // ---- dump operands + drain for the Python oracle --------------------
         trace_file = $fopen("array_rtl.txt", "w");
         assert (trace_file != 0) else $fatal(1, "cannot open array_rtl.txt");
-        $fwrite(trace_file, "CFG %0d %0d %0d %0d %0d %0d %0d\n",
-                K, M, N_H, N_W, WIDTH, OWIDTH, T);
+        $fwrite(trace_file, "CFG %0d %0d %0d %0d %0d %0d %0d %0d\n",
+                K, M, N_H, N_W, WIDTH, OWIDTH, T,
+                RNG_FULL_PERIOD_WRAP);
         $fwrite(trace_file, "AMAG");
         for (int i = 0; i < N_H*K; i++)
             $fwrite(trace_file, " %0d", a_binary_in[i*WIDTH +: WIDTH]);

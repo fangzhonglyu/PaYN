@@ -64,6 +64,9 @@
 `ifndef SC_SEED
 `define SC_SEED 32'hDEAD_BEEF
 `endif
+`ifndef SC_RNG_FULL_PERIOD_WRAP
+`define SC_RNG_FULL_PERIOD_WRAP 0
+`endif
 `ifndef ASTRAEA_CLK_PERIOD_NS
 `define ASTRAEA_CLK_PERIOD_NS 2.5
 `endif
@@ -83,6 +86,7 @@ module Top;
     localparam int MAC_CYCLES = T / M;
     localparam int N_BATCHES = `SC_BATCHES;
     localparam int TOTAL_MAC_CYCLES = N_BATCHES * MAC_CYCLES;
+    localparam bit RNG_FULL_PERIOD_WRAP = `SC_RNG_FULL_PERIOD_WRAP;
     localparam real PERIOD = `ASTRAEA_CLK_PERIOD_NS;
 
     logic clk, reset, timeout;
@@ -190,8 +194,10 @@ module Top;
         trace_file = $fopen("array_streaming_rtl.txt", "w");
         assert (trace_file != 0)
             else $fatal(1, "cannot open array_streaming_rtl.txt");
-        $fwrite(trace_file, "STREAMCFG %0d %0d %0d %0d %0d %0d %0d %0d\n",
-                K, M, N_H, N_W, WIDTH, OWIDTH, T, N_BATCHES);
+        $fwrite(trace_file,
+                "STREAMCFG %0d %0d %0d %0d %0d %0d %0d %0d %0d\n",
+                K, M, N_H, N_W, WIDTH, OWIDTH, T, N_BATCHES,
+                RNG_FULL_PERIOD_WRAP);
 
         // Launch batch zero and fill the peripheral/InnerPE input pipeline.
         // With nonblocking clocked stages, its first generated slice reaches

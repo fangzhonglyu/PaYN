@@ -57,10 +57,17 @@ class SobolRNG:
     (or any valid Sobol DV set) for a decorrelated parallel Sobol trajectory.
     """
 
-    def __init__(self, width: int, seed: int, dv: list | None = None):
+    def __init__(
+        self,
+        width: int,
+        seed: int,
+        dv: list | None = None,
+        full_period_wrap: bool = False,
+    ):
         self.width = width
         self.mask = (1 << width) - 1
         self.seed = seed & self.mask
+        self.full_period_wrap = full_period_wrap
         # Identity DVs are the current RTL default: [1<<(WIDTH-1), ..., 1].
         self.dv = list(dv) if dv is not None else [1 << (width - 1 - j) for j in range(width)]
         assert len(self.dv) == width, f"DV table must be length {width}"
@@ -83,7 +90,9 @@ class SobolRNG:
             j += 1
         if j < self.width:
             self.seq = (self.seq ^ self.dv[j]) & self.mask
-        # else: cnt was all-ones, selected_dv=0, seq unchanged.
+        elif self.full_period_wrap:
+            self.seq = (self.seq ^ self.dv[-1]) & self.mask
+        # Legacy mode leaves the sequence unchanged when cnt is all ones.
         self.cnt = (self.cnt + 1) & self.mask
         return self.seq
 
@@ -91,13 +100,25 @@ class SobolRNG:
 class RNGBank:
     """M parallel Sobol RNGs. Port of designs/payn/sobol.sv (module sobol_bank)."""
 
-    def __init__(self, width: int, M: int, seed_base: int, seed_stride: int,
-                 dv: list | None = None):
+    def __init__(
+        self,
+        width: int,
+        M: int,
+        seed_base: int,
+        seed_stride: int,
+        dv: list | None = None,
+        full_period_wrap: bool = False,
+    ):
         self.width = width
         self.M = M
         mask = (1 << width) - 1
         self.rngs = [
-            SobolRNG(width, seed_base ^ ((seed_stride * m) & mask), dv=dv)
+            SobolRNG(
+                width,
+                seed_base ^ ((seed_stride * m) & mask),
+                dv=dv,
+                full_period_wrap=full_period_wrap,
+            )
             for m in range(M)
         ]
 
@@ -233,14 +254,38 @@ class ArrayCfg:
     # to the biased identity-DV design (RMSE floor ~ q_max^2*D at any T).
     DV_IN: list | None = None                # None -> identity (Q side)
     DV_W:  list | None = None                # None -> DV_K_WIDTH8 selected in _make_rng_w below
+    RNG_FULL_PERIOD_WRAP: bool = False
 
     def make_rng_in(self) -> "RNGBank":
-        dv = self.DV_IN if self.DV_IN is not None else DV_Q_WIDTH8
-        return RNGBank(self.WIDTH, self.M, self.SEED_BASE_IN, self.SEED_STRIDE_IN, dv=dv)
+        dv = self.DV_IN
+        if dv is None:
+            dv = [1 << (self.WIDTH - 1 - j) for j in range(self.WIDTH)]
+        return RNGBank(
+            self.WIDTH,
+            self.M,
+            self.SEED_BASE_IN,
+            self.SEED_STRIDE_IN,
+            dv=dv,
+            full_period_wrap=self.RNG_FULL_PERIOD_WRAP,
+        )
 
     def make_rng_w(self) -> "RNGBank":
-        dv = self.DV_W if self.DV_W is not None else DV_K_WIDTH8
-        return RNGBank(self.WIDTH, self.M, self.SEED_BASE_W, self.SEED_STRIDE_W, dv=dv)
+        dv = self.DV_W
+        if dv is None:
+            assert self.WIDTH in (7, 8), (
+                "the built-in decorrelated W direction table supports "
+                "WIDTH=7 or WIDTH=8"
+            )
+            shift = 8 - self.WIDTH
+            dv = [value >> shift for value in DV_K_WIDTH8[: self.WIDTH]]
+        return RNGBank(
+            self.WIDTH,
+            self.M,
+            self.SEED_BASE_W,
+            self.SEED_STRIDE_W,
+            dv=dv,
+            full_period_wrap=self.RNG_FULL_PERIOD_WRAP,
+        )
 
 
 def _sign_extend(v: int, width: int) -> int:

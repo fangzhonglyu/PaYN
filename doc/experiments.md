@@ -125,9 +125,12 @@ defaults to 256.  The accepted pending-bit K8/M16/8×8/T128 checkpoint has been
 regenerated with this schedule using the intended 7-bit unsigned magnitude plus
 separate sign distribution.  Each logical magnitude `m` is encoded as `m << 1`
 for the existing 8-bit comparator/Sobol hardware, preserving `m/128`
-probability.  It measures **18.67898 mW / 0.72965 pJ/MAC**.  This is a
+probability.  The accepted workload-aware reroute measures
+**18.53117 mW / 0.72387 pJ/MAC**.  This is a
 workload-correct result on the existing 8-bit netlist, not yet the result of
 physically narrowing the magnitude registers, comparators, and Sobol words.
+The prior guides-only route remains preserved at
+18.67898 mW / 0.729648 pJ/MAC.
 The older shape/T sweep still needs regeneration before its headline values
 are treated as final intended-workload power.
 
@@ -233,74 +236,14 @@ Full analysis is in [`doc/SC_wire_optimization.md`](SC_wire_optimization.md).
 bash sweeps/run_sc_wire_opts.sh       # -> build/power_char/wire_opts/sc_wire_opts.csv
 ```
 
-**W-bus temporal DBI design points** — two separate tops keep architecture
-selection out of the baseline RTL.  Both are bit-exact and close synthesis at
-K8·M16·8×8.  Routed direct XNOR decode proves that DBI works locally—W-root
-capacitance falls 90.2% and W-root switching falls 93.8%—but the added
-encode/decode/control network raises total capacitance 13.4% and current-
-workload power 21.2% (20.62757→24.99178 mW).  It remains timing-, DRC-,
-antenna-, SDF-, and cosim-clean in the analysis APR flow, but is rejected as a
-whole-chip power optimization for this workload.  Shared count correction is
-larger at synthesis and was not routed.  Equations, full metrics, and flow
-caveats are in [`doc/SC_dbi.md`](SC_dbi.md).
-
-```sh
-RUN_NAME=k8m16n8_wdbi \
-SYN_DEFINES='PAYN_K=8 PAYN_M=16 PAYN_NH=8 PAYN_NW=8' \
-make synth TARGET=TSMC22/PAYN_SC_WDBI_BITDECODE
-```
-
-**Exact signed segmented-accumulator follow-ups** — two additional tops keep
-the alternatives isolated from the baseline and the earlier pending-bit
-implementation:
-
-- `PAYN_SC_SIGNED_SEGMENTED_DIRECT` retires a low-digit carry/borrow into the
-  high digit on the same edge, removing two pending-event flops per tile.
-- `PAYN_SC_SIGNED_SEGMENTED_CENTERED` additionally stores the low residue with
-  a fixed half-radix bias, moving zero away from the wrap boundary.
-
-Both pass a 4096-cycle bit-exact RTL stress test at LOW_W=7.  Synthesis
-workload PT-PX over LOW_W=7/8/9/10 selects direct LOW_W=8 at 7.3600 mW;
-centered LOW_W=8 is effectively tied but slightly worse at 7.3656 mW because
-the row-boundary recenter logic cancels the quieter high digit.  After a
-two-diode checkpoint ECO, the routed direct point closes STA and is clean for
-placement, DRC, connectivity, and antenna.  Its refreshed max-SDF simulation
-is bit-exact and produces a valid SAIF, although VCS still prints timing-check
-warnings inside MBFF-packed operand pipes.  Under the corrected 256-block
-workload its clean export measures 18.78374 mW / 0.73374 pJ/MAC: 8.94% below
-the 20.62757 mW distribution-guide baseline, but 0.56% above the pending-bit
-route (18.67898 mW).  The pending-bit design therefore remains the routed
-winner.
-
-```sh
-RUN_NAME=direct_lw8 \
-SYN_DEFINES='PAYN_K=8 PAYN_M=16 PAYN_NH=8 PAYN_NW=8 PAYN_SEG_LOW_W=8' \
-make synth TARGET=TSMC22/PAYN_SC_SIGNED_SEGMENTED_DIRECT
-```
-
-**Signed heap/accumulator follow-ups** — three more separate tops test an
-unsigned compensated lane heap, a fused raw-product heap, and a recurrent
-carry-save low digit.  All are exact for arbitrary accumulation duration and
-pass RTL plus post-synthesis workload drain cosim.  The compensated LOW_W=8
-point initially wins at synthesis (7.2886 mW, -2.2%), but its routed wire grows
-to 1.302M um and current-workload routed power to 20.65121 mW /
-0.80669 pJ/MAC (+10.6% versus the accepted pending-bit route).  Its route also
-retains 2 geometry and 72 antenna violations, so it is rejected.  Fused
-LOW_W=9 saves 2.7% synthesis area but only 0.46% power and is not routed.  CSA
-LOW_W=8 is 9.4% larger and 8.5% higher power at synthesis and is rejected
-before APR.  Full metrics are in [`doc/results.md`](results.md), with
-architecture proofs in each variant README.
-
-```sh
-RUN_NAME=comp_lw8 SYN_DEFINES='PAYN_SEG_LOW_W=8' \
-make synth TARGET=TSMC22/PAYN_SC_SIGNED_SEGMENTED_COMPENSATED
-
-RUN_NAME=fused_lw9 SYN_DEFINES='PAYN_FUSED_SEG_LOW_W=9' \
-make synth TARGET=TSMC22/PAYN_SC_SIGNED_SEGMENTED_FUSED
-
-RUN_NAME=csa_lw8 SYN_DEFINES='PAYN_SEG_LOW_W=8' \
-make synth TARGET=TSMC22/PAYN_SC_SIGNED_SEGMENTED_CSA
-```
+**Rejected PaYN architecture experiments** — the repository previously kept
+separate RTL and targets for DBI, direct/centered retirement, compensated,
+fused, recurrent-CSA, block-retired, drain-isolated, native/projected 7-bit,
+explicit distribution-tree, grouped-heap, and registered-delta variants.
+None beat the pending-bit `LOW_W=9` implementation at its applicable power
+gate.  Their implementations and reproduction targets were removed to keep
+the active design surface small; the compact measurements and rejection
+reasons remain in [`results.md`](results.md).
 
 **GF22 combinational inner-tile soft errors** — the exact K6/M16/OW24 tile
 arithmetic cone and a signed binary INT8 MAC were rebuilt using only cells with

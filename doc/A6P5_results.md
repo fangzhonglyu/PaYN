@@ -43,6 +43,68 @@ power 13.98%; binary area falls 6.30% and power falls 8.76%.  At routed 8×8,
 PaYN area, wire, and energy fall 8.0%, 8.7%, and 8.0%, respectively.  Routed
 binary area, wire, and energy fall 8.6%, 2.7%, and 9.4%.
 
+The synthesis powers above are fully SAIF-annotated, zero-wire-load estimates:
+
+| design | cell internal (mW) | net switching (mW) | dynamic (mW) | dynamic (pJ/MAC) | leakage (mW) | total (pJ/MAC) |
+|---|---:|---:|---:|---:|---:|---:|
+| PaYN pending, 8×8 | 4.4255 | 2.3797 | 6.8051 | 0.265824 | 0.110808 | 0.270152 |
+| Binary signed INT8, 8×8 | 2.9246 | 1.6794 | 4.6041 | 0.179848 | 0.032662 | 0.181121 |
+
+PaYN is 1.48× binary in synthesis dynamic energy and 1.49× in total energy.
+Even the PaYN inner array alone is about 5.646 mW / 0.2205 pJ/MAC, 22% above
+the complete binary array before conversion and Sobol overhead are added.
+
+## A6P5 library flavors and cell sizing
+
+The installed A6P5 kit has complete synthesis, timing, LEF, Verilog, and GDS
+views for these base-library flavors:
+
+| channel length | available threshold flavors |
+|---|---|
+| C30 | LVT, SVT, HVT |
+| C35 | SVT, HVT |
+| C40 | SVT, HVT, EHVT, UHVT |
+
+The flow can also expose more than one base flavor to synthesis and APR, for
+example HVT first with SVT available for timing repair.  There is no
+A6P5-compatible HPK add-on in this installation; A6P5 multi-bit flops used by
+the current netlist come from the base library.
+
+The current PaYN target explicitly restricts its two dominant arithmetic
+families to the weakest available drive:
+
+- all 8,640 full adders are `ADDF_X0P5M`;
+- all 7,232 `AND2` cells are `AND2_X0P5M`;
+- the 4,568 half adders use `ADDH_X1M`, the minimum available half adder;
+- all 9,990 `CGENI_X1M` cells are in `u_peripheral`, where they implement the
+  carry/borrow chains of the binary-to-unary comparators; none are in `u_pe`.
+
+`CGENI` computes an inverted three-input carry,
+`~((A & B) | (A & CI) | (B & CI))`.  DC uses it to realize the 2,048 unsigned
+8-bit `binary > scrambled_random` comparisons that emit the A and W stochastic
+bits.  Constant scrambling and surrounding AOI/OAI logic reduce the result to
+about 4.88 `CGENI` cells per comparator.  These cells occupy 6,364 µm², 54.3%
+of the peripheral and 14.2% of the complete synthesized PaYN design.
+
+This is not a global minimum-drive mapping.  Thousands of inverters and
+AOI/OAI/AO cells remain X1 although X0P5 variants exist.  However, X0P5 does
+not mean a smaller physical cell in this library: X0P5 and X1 have identical
+area for `ADDF`, `AND2`, `AO22`, `AOI22`, and several other important
+families.  X0P5 leakage is also higher than X1 for the characterized
+SVT/C30 `ADDF` and `AND2`; its potential benefit is lower input capacitance
+and dynamic power.  A matched natural-mapping run is therefore needed to
+prove that forcing X0P5 is optimal for this particular PaYN workload.
+
+The synthesis gap is consistent with the implemented arithmetic.  Each PaYN
+output evaluates `K*M = 128` stochastic bit products per cycle and then
+popcounts and reduces them, whereas an INT8 binary multiplier starts from 64
+one-bit partial products and maps heavily into complex AOI/OAI gates.  The
+PaYN synthesis has 60,249 cells versus 18,958 for binary and 3.61× as many
+`ADDF` cells.  Its inner-array area alone is 31,638 µm² versus 13,853 µm² for
+the complete binary array.  Routing then increases the disadvantage: the
+A6P5 N=8 PaYN-to-binary power ratio grows from 1.49× at synthesis to 1.79×
+after APR.
+
 The binary route used the same signed-INT8, 4,097-cycle output-checked workload
 as its A7 control.  Checkpoint-only finalization reduced its geometry count
 from five to three without repeating placement or CTS.  The remaining errors

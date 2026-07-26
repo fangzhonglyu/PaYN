@@ -15,6 +15,43 @@ All power results use the same T=128 workload.  A result is accepted only when
 final setup and hold close, routed-SDF drain cosim passes bit-for-bit, the SAIF
 passes `sweeps/validate_sc_power_saif.py`, and PrimeTime PX completes.
 
+## Workload-aware reroute of the accepted pending-bit design
+
+The current pending-bit `LOW_W=9` design was rerouted with the same row/column
+distribution guides plus an opt-in ASTRAEA workload-power recipe.  Innovus
+reads and propagates the validated long-running T=128 routed SAIF before
+placement, sets `leakageToDynamicRatio=0`, retains high power effort, and uses
+high-effort detailed wirelength optimization.
+
+| metric | prior accepted route | workload-aware route | change |
+|---|---:|---:|---:|
+| final setup / hold WNS (ns) | +0.558 / +0.019 | **+0.627 / +0.029** | both improve |
+| cell area (µm²) | 52,184.608 | **51,871.400** | −0.60% |
+| routed wire (µm) | **1,121,179** | 1,129,843 | +0.77% |
+| total net capacitance (pF) | 272.4983 | **269.8125** | −0.99% |
+| A / W root capacitance (pF) | 26.6488 / 28.6527 | **26.6209 / 28.3546** | −0.11% / −1.04% |
+| net switching power (mW) | 9.804828 | 9.804754 | effectively tied |
+| cell internal power (mW) | 8.733778 | **8.572295** | −1.85% |
+| leakage (mW) | **0.140370** | 0.154123 | +9.80% |
+| total power (mW) | 18.678980 | **18.531170** | −0.79% |
+| energy (pJ/MAC) | 0.729648 | **0.723874** | −0.79% |
+
+The new route is accepted: APR is clean for geometry, connectivity, antenna,
+setup, and hold; its max-SDF 256-block drain is bit-exact; the SAIF is valid;
+and PT-PX annotates 99.26% of nets and 100% of cells.
+
+This is not a pure geometric-wire win.  Total wire grows slightly while total
+capacitance falls, and PT-PX net switching is unchanged.  The main benefit is
+workload-aware cell remapping and downsizing: many generic X1 combinational
+cells become X0P5/X0P7 variants, reducing area and internal power.  The tradeoff
+is higher leakage.
+
+The documented Innovus 21.14
+`place_global/detail_activity_power_driven` modes are deliberately not part of
+the accepted recipe.  This release emits `IMPSP-9532` and skips placement
+activity weights even after the SAIF is fully propagated or converted to TCF.
+ASTRAEA therefore exposes only the verified path used here.
+
 ## Results
 
 | metric | baseline | tile guides | tile + global fanout 4 | row/column guides | row/column + two-level A/W |
@@ -90,10 +127,11 @@ capacitance into branches rather than eliminating it.
 ## Recommendation
 
 - Enable row/column distribution guides without tile guides.
-- Do not enable global `MAX_FANOUT=4` or the current two-level A/W tree for
-  power optimization.
-- If electrical root load still matters, try a W-only tree.  W sees the largest
-  root-capacitance reduction, while halving the explicit-buffer overhead.
+- Enable ASTRAEA workload-aware power optimization with a validated,
+  representative SAIF for final candidates.
+- Do not enable global `MAX_FANOUT=4` or an explicit A/W distribution tree for
+  power optimization.  The later W-only follow-up also regressed matched
+  routed energy, by 3.04%.
 - Continue gating every candidate on final setup/hold, routed cosim, SAIF
   validation, PrimeTime PX, total wire, and total capacitance.
 
@@ -107,6 +145,17 @@ The driver loads the pinned EDA versions, reuses completed runs, and writes
 `build/power_char/wire_opts/sc_wire_opts.csv`.  Net-load characterization is in
 `sweeps/pt_sc_net_loads.tcl`.  The accepted placement recipe is enabled opt-in
 through `SC_DISTRIBUTION_GUIDES=1`.
+
+The accepted workload-aware reroute additionally uses:
+
+```sh
+APR_WORKLOAD_POWER_OPT=1 \
+APR_ACTIVITY_FILE=/abs/path/to/validated/dut.saif \
+APR_ACTIVITY_SCOPE=Top/dut \
+APR_LEAKAGE_TO_DYNAMIC_RATIO=0.0 \
+APR_DETAIL_WIRE_LENGTH_OPT_EFFORT=high \
+make apr TARGET=TSMC22/PAYN_SC_SIGNED_SEGMENTED
+```
 
 The rejected two-level-tree measurements are retained above as historical
 results, but its technology-specific RTL was retired instead of leaving an

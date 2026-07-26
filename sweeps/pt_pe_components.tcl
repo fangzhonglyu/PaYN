@@ -67,7 +67,8 @@ foreach_in_collection c $seq_cells {
     set ps [get_attribute $c switching_power]
     set pl [get_attribute $c leakage_power]
     set p [expr {$pi + $ps + $pl}]
-    if {[string match *clk_gate* $nm]} { set bucket other
+    if {[string match *u_inner*/clk_gate_acc_high_reg* $nm]} { set bucket acc
+    } elseif {[string match *clk_gate* $nm]} { set bucket other
     } elseif {[string match *a_bits_pipe_reg* $nm]} { set bucket in_bits
     } elseif {[string match *w_bits_pipe_reg* $nm]} { set bucket w_bits
     } elseif {[string match *w_encoded_pipe_reg* $nm]} { set bucket w_bits
@@ -75,6 +76,10 @@ foreach_in_collection c $seq_cells {
     } elseif {[string match *a_signs_pipe_reg* $nm]} { set bucket in_sign
     } elseif {[string match *w_signs_pipe_reg* $nm]} { set bucket w_sign
     } elseif {[string match *acc_out_reg* $nm]} { set bucket acc
+    } elseif {[string match *acc_low_reg* $nm]} { set bucket acc
+    } elseif {[string match *acc_high_reg* $nm]} { set bucket acc
+    } elseif {[string match *pending_carry_reg* $nm]} { set bucket acc
+    } elseif {[string match *pending_borrow_reg* $nm]} { set bucket acc
     } elseif {[string match *drain_reg_reg* $nm]} { set bucket drain
     } elseif {[string match *a_binary_q_reg* $nm]} { set bucket periph
     } elseif {[string match *w_binary_q_reg* $nm]} { set bucket periph

@@ -47,15 +47,26 @@ def _read_vector(
 
 def parse_streaming_trace(path: Path) -> StreamingTrace:
     lines = [line.split() for line in path.read_text().splitlines() if line.split()]
-    if not lines or lines[0][0] != "STREAMCFG" or len(lines[0]) != 9:
-        raise ValueError("missing STREAMCFG K M NH NW WIDTH OWIDTH T NBATCHES")
+    if not lines or lines[0][0] != "STREAMCFG" or len(lines[0]) not in (9, 10):
+        raise ValueError(
+            "missing STREAMCFG K M NH NW WIDTH OWIDTH T NBATCHES [RNG_WRAP]"
+        )
 
-    k, m, nh, nw, width, owidth, t, n_batches = (
-        int(value) for value in lines[0][1:]
-    )
+    values = [int(value) for value in lines[0][1:]]
+    k, m, nh, nw, width, owidth, t, n_batches = values[:8]
+    rng_wrap = bool(values[8]) if len(values) == 9 else False
     if t <= 0 or m <= 0 or t % m:
         raise ValueError(f"T={t} must be a positive multiple of M={m}")
-    cfg = ArrayCfg(K=k, M=m, N_H=nh, N_W=nw, WIDTH=width, OWIDTH=owidth, T=t)
+    cfg = ArrayCfg(
+        K=k,
+        M=m,
+        N_H=nh,
+        N_W=nw,
+        WIDTH=width,
+        OWIDTH=owidth,
+        T=t,
+        RNG_FULL_PERIOD_WRAP=rng_wrap,
+    )
 
     a_mag: list[np.ndarray] = []
     a_sign: list[np.ndarray] = []

@@ -39,7 +39,8 @@ module payn_array_signed_segmented #(
     parameter logic [WIDTH-1:0] A_SHIFT_STRIDE = 8'h53,
     parameter int W_DIRECTION_SET = 1,
     parameter logic [WIDTH-1:0] W_SHIFT_BASE = 8'h9d,
-    parameter logic [WIDTH-1:0] W_SHIFT_STRIDE = 8'h2b
+    parameter logic [WIDTH-1:0] W_SHIFT_STRIDE = 8'h2b,
+    parameter logic RNG_FULL_PERIOD_WRAP = 1'b0
 ) (
     input logic clk,
     input logic reset,
@@ -64,7 +65,8 @@ module payn_array_signed_segmented #(
         .WIDTH(WIDTH), .M(M),
         .DIRECTION_SET(A_DIRECTION_SET),
         .DIGITAL_SHIFT_BASE(A_SHIFT_BASE),
-        .DIGITAL_SHIFT_STRIDE(A_SHIFT_STRIDE)
+        .DIGITAL_SHIFT_STRIDE(A_SHIFT_STRIDE),
+        .FULL_PERIOD_WRAP(RNG_FULL_PERIOD_WRAP)
     ) u_a_rng (
         .clk, .reset, .enable(rng_en), .random_values(a_random_values)
     );
@@ -73,7 +75,8 @@ module payn_array_signed_segmented #(
         .WIDTH(WIDTH), .M(M),
         .DIRECTION_SET(W_DIRECTION_SET),
         .DIGITAL_SHIFT_BASE(W_SHIFT_BASE),
-        .DIGITAL_SHIFT_STRIDE(W_SHIFT_STRIDE)
+        .DIGITAL_SHIFT_STRIDE(W_SHIFT_STRIDE),
+        .FULL_PERIOD_WRAP(RNG_FULL_PERIOD_WRAP)
     ) u_w_rng (
         .clk, .reset, .enable(rng_en), .random_values(w_random_values)
     );
