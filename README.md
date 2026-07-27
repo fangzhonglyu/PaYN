@@ -53,6 +53,12 @@ make sim TB=designs/baselines/binary_parallel/tb/test_array_8_power_workload.sv
 # Bit-exact array cosim (RTL vs the Python reference):
 bash designs/payn/cosim/run_peripheral.sh
 
+# Multi-PE systolic regression (2x3 signed-segmented InnerPE grid):
+bash designs/payn/cosim/run_systolic_pe_grid.sh
+
+# Large end-to-end matmul: 8x8 K8/M16/N8 PEs, 64x64 result, T=128:
+bash designs/payn/cosim/run_systolic_matmul.sh
+
 # Synthesis / APR / power (see syn/targets, apr/targets):
 make synth TARGET=TSMC22/BP_ARRAY
 make apr   TARGET=TSMC22/BP_ARRAY SYNTH_RUN=<run>

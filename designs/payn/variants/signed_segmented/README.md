@@ -137,3 +137,31 @@ On the following edge, the pending `+1` or `-1` is folded into `acc_high`.
 If that following MAC does not cross a boundary, the new pending event becomes
 zero and the visible numerical value does not change merely because the event
 was retired.
+
+## Multi-PE systolic fabric
+
+`inner_pe_grid_signed_segmented.sv` connects multiple `InnerPE` instances into
+an outer `P_ROWS x P_COLS` grid.  A streams propagate east, W streams propagate
+south, and the accumulator drain crosses every PE column in a global row.
+
+The edge schedule is the conventional systolic skew:
+
+```
+A slice t enters outer PE row r at cycle t+r
+W slice t enters outer PE column c at cycle t+c
+```
+
+Both operands therefore meet in PE `(r,c)` at cycle `t+r+c`.  The
+self-checking `test_systolic_pe_grid.sv` instantiates a 2x3 PE grid, drives 600
+time-varying slices, forces both segmented carries and borrows, and verifies
+all 4x6 global outputs while draining across PE boundaries.
+
+That reduced-size test is a fast transport and accumulator smoke test. The
+separate `test_systolic_matmul.sv` regression uses 64 full K8/M16/N8 PEs in an
+8x8 outer grid at T=128. It starts from signed binary `64x8` and `64x8`
+operands, uses the RTL Sobol banks and comparator peripheral, and checks all
+4,096 outputs of the resulting `64x64` matrix against `sc_kernel.py`:
+
+```bash
+bash designs/payn/cosim/run_systolic_matmul.sh
+```
