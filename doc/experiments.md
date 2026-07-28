@@ -83,6 +83,64 @@ bash sweeps/run_power_char.sh BS_ARRAY
 
 ---
 
+## Binary output-stationary (BOS) — 8×8 INT8, PaYN dataflow
+
+`designs/baselines/binary_os/`
+
+| role | file |
+|---|---|
+| design | `binary_os_pe.sv` (`BinaryOSPE`, one INT8 MAC + 2 hop regs + accumulator) · `binary_os_array.sv` (`BinaryOSArray`/`Flat` + `binary_os_array` synth top) |
+| functional TB | `tb/test_binary_os_array.sv` (independent golden matmul, not a structural mirror) |
+| power bench | `power/power_binary_os_array.sv` (per-cycle output check + full drained-matrix check) |
+| target | `BOS_ARRAY` |
+| breakdown | `sweeps/pt_binary_os_power.tcl` (emits the `bin_*` keys `pe_taxonomy.py` already reads) |
+
+The point of this design is to be a **dataflow-matched binary control for PaYN**: same
+stationary accumulator, same `mac_en`/`shift_in` contract, same row-serial east drain, same
+OW24, same 64 MAC/cycle, with the K-lane stochastic popcount replaced by one INT8
+multiplier. BP differs from PaYN in *both* arithmetic and dataflow; BOS differs in
+arithmetic only.
+
+Structurally it is a true systolic mesh: every PE owns its A and W hop registers, A moves
+west→east, W moves north→south, and no operand net is shared by more than two PEs. The
+caller must therefore apply the systolic skew — A slice t into row h at cycle t+h, W slice t
+into column v at cycle t+v, meeting at PE (h,v) at t+h+v+1 — and zero-pad outside the slice
+window. `mac_en`/`shift_in` are the one array-wide signal pair, and have to be: a row drains
+as a lockstep shift register, so pipelining the drain enable would let PE v-1 overwrite its
+accumulator one cycle before PE v reads it, losing one value per hop.
+
+One PE is exactly one INT8 MAC: an 8-bit A hop register, an 8-bit W hop register, one
+multiplier, and the 24-bit stationary accumulator — 40 flops, confirmed in the routed
+netlist (64 PEs x 40 = 2,560, +1 for the array ICG = 2,561). That is what
+throughput-matches PaYN: an `InnerTile` carries K=8 spatial lanes but needs T/M=8 cycles
+to retire that K=8 dot product, so it too averages one MAC/cycle/accumulator.
+
+**Power** — 10.94 mW / 0.427 pJ/MAC, routed area 15,950 µm², setup WNS +1.127 ns
+
+```
+bash sweeps/run_power_char.sh BOS_ARRAY
+```
+
+**Drain amortization** — the drain period is the GEMM reduction depth K; `BOS_DRAIN_PERIOD=0`
+is the pure-MAC point (PaYN methodology: drain taken after `$toggle_stop`).
+
+```
+bash sweeps/run_bos_drain_sweep.sh    # -> build/power_char/bos_drain_sweep.csv
+```
+
+**Activity-matched BP control** — BP's accepted point holds one weight set stationary for the
+whole 4,096-cycle window; an output-stationary array cannot, so `BP_STREAM_WEIGHTS` reloads
+the weight column every cycle to isolate dataflow from operand reuse.
+
+```
+make sim GL=apr TARGET=TSMC22/BP_ARRAY RUN=<apr_run> USE_DW=1 \
+         TB=designs/baselines/binary_parallel/power/power_array_8.sv \
+         VCS_ARGS="+define+BP_STREAM_WEIGHTS +define+STIM_CYCLES_N=4096"
+make power_apr TARGET=TSMC22/BP_ARRAY RUN=<apr_run> SAIF=<dut.saif> SAIF_STRIP_PATH=Top/dut
+```
+
+---
+
 ## Unary-rate (UR) / Unary-temporal (UT) — 8×8 stochastic streams
 
 `designs/baselines/unary_{rate,temporal}/`

@@ -1,0 +1,11 @@
+#!/bin/bash
+# Binary output-stationary 8x8 array with asymmetric zero-point correction.
+# Same mesh as BOS_ARRAY plus N_H row-activation-sum accumulators and the
+# drain-path corrector (N_H + 1 multipliers, versus 2*N_W in BP_ARRAY_ASYM).
+export TOP=binary_os_array_asym
+export TECH=TSMC22
+export SRC_SV="baselines/binary_os/binary_os_asym.sv"
+export PERIOD=2.5
+export MULTIBIT_INFER=1
+export CLOCK_GATE=1
+export RTL_PREFLIGHT_CMD=${RTL_PREFLIGHT_CMD:-"make --no-print-directory sim GL= TARGET= TOP=Top TB=designs/baselines/binary_os/tb/test_binary_os_asym.sv BUILD_DIR=build/rtl_preflight/binary_os_asym"}

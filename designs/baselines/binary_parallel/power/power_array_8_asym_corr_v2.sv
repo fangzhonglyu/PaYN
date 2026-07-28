@@ -279,7 +279,14 @@ module Top;
         monitor_x = 1'b1;
         check_enable = 1'b1;
 
+`ifdef GL_SIM
         $set_gate_level_monitoring("rtl_on");
+`else
+        // RTL runs feed SYN_SAIF_FILE (workload-driven synthesis). Without the
+        // "sv" argument VCS skips SystemVerilog-typed nets and the SAIF comes
+        // out empty; it also needs -lca on the VCS command line.
+        $set_gate_level_monitoring("rtl_on", "sv");
+`endif
         $set_toggle_region(dut);
         $toggle_start;
         for (int t = 0; t < STIM_CYCLES; t++) begin

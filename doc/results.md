@@ -42,17 +42,249 @@ All designs operate at 400 MHz and retire 64 MAC/cycle.  Energy is therefore
 |---|---:|---:|---:|---:|
 | BP signed INT8 | 16,536 | +1.040 | 10.60000 | 0.41406 |
 | BP signed INT8 + asymmetric correction | 19,606 | +0.430 | 11.74739 | 0.45888 |
+| BOS signed INT8, output-stationary systolic | 15,950 | +1.127 | 10.93719 | 0.42723 |
 | **PaYN pending-bit LOW_W=9** | **51,871** | **+0.627** | **18.53117** | **0.72387** |
 
 At equal useful throughput, the accepted PaYN point consumes:
 
 - 1.75× the energy of plain signed INT8 BP (+74.8%).
 - 1.58× the energy of BP with asymmetric zero-point correction (+57.7%).
+- 1.69× the energy of BOS, the dataflow-matched binary control (+69.4%).
 
 The asymmetric correction costs BP 10.8% over its plain signed implementation.
 The binary benches use long-running, output-checked signed INT8 workloads and
 do not require stochastic probability scaling.  The accepted PaYN route also
 has +0.029 ns hold WNS.
+
+## Isolating the encoding cost: the BOS dataflow-matched control
+
+BP differs from PaYN in **both** arithmetic and dataflow — it is weight-stationary
+with 24-bit partial sums flowing north, while PaYN is output-stationary with a
+row-serial east drain.  `BOS` (`designs/baselines/binary_os/`) removes that
+confound: it is `InnerPE` with the K-lane stochastic popcount replaced by one INT8
+multiplier.  Same stationary accumulator, same `mac_en`/`shift_in` contract, same
+drain, same OW24, same 64 MAC/cycle.  The only difference from PaYN is the
+arithmetic.
+
+BOS is **symmetric** signed INT8: its PE is one multiply and one accumulate, with no
+zero-point term and no asymmetric correction.  That is the right pairing, because PaYN
+is symmetric too — a 7-bit unsigned magnitude plus a separate sign.  Every design in the
+ratio below is symmetric; the `BP + asymmetric correction` row in the headline table is a
+separate design point measuring what asymmetric quantization costs in binary (+10.8%),
+not a term any of these three carries.
+
+| comparison | power ratio | reads as |
+|---|---:|---|
+| PaYN total / BOS | 1.69× | encoding cost including the Sobol + comparator front end |
+| PaYN `u_pe` / BOS | 1.45× | encoding cost of the PE array alone |
+
+PaYN's headline 1.75× against plain BP factors exactly:
+
+```
+1.748  =  1.694        x  1.032
+PaYN/BP   PaYN/BOS        BOS/BP
+          encoding,       dataflow + operand reuse,
+          dataflow fixed  arithmetic fixed
+```
+
+The encoding accounts for essentially all of it.  Holding the dataflow fixed,
+switching from binary to stochastic arithmetic costs 1.69×; switching dataflow at
+fixed arithmetic costs only 1.03×, and even that 3% is mostly the operand-reuse
+difference dissected below rather than the dataflow itself.  PaYN's overhead is an
+encoding story, not a dataflow story.
+
+### BOS power breakdown
+
+Reconciles exactly to the PT-PX total.  Produced by `sweeps/pt_binary_os_power.tcl`,
+which emits the same `bin_*` keys `sweeps/pe_taxonomy.py` already consumes.
+
+| block | power (mW) | share |
+|---|---:|---:|
+| PE compute cone (multiplier + accumulate adder) | 8.2614 | 75.5% |
+| clock tree (CTS + ICG cells) | 1.2659 | 11.6% |
+| accumulator registers (1,536 flops) | 0.7209 | 6.6% |
+| glue / other combinational | 0.2956 | 2.7% |
+| activation hop registers (512 flops) | 0.2014 | 1.8% |
+| weight hop registers (512 flops) | 0.1920 | 1.8% |
+| **total** | **10.9372** | **100%** |
+
+Unlike BP/BS, the whole PE is a single module, so DC optimizes the product and the
+accumulate add jointly and no instance-name split exists between them; the merged cone
+is the meaningful unit and is what `pe_taxonomy.py` plots as "compute" for the SC
+popcount+heap+CPA cone too.  Flop buckets include each flop's clock-pin power, so
+`clock tree` is CTS buffers and ICG cells only.
+
+With 75% of the power in the compute cone, at fixed dataflow the encoding question
+reduces almost entirely to popcount+heap+CPA versus INT8 multiply-add.
+
+### What operand broadcast costs: a measured structural variant
+
+An earlier build of this design registered operands once at the *array* boundary and
+broadcast them across each PE row and column, instead of hopping them PE-to-PE.  That
+needs only 128 operand flops instead of 1,024, and it was measured on its own routed
+netlist before being replaced.  Both points are real measurements at the same workload:
+
+| | broadcast operands | **systolic mesh (shipped)** |
+|---|---:|---:|
+| sequential cells | 1,665 | 2,561 |
+| routed area (µm²) | 14,134 | 15,950 |
+| setup WNS (ns) | +0.760 | **+1.127** |
+| power (mW) | 11.77915 | **10.93719** |
+| pJ/MAC | 0.46012 | **0.42723** |
+
+The mesh is 12.8% larger and still **7.1% lower power and 0.37 ns faster**.  Where the
+0.842 mW goes:
+
+| block | broadcast | mesh | Δ |
+|---|---:|---:|---:|
+| compute cone | 9.225 | 8.261 | **−0.964** |
+| glue / other (broadcast buffer trees) | 0.674 | 0.296 | −0.379 |
+| accumulator registers (1,536 flops both) | 0.980 | 0.721 | −0.259 |
+| clock (CTS + ICG) | 0.741 | 1.266 | +0.525 |
+| operand registers (128 → 1,024 flops) | 0.158 | 0.393 | +0.235 |
+| **total** | **11.779** | **10.937** | **−0.842** |
+
+The compute cone is the dominant term, and it is *not* a structural change: routed
+combinational area is identical between the two netlists (9,350.3 vs 9,351.9 µm²).
+Same gates, 10.4% less power, so it is pure switching activity.  The SAIF toggle counts
+confirm the mechanism is glitch suppression:
+
+| | compute nets | total TC | transitions / net / cycle |
+|---|---:|---:|---:|
+| broadcast | 26,813 | 103.5 M | 0.943 |
+| mesh | 28,906 | 84.7 M | **0.715** |
+
+The mesh has 7.8% *more* nets in the compute cones yet 18.2% fewer transitions.  A net
+carrying uniformly random data transitions at most 0.5×/cycle functionally, so both
+designs are glitch-dominated — but the mesh roughly halves the excess above that bound.
+Feeding a multiplier from a local flop instead of a long, buffered, high-fanout bus
+gives near-simultaneous bit arrivals and far less spurious switching through the
+partial-product and compressor tree.  The same effect explains the accumulator flops:
+at identical count, less glitching on their D inputs costs 26% less internal power.
+
+The two costs are the clock tree (896 more flops on one always-on ICG, and the CTS
+buffer area rises 27.4%) and the operand flops themselves — 8× the flop count for only
++0.235 mW, because each is a plain resetless DFF driving one short local net.
+
+The practical reading: operand broadcast is a false economy at this size.  It saves 896
+flops and pays for them several times over in glitch power on the shared buses, plus a
+third of a nanosecond of slack.
+
+### Output-stationary versus weight-stationary, at matched operand activity
+
+BOS is 3.5% smaller than BP and draws 3.2% more power against BP's *accepted* point.
+That comparison is confounded: BP's accepted workload loads one weight set and holds
+it stationary for all 4,096 scored cycles, so its weight registers never toggle and
+every multiplier has a constant operand.  An output-stationary array cannot do that by
+construction — both operands are re-issued every cycle.
+
+`BP_STREAM_WEIGHTS` reloads BP's weight column every cycle on the same routed netlist,
+matching operand activity:
+
+| point | power (mW) | pJ/MAC | routed area (µm²) |
+|---|---:|---:|---:|
+| BP, weights stationary (accepted) | 10.60177 | 0.41413 | 16,536 |
+| BP, weights streaming (activity-matched) | 12.75826 | 0.49837 | 16,536 |
+| BOS, output-stationary systolic | 10.93719 | 0.42723 | 15,950 |
+
+At matched activity and excluding the drain, the output-stationary array is **14.3%
+lower power and 3.5% smaller**.  Against BP's stationary-weight point it is 3.2%
+higher.  Both are true and they bracket the honest answer: weight reuse is worth 20.3%
+to BP, and it is a real advantage of weight-stationary dataflow whenever the same
+weights multiply many activation vectors — not an artifact.  The drain section below
+shows how much of the 14.3% survives at finite reduction depth.
+
+Where the +0.335 mW against BP's accepted point comes from — the two terms have
+opposite signs and the workload term is over five times the structural one:
+
+```
+BOS - BP_stationary = +0.335 mW
+                    = +2.156 mW  lost weight reuse (BP stationary -> streaming, same netlist)
+                      -1.821 mW  BOS structural savings (BOS vs BP streaming)
+```
+
+Block-level, at matched activity (both decompositions reconcile to their PT-PX totals):
+
+| block | BP streaming (mW) | BOS mesh (mW) | Δ |
+|---|---:|---:|---:|
+| compute cone (mul + accumulate add) | 8.763 | 8.261 | −0.501 |
+| operand registers | 1.905 | 0.393 | **−1.512** |
+| accumulator registers | 0.853 | 0.721 | −0.132 |
+| control flops | 0.178 | 0.000 | −0.178 |
+| clock (CTS + ICG cells) | 0.466 | 1.266 | **+0.800** |
+| glue / other | 0.593 | 0.296 | −0.298 |
+| **total** | **12.758** | **10.937** | **−1.821** |
+
+The dominant term is still the operand registers, and this is the surprise: both
+designs hold exactly 1,024 operand flops toggling every cycle, yet BP burns 4.8× more
+in them.  Flop count and activity do not explain it.  The structural difference is that
+BP's `ireg`/`wreg` carry async reset plus `clr` and `en` muxing and sit behind per-PE
+clock gates, where the mesh's hop registers are plain resetless DFFs — a plausible
+cause that this measurement does not isolate.  Worth a targeted look before the number
+is leaned on.
+
+BOS gives back 0.800 mW in the clock tree.  Its 2,560 flops sit behind a *single*
+always-enabled ICG, so nothing is ever gated during the MAC window, whereas BP's 192
+ICGs let Innovus build a shallower gated tree.  The single clock gate saves 451 µm² of
+ICG area and costs more than that back in CTS power.  (`clock_dist` is a name-matched
+bucket, so treat the magnitude as indicative.)
+
+Avoiding 24-bit partial-sum movement — the thing output-stationary is usually sold on
+— contributes only −0.132 mW here, 7% of the structural saving.
+
+### Drain cost, and the skew fill the mesh pays
+
+The headline BOS number, like PaYN's, is measured with the drain taken after
+`$toggle_stop` on a continuous stream — it is pure MAC work with the fill amortized to
+nothing, which is the right basis for the encoding comparison above and is exact.
+
+Finite reduction depth is where the systolic mesh pays twice.  PE (h,v) retires slice t
+at cycle t+h+v+1, so the corner PE finishes `N_H+N_W-2 = 14` cycles after PE (0,0).  The
+drain is a lockstep shift, so no PE may begin the next block until the last one is done:
+**every block costs D + 14 MAC-enabled cycles + 8 drain cycles for 64·D useful MACs.**
+The superseded broadcast build paid none of the 14 — it fed every PE the same slice
+index at the same cycle — and PaYN's `InnerPE` does not pay it either, since it also
+broadcasts operands within its tile block.
+
+Measured sweep, with the bench's `k` MAC cycles reinterpreted as `D+14`:
+
+| bench k | D = k−14 | MAC duty | power (mW) | pJ per **useful** MAC |
+|---:|---:|---:|---:|---:|
+| — (K → ∞) | ∞ | 1.000 | 10.93719 | 0.42723 |
+| 256 | 242 | 0.971 | 11.14591 | 0.47497 |
+| 128 | 114 | 0.941 | 11.21287 | 0.52253 |
+| 64 | 50 | 0.891 | 11.27240 | 0.63407 |
+| 32 | 18 | 0.801 | 11.28644 | 0.97973 |
+
+Drain cycles are also *more* expensive than MAC cycles: shifting a full 24-bit
+accumulator between neighbours toggles more than adding a small product to a running
+sum.
+
+Comparing the two BOS builds at equal depth on their own asymptotic power and exact
+cycle counts:
+
+| D | mesh, D+22 cycles | broadcast, D+8 cycles |
+|---:|---:|---:|
+| 32 | 0.721 | **0.575** |
+| 64 | 0.574 | **0.518** |
+| 128 | 0.501 | **0.489** |
+| 256 | **0.464** | 0.475 |
+| 512 | **0.446** | 0.467 |
+
+**The mesh's lower per-cycle power only becomes an energy win beyond D ≈ 174.**  Below
+that the broadcast build wins despite drawing 7.1% more power, purely because it has no
+skew to fill.  Against activity-matched BP — which never drains and never fills, since
+its partial sums leave the array every cycle — the mesh crosses at D ≈ 150; against
+BP's accepted stationary-weight point it does not win at any depth.
+
+This is a fill cost, not a fundamental one: double-buffering the accumulator (a shadow
+register per PE, +1,536 flops) would let the next block's fill overlap the current
+block's drain and remove both penalties.  That trade has not been built or measured.
+
+For the PaYN comparison specifically, note that the broadcast build is the more
+structurally faithful control at finite depth, because PaYN broadcasts operands inside
+its PE too.  The 1.69× encoding ratio is quoted on the drain- and fill-excluded basis
+where the distinction vanishes.
 
 ## Binary precision: native hardware versus fixed INT8 hardware
 

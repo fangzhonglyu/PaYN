@@ -1,0 +1,11 @@
+#!/bin/bash
+# Binary output-stationary 8x8 array (INT8 native, OW24 stationary accumulator).
+# Same dataflow and drain as the PaYN SC array, binary arithmetic instead of the
+# stochastic lanes.  64 MAC/cycle, matching BP_ARRAY and PAYN_SC.
+export TOP=binary_os_array
+export TECH=TSMC22
+export SRC_SV="baselines/binary_os/binary_os_array.sv"
+export PERIOD=2.5
+export MULTIBIT_INFER=1
+export CLOCK_GATE=1
+export RTL_PREFLIGHT_CMD=${RTL_PREFLIGHT_CMD:-"make --no-print-directory sim GL= TARGET= TOP=Top TB=designs/baselines/binary_os/tb/test_binary_os_array.sv BUILD_DIR=build/rtl_preflight/binary_os"}

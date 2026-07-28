@@ -1,0 +1,13 @@
+#!/bin/bash
+# bitmod 8x8 PE tile (migrated baseline) -- the throughput match for the other
+# baselines: 64 useful MAC/cycle at INT8, same as BP_ARRAY / BOS_ARRAY / PAYN_SC.
+# Operand decode (controller) is NOT in this DUT; see BITMOD_ARRAY for the
+# whole-design point.  Provenance: designs/baselines/bitmod/README.md.
+export TOP=tile
+export TECH=TSMC22
+export SRC_SV="baselines/bitmod/bitmod_tile.sv"
+export PERIOD=2.5
+export TSMC22_HPK=${TSMC22_HPK:-1}
+export MULTIBIT_INFER=${MULTIBIT_INFER:-1}
+export CLOCK_GATE=${CLOCK_GATE:-1}
+export RTL_PREFLIGHT_CMD=${RTL_PREFLIGHT_CMD:-"make --no-print-directory sim GL= TARGET= TOP=Top TB=designs/baselines/bitmod/tb/test_bitmod_tile.sv BUILD_DIR=build/rtl_preflight/bitmod_tile"}

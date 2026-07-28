@@ -508,7 +508,15 @@ def parse_saif_binary_output_tx(
         if match and pending is not None:
             instance_path, signal = pending
             if instance_path == ("Top", "dut") and signal.startswith(
-                ("ofm\\[", "acc_value\\[", "drain_out\\[")
+                (
+                    "ofm\\[",
+                    "acc_value\\[",
+                    "drain_out\\[",
+                    "acc_out_east\\[",
+                    # bitmod baseline drain rails: tile / Raptor_Lake_HX
+                    "o_drain_row\\[",
+                    "o_drain_dat\\[",
+                )
             ):
                 t0, t1, tx = (float(value) for value in match.groups())
                 total = t0 + t1 + tx

@@ -1,0 +1,14 @@
+#!/bin/bash
+# bitmod full array Raptor_Lake_HX (migrated baseline): 4x4 grid of tiles =
+# 1024 PEs, 1024 useful MAC/cycle at INT8, plus the controller (booth term
+# generation, group scale distribution) and the skew network.  16x the
+# throughput of the other baselines; energy is still reported per MAC.
+# Provenance: designs/baselines/bitmod/README.md.
+export TOP=Raptor_Lake_HX
+export TECH=TSMC22
+export SRC_SV="baselines/bitmod/bitmod_array.sv"
+export PERIOD=2.5
+export TSMC22_HPK=${TSMC22_HPK:-1}
+export MULTIBIT_INFER=${MULTIBIT_INFER:-1}
+export CLOCK_GATE=${CLOCK_GATE:-1}
+export RTL_PREFLIGHT_CMD=${RTL_PREFLIGHT_CMD:-"make --no-print-directory sim GL= TARGET= TOP=Top TB=designs/baselines/bitmod/power/power_bitmod_array.sv BUILD_DIR=build/rtl_preflight/bitmod_array"}

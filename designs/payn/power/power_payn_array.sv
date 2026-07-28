@@ -219,7 +219,14 @@ module Top;
         @(negedge clk);
 
         // ---- SAIF window: many contiguous T/M-cycle stochastic blocks ----
+`ifdef GL_SIM
         $set_gate_level_monitoring("rtl_on");
+`else
+        // RTL runs feed SYN_SAIF_FILE (workload-driven synthesis). Without the
+        // "sv" argument VCS skips SystemVerilog-typed nets and the SAIF comes
+        // out empty; it also needs -lca on the VCS command line.
+        $set_gate_level_monitoring("rtl_on", "sv");
+`endif
         $set_toggle_region(dut);
         monitor_x = 1'b1;
         mac_en = 1'b1;

@@ -250,7 +250,14 @@ module Top;
         @(posedge clk); @(negedge clk); en_w = '0;
 
         // Phase 2: rate-coded streaming SAIF window.
+`ifdef GL_SIM
         $set_gate_level_monitoring("rtl_on");
+`else
+        // RTL runs feed SYN_SAIF_FILE (workload-driven synthesis). Without the
+        // "sv" argument VCS skips SystemVerilog-typed nets and the SAIF comes
+        // out empty; it also needs -lca on the VCS command line.
+        $set_gate_level_monitoring("rtl_on", "sv");
+`endif
         $set_toggle_region(dut);
         $toggle_start;
         @(posedge clk); @(negedge clk); en_i = '1; clr_i = '0; en_o = '1; clr_o = '0;

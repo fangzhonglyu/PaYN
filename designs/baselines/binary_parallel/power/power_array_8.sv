@@ -232,12 +232,31 @@ module Top;
         monitor_x = 1'b1; check_enable = 1'b1;
 
         // Phase 2: scored streaming-MAC SAIF window.
+`ifdef BP_STREAM_WEIGHTS
+        // Activity-matched control for the output-stationary comparison: keep the
+        // weight column loading every cycle instead of holding one stationary set
+        // for the whole window.  Both multiplier operands then toggle per cycle,
+        // as they do in an output-stationary array, which isolates the dataflow
+        // difference from the operand-reuse difference.  Default off: the accepted
+        // BP result is the stationary-weight point.
+        en_w = '1;
+`endif
+`ifdef GL_SIM
         $set_gate_level_monitoring("rtl_on");
+`else
+        // RTL runs feed SYN_SAIF_FILE (workload-driven synthesis). Without the
+        // "sv" argument VCS skips SystemVerilog-typed nets and the SAIF comes
+        // out empty; it also needs -lca on the VCS command line.
+        $set_gate_level_monitoring("rtl_on", "sv");
+`endif
         $set_toggle_region(dut);
         $toggle_start;
         for (int t = 0; t < STIM_CYCLES; t++) begin
             @(posedge clk); @(negedge clk);
             ifm_flat = random_ifm_vector();
+`ifdef BP_STREAM_WEIGHTS
+            wght_flat = random_wght_vector();
+`endif
             clr_o = ((t % READOUT_PERIOD) == (READOUT_PERIOD-1)) ? '1 : '0;
         end
         @(negedge clk); #0.01;   // let the negedge scoring block count this last

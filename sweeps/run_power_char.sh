@@ -28,16 +28,54 @@ module load synopsys-lib-compiler/2022.03-SP3 synopsys-synth/2021.06-SP1 \
 export SYNOPSYS="${SYNOPSYS:-/usr/caen/synopsys-synth-2021.06-SP1}"
 export USE_DW=1
 
+# ---- flow knobs ----------------------------------------------------------
+# Power-optimization passes adopted from the bitmod fork of this flow.  They are
+# opt-in in ASTRAEA and enabled here for EVERY design so the table stays
+# apples-to-apples: whatever these passes are worth, every row gets it.
+#
+#   TSMC22_HPK            supplies the multi-bit sequentials that
+#                         APR_MULTIBIT_FLOP_OPT re-banks.  Previously set only on
+#                         PAYN_SC, which made the library asymmetric across rows.
+#   APR_MULTIBIT_FLOP_OPT placement-driven flop banking/debanking.
+#   APR_OPT_POWER         optPower -allowResizing -effortLevel high at postCTS
+#                         and postRoute.
+#   SYN_WORKLOAD_SAIF     synthesize against the measured workload: an RTL run of
+#                         the same power bench produces a SAIF that is annotated
+#                         before compile_ultra, so DC's clock gating and operand
+#                         isolation optimize for real activity instead of the
+#                         generic 0.5/0.25 input hint.
+#
+# Set any of these to 0 to reproduce the pre-adoption numbers.
+export TSMC22_HPK=${TSMC22_HPK:-1}
+export APR_MULTIBIT_FLOP_OPT=${APR_MULTIBIT_FLOP_OPT:-1}
+export APR_OPT_POWER=${APR_OPT_POWER:-1}
+SYN_WORKLOAD_SAIF=${SYN_WORKLOAD_SAIF:-1}
+# Re-baselining with a changed recipe must not reuse netlists built by the old
+# one.  FRESH=1 forces a new synth + APR run per design instead of picking up
+# the latest existing one.
+FRESH=${FRESH:-0}
+# The RTL SAIF needs SystemVerilog net monitoring, which is an LCA feature.
+# ASTRAEA's Makefile passes -lca on every VCS invocation (LCA_FLAG), so nothing
+# extra is required here; kept as a hook in case a site has to drop it.
+RTL_SAIF_VCS_ARGS=""
+
 # ---- design table --------------------------------------------------------
 # name | target | top | power_bench | validator | Tdefine | Tvalues
 TABLE=(
   "BP_ARRAY|TSMC22/BP_ARRAY|array_8|designs/baselines/binary_parallel/power/power_array_8.sv|validate_power_saif.py|STIM_CYCLES_N|4096"
   "BP_ARRAY_ASYM|TSMC22/BP_ARRAY_ASYM|array_8_asym_corr_v2|designs/baselines/binary_parallel/power/power_array_8_asym_corr_v2.sv|validate_power_saif.py|STIM_CYCLES_N|4096"
   "BS_ARRAY|TSMC22/BS_ARRAY|array_8|designs/baselines/binary_serial/power/power_array_8.sv|validate_power_saif.py|STIM_CYCLES_N|4096"
+  "BOS_ARRAY|TSMC22/BOS_ARRAY|binary_os_array|designs/baselines/binary_os/power/power_binary_os_array.sv|validate_power_saif.py|STIM_CYCLES_N|4096"
+  "BOS_ARRAY_ASYM|TSMC22/BOS_ARRAY_ASYM|binary_os_array_asym|designs/baselines/binary_os/power/power_binary_os_array_asym.sv|validate_power_saif.py|STIM_CYCLES_N|4096"
   "UR_ARRAY|TSMC22/UR_ARRAY|array_8|designs/baselines/unary_rate/power/power_array_8.sv|validate_power_saif.py|RATE_LEN_N|64,128,256"
   "UT_ARRAY|TSMC22/UT_ARRAY|array_8|designs/baselines/unary_temporal/power/power_array_8.sv|validate_power_saif.py|RATE_LEN_N|64,128,256"
   "PAYN_SC|TSMC22/PAYN_SC|payn_array|designs/payn/power/power_payn_array.sv|validate_sc_power_saif.py|SC_T|64,128,256"
   "SC_INNER_PE|TSMC22/SC_INNER_PE|sc_inner_pe_manual_k6m16n9_ow24|designs/payn/power/power_inner_pe.sv|validate_sc_power_saif.py|SC_T|64,128,256"
+  # bitmod migrated baselines.  BITMOD_TILE is the 64 MAC/cycle throughput match;
+  # BITMOD_ARRAY is the whole design at 1024 MAC/cycle (16x the cells, so its APR
+  # is correspondingly longer).  See designs/baselines/bitmod/README.md.
+  "BITMOD_TILE|TSMC22/BITMOD_TILE|tile|designs/baselines/bitmod/power/power_bitmod_tile.sv|validate_power_saif.py|STIM_CYCLES_N|4096"
+  "BITMOD_ARRAY|TSMC22/BITMOD_ARRAY|Raptor_Lake_HX|designs/baselines/bitmod/power/power_bitmod_array.sv|validate_power_saif.py|STIM_CYCLES_N|4096"
 )
 
 SELECT=("$@")
@@ -57,9 +95,32 @@ for row in "${TABLE[@]}"; do
   log "===== $name ($target) ====="
   dlog="$OUT/$name"; mkdir -p "$dlog"
 
+  # 0) workload SAIF for synthesis ----------------------------------------
+  # An RTL run of the same power bench, at the first T of the sweep, so DC
+  # optimizes against the activity we are about to measure.  Cheap relative to
+  # synthesis, and skipped entirely when SYN_WORKLOAD_SAIF=0.
+  unset SYN_SAIF_FILE SYN_SAIF_INSTANCE
+  if [ "$SYN_WORKLOAD_SAIF" != "0" ]; then
+    IFS=',' read -ra _t0 <<< "$tvals"
+    sbd="build/syn_saif/$name"
+    log "  rtl workload SAIF (${tdef}=${_t0[0]}) ..."
+    make -C "$REPO" --no-print-directory sim GL= TARGET= TOP=Top TB="$bench" \
+         BUILD_DIR="$sbd" VCS_ARGS="$RTL_SAIF_VCS_ARGS +define+${tdef}=${_t0[0]}" \
+         > "$dlog/syn_saif.log" 2>&1
+    ssaif="$REPO/$sbd/$bench/dut.saif"
+    if [ ! -s "$ssaif" ] || ! grep -q "(INSTANCE " "$ssaif"; then
+      log "  SYNTH SAIF EMPTY/MISSING (see $dlog/syn_saif.log)"
+      echo "$name,$target,,,,,,SYN_SAIF_FAIL," >> "$CSV"; overall=1; continue
+    fi
+    export SYN_SAIF_FILE="$ssaif"
+    export SYN_SAIF_INSTANCE="Top/dut"
+    log "  synth SAIF = $ssaif"
+  fi
+
   # 1) synth ---------------------------------------------------------------
   synrun=$(latest_run "$REPO/syn/build/$target")
-  if [ -z "$synrun" ] || [ ! -f "$REPO/syn/build/$target/$synrun/$top.syn.v" ]; then
+  if [ "$FRESH" = "1" ] || [ -z "$synrun" ] || \
+     [ ! -f "$REPO/syn/build/$target/$synrun/$top.syn.v" ]; then
     log "  synth $target ..."
     make -C "$REPO" synth TARGET="$target" > "$dlog/synth.log" 2>&1
     synrun=$(latest_run "$REPO/syn/build/$target")
@@ -72,7 +133,8 @@ for row in "${TABLE[@]}"; do
 
   # 2) apr -----------------------------------------------------------------
   aprrun=$(latest_run "$REPO/apr/build/$target")
-  if [ -z "$aprrun" ] || [ ! -f "$REPO/apr/build/$target/$aprrun/outputs/$top.apr.v" ]; then
+  if [ "$FRESH" = "1" ] || [ -z "$aprrun" ] || \
+     [ ! -f "$REPO/apr/build/$target/$aprrun/outputs/$top.apr.v" ]; then
     log "  apr $target (SYNTH_RUN=$synrun) ..."
     make -C "$REPO" apr TARGET="$target" SYNTH_RUN="$synrun" > "$dlog/apr.log" 2>&1
     aprrun=$(latest_run "$REPO/apr/build/$target")

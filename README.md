@@ -23,6 +23,11 @@ designs/
   baselines/
     binary_parallel/        BP array_8 (+ asymmetric INT8 correction)
     binary_serial/          BS array_8
+    binary_os/              BOS binary_os_array — output-stationary INT8 8x8 PE
+                            array with the PaYN dataflow (stationary accumulator,
+                            row-serial east drain), binary MACs instead of SC lanes
+      binary_os_pe.sv         BinaryOSPE — one INT8 MAC + A/W hop regs + accumulator
+      binary_os_array.sv      BinaryOSArray/Flat + binary_os_array synth top
     unary_rate/             UR array_8 (Sobol rate coding)
     unary_temporal/         UT array_8 (temporal + Sobol)
 syn/targets/TSMC22/         synthesis targets (parameterized)
@@ -49,6 +54,9 @@ Every design keeps RTL at its top level; tests live in `tb/`, power benches in
 make sim TB=designs/payn/tb/test_inner_pe.sv USE_DW=1
 make sim TB=designs/payn/tb/test_peripheral.sv          # peripheral: no DW needed
 make sim TB=designs/baselines/binary_parallel/tb/test_array_8_power_workload.sv
+
+# Binary output-stationary array vs an independent golden matmul:
+make sim TB=designs/baselines/binary_os/tb/test_binary_os_array.sv
 
 # Bit-exact array cosim (RTL vs the Python reference):
 bash designs/payn/cosim/run_peripheral.sh

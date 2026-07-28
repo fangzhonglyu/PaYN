@@ -1,0 +1,10 @@
+#!/bin/bash
+# Binary output-stationary 8x8 array + asymmetric correction, APR.
+export TARGET=TSMC22/BOS_ARRAY_ASYM
+export SYNTH_RUN=${SYNTH_RUN:?set SYNTH_RUN to the synthesis run name}
+export TOP=binary_os_array_asym
+export TECH=TSMC22
+export PERIOD=2.5
+export CORE_UTIL=${CORE_UTIL:-0.75}
+export CORE_ASPECT=${CORE_ASPECT:-1.000}
+export POST_LOAD_SCRIPT=apr/scripts/set_clock_uncertainty.tcl
