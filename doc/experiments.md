@@ -89,10 +89,10 @@ bash sweeps/run_power_char.sh BS_ARRAY
 
 | role | file |
 |---|---|
-| design | `binary_os_pe.sv` (`BinaryOSPE`, one INT8 MAC + 2 hop regs + accumulator) · `binary_os_array.sv` (`BinaryOSArray`/`Flat` + `binary_os_array` synth top) |
-| functional TB | `tb/test_binary_os_array.sv` (independent golden matmul, not a structural mirror) |
-| power bench | `power/power_binary_os_array.sv` (per-cycle output check + full drained-matrix check) |
-| target | `BOS_ARRAY` |
+| design | `binary_os_pe.sv` (`BinaryOSPE`, one INT8 MAC + 2 hop regs + accumulator) · `binary_os_array.sv` (`BinaryOSArray`/`Flat` + `binary_os_array` synth top) · asym `binary_os_asym.sv` |
+| functional TB | `tb/test_binary_os_array.sv` · asym `tb/test_binary_os_asym.sv` (both independent golden matmuls, not structural mirrors) |
+| power bench | `power/power_binary_os_array.sv` (per-cycle output check + full drained-matrix check) · asym `power/power_binary_os_array_asym.sv` (drain inside the SAIF window) |
+| targets | `BOS_ARRAY`, `BOS_ARRAY_ASYM` |
 | breakdown | `sweeps/pt_binary_os_power.tcl` (emits the `bin_*` keys `pe_taxonomy.py` already reads) |
 
 The point of this design is to be a **dataflow-matched binary control for PaYN**: same
@@ -115,13 +115,28 @@ netlist (64 PEs x 40 = 2,560, +1 for the array ICG = 2,561). That is what
 throughput-matches PaYN: an `InnerTile` carries K=8 spatial lanes but needs T/M=8 cycles
 to retire that K=8 dot product, so it too averages one MAC/cycle/accumulator.
 
-**Power** — 10.94 mW / 0.427 pJ/MAC, routed area 15,950 µm², setup WNS +1.127 ns
+**Power** — 10.56 mW / 0.412 pJ/MAC, routed area 15,797 µm², setup WNS +1.109 ns
+(HPK/multibit flow: `run_power_char.sh` exports `TSMC22_HPK=1 APR_MULTIBIT_FLOP_OPT=1
+APR_OPT_POWER=1`; the gate sim only links the HPK Verilog library when `TSMC22_HPK=1`,
+so any script driving `make sim GL=apr` on these netlists must export it too)
 
 ```
 bash sweeps/run_power_char.sh BOS_ARRAY
 ```
 
-**Drain amortization** — the drain period is the GEMM reduction depth K; `BOS_DRAIN_PERIOD=0`
+**Asymmetric variant** (`binary_os_asym.sv`, target `BOS_ARRAY_ASYM`) — 11.99 mW,
+19,250 µm², setup WNS **+0.030 ns**.  Correction costs +10.25% power at the identical
+workload and flow (reduction depth D=64; BP: +10.8%); see `doc/results.md` for why the shared-`za` term did
+not make it cheaper.  The corrected output is combinational to the port and is the
+critical path — register it before signoff.
+
+```
+bash sweeps/run_power_char.sh BOS_ARRAY_ASYM
+make sim TOP=Top TB=designs/baselines/binary_os/tb/test_binary_os_asym.sv   # golden asym matmul
+```
+
+**Drain amortization** — `BOS_DRAIN_PERIOD` is the GEMM reduction depth D (the dot-product
+length each PE accumulates before the array must be drained); `BOS_DRAIN_PERIOD=0`
 is the pure-MAC point (PaYN methodology: drain taken after `$toggle_stop`).
 
 ```
@@ -184,7 +199,10 @@ regenerated with this schedule using the intended 7-bit unsigned magnitude plus
 separate sign distribution.  Each logical magnitude `m` is encoded as `m << 1`
 for the existing 8-bit comparator/Sobol hardware, preserving `m/128`
 probability.  The accepted workload-aware reroute measures
-**18.53117 mW / 0.72387 pJ/MAC**.  This is a
+**18.17200 mW / 0.70984 pJ/MAC** (route `k8m16n8_lw9_distguide_spp_fixed`, setup WNS
++0.499 ns, hold +0.031 ns; 2.0% below the previously accepted `..._wlpwr` route at
+18.53117 mW / 0.72387 pJ/MAC, from the same synthesis netlist and the same
+2,583-multibit / 231-single-bit flop mix).  This is a
 workload-correct result on the existing 8-bit netlist, not yet the result of
 physically narrowing the magnitude registers, comparators, and Sobol words.
 The prior guides-only route remains preserved at

@@ -22,13 +22,13 @@ export SYNOPSYS=/usr/caen/synopsys-synth-2021.06-SP1
 export USE_DW=1
 
 TARGET=TSMC22/PAYN_SC_SIGNED_SEGMENTED
-BASE_RUN=k8m16n8_lw9_distguide
+BASE_RUN=${BASE_RUN:-k8m16n8_lw9_distguide}
 TOP=payn_array_signed_segmented
 TB=designs/payn/power/power_payn_array.sv
 TOTAL_CYCLES=${TOTAL_CYCLES:-3072}
 T_LIST=${T_LIST:-"32 48 64 96 128"}
 MAX_JOBS=${MAX_JOBS:-2}
-OUT_ROOT=build/power_char/pending_t_reuse
+OUT_ROOT=${OUT_ROOT:-build/power_char/pending_t_reuse}
 CSV=${OUT_ROOT}/results.csv
 
 K=8
@@ -55,7 +55,7 @@ run_point() {
     local label=T${t}
     local build_dir=${OUT_ROOT}/${label}/sim
     local log=${OUT_ROOT}/${label}/run.log
-    local view_run=t_reuse_${label}
+    local view_run=${VIEW_PREFIX:-t_reuse}_${label}
     local view_dir=apr/build/${TARGET}/${view_run}
     local saif trace
 

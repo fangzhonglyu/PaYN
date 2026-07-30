@@ -171,8 +171,8 @@ module Top;
         assert (MAG_WIDTH > 0 && MAG_WIDTH <= WIDTH)
             else $fatal(1, "SC_MAG_WIDTH=%0d must be in [1, SC_WIDTH=%0d]",
                         MAG_WIDTH, WIDTH);
-        assert (MAC_CYCLES >= 2)
-            else $fatal(1, "streaming bench requires T/M >= 2 for the two-cycle input pipeline");
+        assert (MAC_CYCLES >= 1)
+            else $fatal(1, "streaming bench requires T/M >= 1");
         assert (N_BATCHES > 0)
             else $fatal(1, "SC_BATCHES must be positive");
 `ifdef PAYN_BLOCK_FINALIZE
@@ -211,12 +211,26 @@ module Top;
         load_w_sign = 1'b1;
         @(posedge clk);
         @(negedge clk);
+        // At MAC_CYCLES=1 every window clock is a block boundary, so the
+        // operand feed has to run two batches ahead of the accumulator instead
+        // of one.  Issue batch 1 in this second pre-window clock; the window
+        // then opens already owing batch 2.  For MAC_CYCLES >= 2 this branch is
+        // not taken and the prologue is unchanged.
+        if (MAC_CYCLES < 2 && N_BATCHES > 1) begin
+            randomize_batch();
+            write_batch(1);
+        end else begin
+            load_a = 1'b0;
+            load_w = 1'b0;
+            load_a_sign = 1'b0;
+            load_w_sign = 1'b0;
+        end
+        @(posedge clk);
+        @(negedge clk);
         load_a = 1'b0;
         load_w = 1'b0;
         load_a_sign = 1'b0;
         load_w_sign = 1'b0;
-        @(posedge clk);
-        @(negedge clk);
 
         // ---- SAIF window: many contiguous T/M-cycle stochastic blocks ----
 `ifdef GL_SIM
@@ -231,7 +245,8 @@ module Top;
         monitor_x = 1'b1;
         mac_en = 1'b1;
         $toggle_start;
-        next_batch = 1;
+        // MAC_CYCLES=1 opened the window with batch 1 already issued.
+        next_batch = (MAC_CYCLES < 2 && N_BATCHES > 1) ? 2 : 1;
 
         for (int cycle = 0; cycle < TOTAL_MAC_CYCLES; cycle++) begin
             load_a = 1'b0;
@@ -243,7 +258,10 @@ module Top;
             // stage.  Issuing the next batch two cycles before the current
             // block ends makes the accumulator see exactly MAC_CYCLES slices
             // from each batch with no bubble.
-            if ((cycle % MAC_CYCLES) == (MAC_CYCLES - 2) &&
+            // Equivalent to (cycle % MAC_CYCLES) == MAC_CYCLES - 2 whenever
+            // MAC_CYCLES >= 2, but also well-defined at MAC_CYCLES = 1, where
+            // it fires every clock.
+            if (((cycle + 2) % MAC_CYCLES) == 0 &&
                 next_batch < N_BATCHES) begin
                 randomize_batch();
                 write_batch(next_batch);

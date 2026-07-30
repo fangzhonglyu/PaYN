@@ -13,6 +13,14 @@ module load synopsys-lib-compiler/2022.03-SP3 synopsys-synth/2021.06-SP1 \
             primetime/2021.06-SP1 vcs/2020.12-SP2-1 \
             innovus/21.14.000 genus/21.14.000 2>/dev/null
 export SYNOPSYS=${SYNOPSYS:-/usr/caen/synopsys-synth-2021.06-SP1}
+export USE_DW=1
+# Must match run_power_char.sh: the campaign builds BOS netlists with HPK
+# multibit flops, and the gate-level sim only links the HPK Verilog library when
+# TSMC22_HPK=1.  Without these the netlist's DFFQA2W cells cannot bind and every
+# sweep point dies with "Cannot find cell in liblist".
+export TSMC22_HPK=${TSMC22_HPK:-1}
+export APR_MULTIBIT_FLOP_OPT=${APR_MULTIBIT_FLOP_OPT:-1}
+export APR_OPT_POWER=${APR_OPT_POWER:-1}
 
 T=TSMC22/BOS_ARRAY
 TB="designs/baselines/binary_os/power/power_binary_os_array.sv"

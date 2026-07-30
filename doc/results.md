@@ -42,19 +42,44 @@ All designs operate at 400 MHz and retire 64 MAC/cycle.  Energy is therefore
 |---|---:|---:|---:|---:|
 | BP signed INT8 | 16,536 | +1.040 | 10.60000 | 0.41406 |
 | BP signed INT8 + asymmetric correction | 19,606 | +0.430 | 11.74739 | 0.45888 |
-| BOS signed INT8, output-stationary systolic | 15,950 | +1.127 | 10.93719 | 0.42723 |
-| **PaYN pending-bit LOW_W=9** | **51,871** | **+0.627** | **18.53117** | **0.72387** |
+| BOS signed INT8, output-stationary systolic | 15,797 | +1.109 | 10.55916 | 0.41247 |
+| BOS signed INT8, same at D=64 † | 15,797 | +1.109 | 10.87263 | 0.47687 |
+| BOS signed INT8 + asymmetric correction † | 19,250 | +0.030 | 11.98748 | 0.52577 |
+| **PaYN pending-bit LOW_W=9** (`spp_fixed`) | **51,906** | **+0.499** | **18.17200** | **0.70984** |
+
+† The two daggered rows are **drain-inclusive at D=64**: their pJ/MAC is energy per
+*useful* MAC, not `power / 25.6`, because 448 of the 4,096 scored cycles are drain cycles
+that retire no MACs.  Every undaggered row retires 64 MAC/cycle for the whole window, so
+the plain convention holds there.
+
+**Do not difference a daggered row against an undaggered one.**  The asym correction cost
+is the two daggered BOS rows against each other: 0.47687 → 0.52577, **+10.25%**.
+Differencing asym against the drain-excluded plain row instead gives +27.5%, which
+double-counts the drain — the 0.41247 → 0.47687 step is the +15.6% cost of draining every
+64 MAC cycles (reduction depth D=64), and it is paid by both designs.
+
+The asym row has no drain-free counterpart by construction: its correction hardware only
+runs on drain cycles.  Applying `power / 25.6` to it would give 0.46826 and understate it
+by 10.9%.  The drain-excluded plain row is the one comparable to BP, which never drains.
 
 At equal useful throughput, the accepted PaYN point consumes:
 
-- 1.75× the energy of plain signed INT8 BP (+74.8%).
-- 1.58× the energy of BP with asymmetric zero-point correction (+57.7%).
-- 1.69× the energy of BOS, the dataflow-matched binary control (+69.4%).
+- 1.71× the energy of plain signed INT8 BP (+71.4%). ‡
+- 1.55× the energy of BP with asymmetric zero-point correction (+54.7%). ‡
+- 1.72× the energy of BOS, the dataflow-matched binary control (+72.1%).
+
+‡ The two BP comparisons are **cross-flow**.  PaYN and BOS are routed with HPK multibit
+flops (2,583 and 1,280 multibit cells); the BP netlist has **zero** — 2,896 single-bit
+flops — because it was characterized before the campaign exported `TSMC22_HPK=1
+APR_MULTIBIT_FLOP_OPT=1 APR_OPT_POWER=1`.  That flow alone moved BOS by 3.5%.  The PaYN
+ratios survive it comfortably at ~1.7×; a BOS-versus-BP claim does not, since those two
+sit 0.4% apart, well inside the flow effect.  BP needs rerouting on the multibit flow
+before that row means anything.
 
 The asymmetric correction costs BP 10.8% over its plain signed implementation.
 The binary benches use long-running, output-checked signed INT8 workloads and
 do not require stochastic probability scaling.  The accepted PaYN route also
-has +0.029 ns hold WNS.
+has +0.031 ns hold WNS.
 
 ## Isolating the encoding cost: the BOS dataflow-matched control
 
@@ -75,22 +100,23 @@ not a term any of these three carries.
 
 | comparison | power ratio | reads as |
 |---|---:|---|
-| PaYN total / BOS | 1.69× | encoding cost including the Sobol + comparator front end |
-| PaYN `u_pe` / BOS | 1.45× | encoding cost of the PE array alone |
+| PaYN total / BOS | 1.72× | encoding cost including the Sobol + comparator front end |
+| PaYN `u_pe` / BOS | 1.48× | encoding cost of the PE array alone |
 
 PaYN's headline 1.75× against plain BP factors exactly:
 
 ```
-1.748  =  1.694        x  1.032
+1.714  =  1.721        x  0.996
 PaYN/BP   PaYN/BOS        BOS/BP
           encoding,       dataflow + operand reuse,
           dataflow fixed  arithmetic fixed
 ```
 
-The encoding accounts for essentially all of it.  Holding the dataflow fixed,
-switching from binary to stochastic arithmetic costs 1.69×; switching dataflow at
-fixed arithmetic costs only 1.03×, and even that 3% is mostly the operand-reuse
-difference dissected below rather than the dataflow itself.  PaYN's overhead is an
+The encoding term is sound and carries the whole ratio: at fixed dataflow, stochastic
+arithmetic costs **1.72×**.  The `BOS/BP` term is **not** currently meaningful — it reads
+0.996 only because BOS is routed with multibit flops and BP is not (see ‡ above), so it
+measures a flow difference, not a dataflow difference.  Treat the dataflow contribution
+as unresolved pending a BP reroute.  What is established is that PaYN's overhead is an
 encoding story, not a dataflow story.
 
 ### BOS power breakdown
@@ -123,6 +149,10 @@ An earlier build of this design registered operands once at the *array* boundary
 broadcast them across each PE row and column, instead of hopping them PE-to-PE.  That
 needs only 128 operand flops instead of 1,024, and it was measured on its own routed
 netlist before being replaced.  Both points are real measurements at the same workload:
+
+Both columns are the pre-HPK flow (no multibit flops, no `APR_OPT_POWER`), which is
+what makes them comparable to each other; the headline table now carries the refreshed
+HPK numbers for the mesh.
 
 | | broadcast operands | **systolic mesh (shipped)** |
 |---|---:|---:|
@@ -232,6 +262,61 @@ bucket, so treat the magnitude as indicative.)
 Avoiding 24-bit partial-sum movement — the thing output-stationary is usually sold on
 — contributes only −0.132 mW here, 7% of the structural saving.
 
+### Asymmetric zero-point correction on BOS
+
+`binary_os_asym.sv` adds the same exact identity BP uses, per output (h,v):
+
+```
+sum((qa-za)*(qw-zw)) = raw - zw*sum(qa) - za*sum(qw-zw)
+```
+
+`sum(qa)` is a per-row activation sum accumulated on-array; `sum(qw-zw)` is a
+per-column centred weight sum precomputed off-array, exactly as in BP.  Verified
+bit-exact against a golden asymmetric matmul with nonzero zero points on both
+operands and a per-column weight zero point, on the routed netlist.
+
+Measured at the **identical** workload as the plain mesh (3,648 MAC + 448 drain
+cycles, D=64) on the **identical** HPK/multibit flow, so this is a single-basis
+comparison:
+
+| | plain | + asym correction | Δ |
+|---|---:|---:|---:|
+| power (mW) | 10.87263 | 11.98748 | **+10.25%** |
+| pJ per useful MAC | 0.47687 | 0.52577 | **+10.25%** |
+| routed area (µm²) | 15,797 | 19,250 | +21.9% |
+| setup WNS (ns) | +1.109 | **+0.030** | −1.079 |
+
+For reference the same correction costs BP **+10.8%** power and **+18.6%** area.
+
+**A structural prediction that did not survive measurement.**  The drain emits one
+column on all N_H rails at once, so the `za*sum(qw-zw)` term is a single shared
+scalar and BOS needs only N_H+1 = 9 correction multipliers where BP replicates a
+two-multiplier corrector per column, 16 in total.  That reasoning predicted a
+clearly cheaper correction.  It is essentially a wash: 10.25% versus 10.8% on
+power, and *worse* on area.
+
+The count argument ignored width.  BOS's row sums are `IWIDTH + DEPTH_W` = 18 bits
+because the reduction depth is a workload parameter (`DEPTH_W=10`, D up to 1024),
+where BP's activation sums are `IWIDTH + log2(HEIGHT)` = 11 bits because its
+reduction depth is fixed at the array height of 8.  Nine wide multipliers plus 144
+row-sum flops is not cheaper than sixteen narrow ones.  `DEPTH_W` is the lever: a
+design that only ever needs D ≤ 128 could drop it to 7 and shrink the whole
+correction datapath.
+
+The timing cost is the real problem.  The corrected value is combinational from the
+accumulators through the multiplier and two subtractors to the output port, and it
+becomes the critical path — `corr_en → ofm[47]`, +0.030 ns.  That is not a
+signoff-able margin; registering the corrected output (and ideally the products)
+would break the path at the cost of one or two cycles of drain latency.  Not built.
+
+**Notation.**  `D` is the GEMM **reduction depth** — the length of the dot product each
+PE accumulates, i.e. the shared inner dimension of the matmul, or
+`in_channels × kernel_h × kernel_w` for a conv layer.  It is a property of the workload,
+not of the array, and it sets how often the accumulators must be drained: D MAC cycles,
+then N_W=8 drain cycles that retire no MACs.  `BOS_DRAIN_PERIOD` in the power bench is D.
+Do not confuse it with PaYN's `K`, which is the number of spatial stochastic lanes inside
+one `InnerTile` (K=8) — an unrelated quantity.
+
 ### Drain cost, and the skew fill the mesh pays
 
 The headline BOS number, like PaYN's, is measured with the drain taken after
@@ -246,15 +331,16 @@ The superseded broadcast build paid none of the 14 — it fed every PE the same 
 index at the same cycle — and PaYN's `InnerPE` does not pay it either, since it also
 broadcasts operands within its tile block.
 
-Measured sweep, with the bench's `k` MAC cycles reinterpreted as `D+14`:
+Measured sweep on the HPK/multibit netlist, with the bench's `k` MAC cycles
+reinterpreted as `D+14` (see the skew-fill discussion above):
 
-| bench k | D = k−14 | MAC duty | power (mW) | pJ per **useful** MAC |
+| bench k | D = k−14 | MAC duty | power (mW) | pJ per useful MAC (as-run) |
 |---:|---:|---:|---:|---:|
-| — (K → ∞) | ∞ | 1.000 | 10.93719 | 0.42723 |
-| 256 | 242 | 0.971 | 11.14591 | 0.47497 |
-| 128 | 114 | 0.941 | 11.21287 | 0.52253 |
-| 64 | 50 | 0.891 | 11.27240 | 0.63407 |
-| 32 | 18 | 0.801 | 11.28644 | 0.97973 |
+| — (D → ∞) | ∞ | 1.000 | 10.55916 | 0.41247 |
+| 256 | 242 | 0.971 | 10.74704 | 0.43248 |
+| 128 | 114 | 0.941 | 10.81188 | 0.44863 |
+| 64 | 50 | 0.891 | 10.87263 | 0.47687 |
+| 32 | 18 | 0.801 | 10.88714 | 0.53108 |
 
 Drain cycles are also *more* expensive than MAC cycles: shifting a full 24-bit
 accumulator between neighbours toggles more than adding a small product to a running
@@ -306,13 +392,30 @@ netlist consume less than the native signed-INT6 design.
 
 ## Accepted PaYN power breakdown
 
+The headline is now the `spp_fixed` route.  Its block split, from that run's
+`reports/power_hier.rpt` (three significant figures — that is the report's native
+precision, not a rounded version of a finer measurement):
+
+| block | total (mW) | share | total energy (pJ/MAC) |
+|---|---:|---:|---:|
+| InnerPE array (`u_pe`) | 15.60 | 85.8% | **0.6094** |
+| binary-to-unary peripheral (`u_peripheral`) | 1.75 | 9.6% | 0.0684 |
+| Sobol banks (`u_a_rng` + `u_w_rng`) | 0.638 | 3.5% | 0.0249 |
+| **full array** | **18.17** | 100% | **0.70984** |
+
+The six-decimal table below is the **superseded `wlpwr` route**, retained because its
+dynamic/leakage decomposition and the converter/Sobol native accounting were measured
+at full precision there and have not been regenerated for `spp_fixed`.  Block shares are
+within a point of each other, so the structural conclusions carry over; the absolute
+numbers do not.
+
 | block | total power (mW) | dynamic energy (pJ/MAC) | static leakage (mW) | total energy (pJ/MAC) |
 |---|---:|---:|---:|---:|
 | InnerPE array (`u_pe`) | 15.824571 | **0.613971** | 0.106901 | 0.618147 |
 | binary-to-unary peripheral (`u_peripheral`) | 1.840630 | **0.070468** | 0.036652 | 0.071900 |
 | Sobol banks (`u_a_rng` + `u_w_rng`) | 0.721971 | **0.027954** | 0.006356 | 0.028202 |
 | shared/top-level overhead | 0.144001 | **0.005460** | 0.004214 | 0.005625 |
-| **full array** | **18.531170** | **0.717854** | **0.154123** | **0.723874** |
+| **full array** (wlpwr) | **18.531170** | **0.717854** | **0.154123** | **0.723874** |
 
 Dynamic energy is each block's cell-internal plus net-switching power divided
 by 25.6 GMAC/s.  Static leakage remains in mW; total energy includes its
@@ -329,6 +432,8 @@ The full-chip PT-PX split is:
 | leakage | 0.154123 | 0.83% |
 
 Expressed as dynamic energy plus static leakage, the accepted result is:
+
+Also the superseded `wlpwr` route (see above — not regenerated for `spp_fixed`):
 
 | metric | value |
 |---|---:|
@@ -351,39 +456,123 @@ internal power 1.85%, and total power 0.79%; see
 
 ## Routed power versus stochastic length
 
-The accepted pending-bit `LOW_W=9` route was reused without synthesis or APR.
-Every point contains 3,072 productive clocks; magnitude and sign reload every
-`T/M` clocks while all `M=16` generated stochastic bits continue changing
-every clock.  Each max-SDF drain matches the independent streaming reference,
-and every SAIF has zero unknown time in the accumulator.
+The accepted `spp_fixed` pending-bit `LOW_W=9` route was reused without
+synthesis or APR.  Every point contains 3,072 productive clocks; magnitude and
+sign reload every `T/M` clocks while all `M=16` generated stochastic bits
+continue changing every clock.  Each max-SDF drain matches the independent
+streaming reference, and every SAIF has zero unknown time in the accumulator.
+
+`T=16` (`T/M = 1`) is the true floor: `T` must be a positive multiple of
+`M=16`, so no shorter sequence exists without narrowing the Sobol slice.
+Reaching it needed a bench change, not an RTL change.  The operand load path is
+two registers deep (one in the peripheral, one in the InnerPE `a_bits_pipe`), so
+the original bench issued the next batch at
+`(cycle % MAC_CYCLES) == MAC_CYCLES - 2` and asserted `MAC_CYCLES >= 2` because
+that index goes negative at `T/M = 1`.  The issue point is now
+`((cycle + 2) % MAC_CYCLES) == 0` — algebraically identical for
+`MAC_CYCLES >= 2` — and the prologue preloads a second batch when
+`MAC_CYCLES < 2`, so the feed runs two batches ahead of the accumulator.
+Re-measuring `T=32` after the change reproduced 0.213036 exactly.
 
 ### Compute-array boundary only
 
 | T | reuse cycles | useful MAC/cycle | array power (mW) | array pJ/MAC |
 |---:|---:|---:|---:|---:|
-| 32 | 2 | 256.000 | 17.66294 | **0.172490** |
-| 48 | 3 | 170.667 | 17.41351 | **0.255081** |
-| 64 | 4 | 128.000 | 16.53351 | **0.322920** |
-| 96 | 6 | 85.333 | 16.15920 | **0.473414** |
-| 128 | 8 | 64.000 | 15.97527 | **0.624034** |
+| 16 | 1 | 512.000 | 20.6 | **0.10059** |
+| 32 | 2 | 256.000 | 17.2 | **0.16797** |
+| 48 | 3 | 170.667 | 17.0 | **0.24902** |
+| 64 | 4 | 128.000 | 16.1 | **0.31445** |
+| 96 | 6 | 85.333 | 15.8 | **0.46289** |
+| 128 | 8 | 64.000 | 15.6 | **0.60938** |
 
 The compute-array boundary is the complete `u_pe`: all 64 arithmetic tiles,
 their stochastic-bit/sign pipeline registers, and in-array distribution.  It
 excludes the binary-to-unary peripheral, both Sobol banks, and shared top-level
 overhead.  These are therefore the isolated array-compute MAC energies, not
-full-design energies.
+full-design energies.  `u_pe` power is three significant figures — the
+hierarchy report's native precision — so the derived energies carry that.
 
 For reference, the corresponding full-design results are:
 
 | T | full power (mW) | full pJ/MAC |
 |---:|---:|---:|
-| 32 | 22.45022 | 0.219240 |
-| 48 | 21.28062 | 0.311728 |
-| 64 | 19.94216 | 0.389495 |
-| 96 | 19.10784 | 0.559800 |
-| 128 | 18.69109 | 0.730121 |
+| 16 | 27.98184 | **0.136630** |
+| 32 | 21.81484 | **0.213036** |
+| 48 | 20.67288 | **0.302825** |
+| 64 | 19.39580 | **0.378824** |
+| 96 | 18.58618 | **0.544517** |
+| 128 | 18.18701 | **0.710430** |
 
-The corresponding dynamic-energy split is:
+Energy falls with `T`, but with diminishing returns as reload power grows:
+−46.7% from `T=128` to `64`, −43.8% from `64` to `32`, −35.9% from `32` to `16`.
+Power rises 12.3 mW per unit reload rate (`M/T`) over the final halving versus
+about 9.7 mW/unit across `T=128…32`, so the trend steepens rather than
+flattening.  At `T=16` the array boundary crosses 0.1 pJ/MAC.
+
+These low-`T` points are drain-excluded, and increasingly so: at `T=16` a block
+completes every clock while the row-serial east drain needs `N_W = 8` clocks to
+empty the array, an 8x oversubscription.  They are valid energies for the
+compute performed, not sustainable system throughputs, and reaching them
+without a wider drain or a double-buffered accumulator is not possible.
+
+### What separates the two boundaries
+
+`full` minus `array` is the binary-to-unary peripheral, the two Sobol banks, and
+shared top-level glue.  Block totals from each point's `reports/power_hier.rpt`
+(three significant figures, the report's native precision):
+
+| T | total (mW) | `u_pe` (mW) | `u_peripheral` (mW) | `u_a_rng` (mW) | `u_w_rng` (mW) |
+|---:|---:|---:|---:|---:|---:|
+| 16 | 28.000 | 20.600 | **6.180** | 0.309 | 0.329 |
+| 32 | 21.800 | 17.200 | **3.670** | 0.309 | 0.329 |
+| 48 | 20.700 | 17.000 | **2.810** | 0.309 | 0.329 |
+| 64 | 19.400 | 16.100 | **2.390** | 0.309 | 0.329 |
+| 96 | 18.600 | 15.800 | **1.970** | 0.309 | 0.329 |
+| 128 | 18.200 | 15.600 | **1.750** | 0.309 | 0.329 |
+
+Two structural facts fall out.
+
+**The Sobol banks are invariant at 0.638 mW.**  They emit a fresh `M=16` slice
+every clock regardless of sequence length, so their cost is fixed per cycle and
+amortizes over more MACs as `T` shrinks.
+
+**The peripheral drives the entire low-`T` power rise.**  It reloads and
+re-compares magnitudes every clock at `T=16` instead of every eighth clock at
+`T=128`, going 1.75 -> 6.18 mW (3.5x).  That accounts for essentially all of the
+18.2 -> 28.0 mW total increase; the compute array itself only moves
+15.6 -> 20.6 mW.
+
+So the overhead grows in absolute terms while shrinking per MAC:
+
+| T | overhead (pJ/MAC) | share of full |
+|---:|---:|---:|
+| 16 | 0.03604 | 26.4% |
+| 32 | 0.04507 | 21.2% |
+| 64 | 0.06437 | 17.0% |
+| 128 | 0.10106 | 14.2% |
+
+When comparing against BP or BOS — neither of which has an analogous conversion
+or RNG cost — the **full** column is the honest one.  The array boundary is
+comparable only against another array-boundary number such as `SC_INNER_PE`.
+
+The superseded `distguide` sweep, retained because the dynamic/leakage
+decompositions below were measured there and have not been regenerated:
+
+| T | full power (mW) | full pJ/MAC | array power (mW) | array pJ/MAC |
+|---:|---:|---:|---:|---:|
+| 32 | 22.45022 | 0.219240 | 17.66294 | 0.172490 |
+| 48 | 21.28062 | 0.311728 | 17.41351 | 0.255081 |
+| 64 | 19.94216 | 0.389495 | 16.53351 | 0.322920 |
+| 96 | 19.10784 | 0.559800 | 16.15920 | 0.473414 |
+| 128 | 18.69109 | 0.730121 | 15.97527 | 0.624034 |
+
+`spp_fixed` is 2.7–2.9% lower at every T, a uniform offset consistent with a
+better route rather than a workload effect.  Leakage is flat at 0.15406 mW
+across the sweep, confirming one netlist throughout.
+
+The corresponding dynamic-energy split, measured on the superseded `distguide`
+sweep and not regenerated for `spp_fixed` (shares carry over; absolute values
+do not):
 
 | T | PE core | conversion | Sobol | shared | **total dynamic** |
 |---:|---:|---:|---:|---:|---:|
@@ -423,7 +612,9 @@ Energy uses the common 25.6 GMAC/s useful rate.
 
 | routed checkpoint | area (µm²) | setup / hold WNS (ns) | power (mW) | pJ/MAC | physical status |
 |---|---:|---:|---:|---:|---|
-| **pending-bit, LOW_W=9 + workload power opt + guides** | **51,871** | **+0.627 / +0.029** | **18.53117** | **0.723874** | clean |
+| **pending-bit, LOW_W=9 + guides + spp_fixed (accepted)** | **51,906** | **+0.499 / +0.031** | **18.17200** | **0.70984** | clean |
+| pending-bit, LOW_W=9 + guides + spp_lean | 52,007 | +0.225 / +0.030 | 18.27660 | 0.71393 | clean |
+| pending-bit, LOW_W=9 + workload power opt + guides (prior accepted) | 51,871 | +0.627 / +0.029 | 18.53117 | 0.723874 | clean |
 | pending-bit, LOW_W=9 + guides (prior route) | 52,185 | +0.558 / +0.019 | 18.67898 | 0.729648 | clean |
 | direct segmented, LOW_W=8 + guides | 50,786 | +0.230 / +0.049 | 18.78374 | 0.733740 | clean antenna-ECO export |
 | baseline + row/column guides | 51,023 | +0.279 / +0.029 | 20.62757 | 0.805764 | 9 antenna violations |
@@ -498,7 +689,14 @@ Architecture details:
 Accepted PaYN checkpoint:
 
 ```text
-apr/build/TSMC22/PAYN_SC_SIGNED_SEGMENTED/k8m16n8_lw9_distguide
+apr/build/TSMC22/PAYN_SC_SIGNED_SEGMENTED/k8m16n8_lw9_distguide_spp_fixed
+```
+
+Superseded routes, retained for the measurements still quoted from them:
+
+```text
+k8m16n8_lw9_distguide_wlpwr   18.53117 mW / 0.72387   (dynamic/leakage split)
+k8m16n8_lw9_distguide         18.67898 mW / 0.72965   (T sweep, energy splits)
 ```
 
 Current artifacts:
@@ -514,7 +712,7 @@ Reproduce the hierarchy accounting without rerunning APR or PT-PX:
 
 ```sh
 python3 sweeps/report_sc_arch_energy.py \
-  apr/build/TSMC22/PAYN_SC_SIGNED_SEGMENTED/k8m16n8_lw9_distguide/reports/cell_power.rpt \
+  apr/build/TSMC22/PAYN_SC_SIGNED_SEGMENTED/k8m16n8_lw9_distguide_spp_fixed/reports/cell_power.rpt \
   --k 8 --m 16 --nh 8 --nw 8 --t 128
 ```
 
