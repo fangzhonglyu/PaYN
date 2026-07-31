@@ -55,8 +55,11 @@ def parse_streaming_trace(path: Path) -> StreamingTrace:
     values = [int(value) for value in lines[0][1:]]
     k, m, nh, nw, width, owidth, t, n_batches = values[:8]
     rng_wrap = bool(values[8]) if len(values) == 9 else False
-    if t <= 0 or m <= 0 or t % m:
-        raise ValueError(f"T={t} must be a positive multiple of M={m}")
+    # T need not be a multiple of M: the padded-T bench executes ceil(T/M)
+    # slices per block and zeroes the top M - T%M lanes of the final slice
+    # (power_payn_array_tpad.sv).  The reference masks identically below.
+    if t <= 0 or m <= 0:
+        raise ValueError(f"T={t} and M={m} must be positive")
     cfg = ArrayCfg(
         K=k,
         M=m,
@@ -119,13 +122,14 @@ def parse_streaming_trace(path: Path) -> StreamingTrace:
 
 def streaming_reference(trace: StreamingTrace) -> np.ndarray:
     cfg = trace.cfg
-    cycles_per_batch = cfg.T // cfg.M
+    cycles_per_batch = -(-cfg.T // cfg.M)  # ceil: partial final slice
+    pad_lanes = cycles_per_batch * cfg.M - cfg.T
     rng_a = cfg.make_rng_in()
     rng_w = cfg.make_rng_w()
     acc = np.zeros((cfg.N_H, cfg.N_W), dtype=np.int64)
 
     for batch in range(trace.n_batches):
-        for _ in range(cycles_per_batch):
+        for cyc in range(cycles_per_batch):
             threshold_a = rng_a.step()
             threshold_w = rng_w.step()
             a_bits = edge_operand_bits(
@@ -144,6 +148,11 @@ def streaming_reference(trace: StreamingTrace) -> np.ndarray:
                 cfg.WIDTH,
                 1 << (cfg.WIDTH - 1),
             )
+            if pad_lanes and cyc == cycles_per_batch - 1:
+                # padded-T: the top pad_lanes lanes of the final slice are
+                # dead -- mirrors the bench's force at the u_pe boundary
+                a_bits[:, :, cfg.M - pad_lanes:] = 0
+                w_bits[:, :, cfg.M - pad_lanes:] = 0
 
             for h in range(cfg.N_H):
                 for v in range(cfg.N_W):

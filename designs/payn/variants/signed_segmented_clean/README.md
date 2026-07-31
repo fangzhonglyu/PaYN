@@ -166,9 +166,68 @@ Area falls less than cell count because the removed gates (`AOI22`, `OAI21`,
 is attributable to port pruning — the design was synthesized both with and
 without the re-export rails and the totals match to the last digit.
 
-**Power is not yet measured.** These are synthesis numbers; the accepted
-`spp_fixed` result of 0.70984 pJ/MAC belongs to `../signed_segmented` and no
-routed or PT-PX figure exists for this variant.  The removed cells sit on
-`pending_*`, which toggles at roughly the boundary-crossing rate, so the routed
-power delta should exceed the area delta — but that is a prediction until an APR
-+ gate-sim + PT-PX run confirms it.
+## Routed power: measured, and it is a wash
+
+Three `spp_fixed` arms at K8/M16/N8, all cosim bit-exact with
+`acc TX = 0.000000000%`:
+
+| arm | `INPUT_DELAY` | routed um2 | setup | pJ/MAC |
+|---|---:|---:|---:|---:|
+| accepted original | 0.05 | 51,905.700 | +0.499 | **0.70984** |
+| clean, matched recipe | 0.05 | 50,270.178 | +0.352 | 0.721225 |
+| clean, corrected constraint | 1.25 | 47,932.290 | +0.191 | 0.715879 |
+
+**The area win is real; the power win is not.**  The matched-recipe arm is the
+only apples-to-apples comparison and it lands +1.6%, which is inside this
+repo's ~2.7% route-to-route noise floor.  Full-precision block power
+(`sweeps/pt_block_power.tcl`) puts the core at 15.606469 mW original vs
+15.838451 mW clean, +1.49%.
+
+The change does exactly what it was designed to do — it is just too small to
+matter.  Per-cone drilldown on the same route
+(`sweeps/pt_pending_datapath_power.tcl`):
+
+| cone | original | clean | delta |
+|---|---|---|---:|
+| high retire update | 9,403 cells, 0.063077 mW | 2,837 cells, 0.049475 mW | **-21.6%** |
+| canonical output | 5,831 cells, 0.041391 mW | 1,018 cells, 0.035097 mW | **-15.2%** |
+| low+pending update *(untouched)* | 29,954 cells, 9.914041 mW | 29,931 cells, 10.023999 mW | +1.1% |
+
+Those two cones are ~0.10 mW of ~9.92 mW of tile combinational power, about 1%.
+Cutting 20% of 1% is 0.2%, while the untouched popcount + Wallace tree — 99.9%
+of tile combinational power at identical cell count — moves 1.1% between routes
+and swamps it.  **21% of the tile's cells were doing ~1% of its work.**
+
+One attributable cost: `pending` register switching rises 0.002599 -> 0.008125 mW
+(3.1x), because `pending_borrow` now fans out to all `HIGH_W` bits of the adder
+instead of driving select muxes.
+
+Standalone-PE synthesis, which removes placement and route variance entirely
+(`SC_SEG_PE` vs `SC_SEG_PE_CLEAN`), agrees on area and mildly disagrees on
+power — 31,879.50 -> 30,945.75 um2 (-2.93%), 39,704 -> 33,048 combinational
+cells (-16.8%), identical 2,117 sequential, DC power estimate 1.4347 -> 1.4199 mW
+(-1.03%).  That is DC's default-activity estimate, not a workload measurement.
+
+**Verdict: adopt for area, not for energy.**  See
+[`doc/results.md`](../../../../doc/results.md) for the K x M x N sweep run on
+this RTL.
+
+## Notes for anyone extending this
+
+* **Flattening is not a win.** A pre-compile `ungroup -all -flatten`
+  (`syn/scripts/flatten_pre_compile.tcl`, targets `SC_SEG_PE_FLAT` /
+  `SC_SEG_PE_CLEAN_FLAT`) helps the original PE by -2.13% and hurts this one by
+  +6.56%, and flips their ranking.  That is `compile_ultra` heuristic
+  instability on a 40k-cell flat netlist, not a property of either design.  It
+  also destroys the per-tile hierarchy the `spp_fixed` distribution guides and
+  every PT drilldown key off.
+* **The flow's `FLATTEN=1` knob is post-compile**, so it strips hierarchy from
+  an already-optimized netlist and cannot change QoR.
+* **Shapes with `K*M <= 4` needed a gate-sim flow fix to be measurable** — an
+  X appeared on the drain rail.  Root-caused as two simulation artifacts (an
+  X-pessimistic reset-cone mapping that latches power-up UDP X, and false ICG
+  setup violations from VCS zeroing negative SETUPHOLD limits), fixed with
+  `+define+ARM_UD_MODEL+define+ARM_EN_X_SQUASH +neg_tchk` in the sweep's gate
+  sims.  Not a design defect: the netlist reset function is verified against
+  random binary state by `sweeps/xcheck_reset_cone.py`.  Full story in
+  `doc/handoff_low_corner_gl_x.md`.

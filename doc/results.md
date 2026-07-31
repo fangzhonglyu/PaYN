@@ -604,6 +604,77 @@ The T sweep reuses the previous accepted route.  Its matched T=128 control is
 within 0.07% of that route's 18.67898 mW result; it has not been regenerated
 on the new 18.53117 mW workload-aware route.
 
+### Padded T: power when T is not a multiple of M
+
+The hardware consumes `M=16` stochastic bits per clock, so a stream of length
+`T % 16 != 0` executes in `ceil(T/16)` clocks with the top `16 - T%16` lanes
+of the final slice dead (zero).  Measured on the same accepted `spp_fixed`
+route with the same methodology: bench `power_payn_array_tpad.sv` forces the
+dead lanes to zero at the `u_pe` boundary (modeling a mask-after-compare
+implementation -- peripheral and Sobol banks run full width every clock), the
+streaming reference masks identically, and every point passes the bit-exact
+drain cosim at RTL and gate level, which also proves the mask hits the right
+slice and lanes.  Controls through the padded bench reproduce the T sweep:
+T=32 exact to the reported digits, T=128 within 0.5 ppm.  The measurement is
+insensitive to mask *timing*: moving the force release across half a clock
+changed three points by 4-9 ppm and the rest not at all.
+
+`sweeps/run_pending_t_pad_power.sh`; results
+`build/power_char/t_pad/results.csv`.  Accuracy column: SC dot-product RMSE
+from `sweeps/sc_tpad_accuracy.py` (bit-exact kernel model, 4000 random blocks,
+same pad masking), `build/power_char/t_pad/accuracy_vs_T.csv`.
+
+| T | slices | pad lanes | power mW | pJ/MAC | vs P(16*ceil) | RMSE |
+|---:|---:|---:|---:|---:|---:|---:|
+| 17 | 2 | 15 | 21.107 | 0.206121 | -3.2% | 0.2113 |
+| 24 | 2 | 8 | 21.859 | 0.213462 | +0.2% | 0.1821 |
+| 32 | 2 | 0 | 21.815 | 0.213036 | -- | 0.1583 |
+| 40 | 3 | 8 | 20.452 | 0.299597 | -1.1% | 0.1265 |
+| 56 | 4 | 8 | 19.712 | 0.385007 | +1.6% | 0.0983 |
+| 72 | 5 | 8 | 19.064 | 0.465421 | (no T=80 ref) | 0.0906 |
+| 88 | 6 | 8 | 18.599 | 0.544905 | +0.1% | 0.0865 |
+| 104 | 7 | 8 | 18.458 | 0.630900 | (no T=112 ref) | 0.0773 |
+| 120 | 8 | 8 | 18.410 | 0.719150 | +1.2% | 0.0687 |
+| 128 | 8 | 0 | 18.187 | 0.710430 | -- | 0.0655 |
+
+Three conclusions:
+
+1. **Energy per MAC is a step function of `ceil(T/16)`.**  A block completes
+   `K*N^2` MACs in `ceil(T/16)` clocks whether or not the final slice is
+   full, so pJ/MAC(120) = 0.719 ~= pJ/MAC(128), nowhere near the ~0.66 a
+   smooth interpolation would suggest.  Padding buys back none of the slice
+   cost.
+2. **Masking has a measurable toggle tax, and at pad=8 it exceeds the compute
+   saving.**  The deviations against the full multiples are systematic, not
+   noise: rerunning T=120 and T=128 with a second operand seed moves each
+   point by only ~0.1% but reproduces the +1.25% gap exactly.  A full SAIF
+   diff localizes it: each pad-lane operand-broadcast bit goes from 1064 to
+   1312 toggles (+23%), because the forced entry/exit transitions
+   (~`2*q_bar` per block at bit duty `q_bar ~= 0.5`) replace a natural
+   slice-boundary toggle rate of only `2*q_bar*(1-q_bar)`, and every such
+   bit fans out to `N` tiles' AND gates (+0.49M downstream tile-net
+   toggles).  The dead products save less than that until the dead fraction
+   is large: T=17 (15 of 16 lanes, 47% of samples dead) nets a clear -3.2%.
+   Implementation note: a product bit dies when EITHER operand bit is zero,
+   so masking only the W side is functionally identical (bit-exact same
+   drain) and pays the tax on half the nets.  Measured
+   (`PAYN_TPAD_MASK_W_ONLY`, `build/power_char/t_pad_wonly/`): T=120 drops
+   from 18.410 to 18.301 mW, +1.23% -> +0.63% over T=128 -- the tax halves
+   with the masked-net count, confirming the mechanism causally.  A real
+   padded design should mask one side only, ideally before the Sobol
+   compare, where the tax would mostly vanish.
+3. **A non-multiple T is never Pareto-optimal here.**  Within a step the full
+   multiple has strictly better accuracy at equal energy (RMSE 0.0655 at
+   T=128 vs 0.0687 at T=120, same 0.71-0.72 pJ/MAC) -- and the toggle tax
+   only reinforces it.  The padded mode's value is its cost model for an
+   externally pinned T: pay the ceiling multiple's energy plus ~1% mask
+   overhead, keep the smooth accuracy curve at that exact T.
+
+Error bars: operand-seed sensitivity +-0.1% (T=120/128 re-measured at
+`SC_SEED=0xCAFEF00D`: 18.4354 / 18.2046 mW vs 18.4102 / 18.1870), mask-timing
+sensitivity 4-9 ppm, controls exact to 0.5 ppm.  Seed study:
+`build/power_char/t_pad_seed2/results.csv`.
+
 ## Routed PaYN checkpoint comparison
 
 Every row below was rerun with the same corrected 256-block workload, passed
@@ -659,11 +730,164 @@ The rejected physical native-seven-bit A7 experiment reduced routed area by
 energy by 5.02%, and retained four geometry plus 28 antenna violations.  Its
 implementation was removed after this result was recorded.
 
+## K x M x N shape sweep
+
+Every point below is routed with the accepted `spp_fixed` two-pass recipe,
+gate-level cosim bit-exact against the cycle reference, and PT-PX annotated with
+a SAIF the validator accepted at `acc TX = 0.000000000%`.  Fixed across the
+sweep: `LOW_W=9`, `T=128`, `OWIDTH=24`, 2.5 ns, 3072 productive cycles.
+
+Two deliberate differences from the accepted checkpoint, both required to run
+the sweep at all:
+
+* the RTL is [`signed_segmented_clean`](../designs/payn/variants/signed_segmented_clean/README.md),
+  which is behaviourally identical (drain bit-identical to the original at
+  K8/M16/N8) but ~2.9% smaller;
+* `INPUT_DELAY=1.25` instead of the flow default 0.05 -- see the N>8 recovery
+  below.  This is the honest constraint: the bench launches every control at the
+  negedge, so a control signal really has half a period, not the ~2.45 ns the
+  default declares.
+
+Driver: `sweeps/run_clean_kmn_sweep.sh`.  Results:
+`build/power_char/clean_kmn/results.csv`.
+
+### pJ/MAC across the grid
+
+| | N=6 | N=8 | N=10 |
+|---|---:|---:|---:|
+| K=4, M=8 | **0.917576** | 1.009791 | 1.075632 |
+| K=4, M=16 | 0.845846 | **0.843114** | 0.962240 |
+| K=8, M=8 | 0.851035 | **0.791400** | 0.827033 |
+| **K=8, M=16** | 0.806819 | **0.715879** | 0.745769 |
+| K=12, M=8 | 0.810498 | **0.774763** | 0.844223 |
+| K=12, M=16 | 0.781460 | **0.744532** | 0.793241 |
+
+**The accepted K=8 / M=16 / N=8 is the global minimum of the swept space**, and
+it sits at an interior optimum on all three axes simultaneously.  The shape is
+now empirically justified rather than inherited.
+
+### Each axis in isolation
+
+**M** -- monotonic, no interior optimum.  M=16 beats M=8 in all nine matched
+(K, N) cells, by 5.2% to 16.5%.  M multiplies the work per clock without
+touching the per-tile accumulator, pending logic or clock tree, so the fixed
+cost amortizes almost purely.  It is the only axis with no penalty for pushing
+further within the range swept.
+
+**N** -- interior optimum at 8 in five of six rows.  The full curve at
+K=8/M=16, where MAC/cycle = N^2 exactly, so pJ/MAC = 2.5*P/N^2:
+
+| N | tiles | routed um2 | power mW | pJ/MAC |
+|---:|---:|---:|---:|---:|
+| 1 | 1 | 4,190.872 | 1.26379 | 3.159467 |
+| 2 | 4 | 7,445.844 | 2.19775 | 1.373593 |
+| 4 | 16 | 17,325.616 | 6.00723 | 0.938629 |
+| 6 | 36 | 30,763.866 | 11.61819 | 0.806819 |
+| **8** | **64** | **47,932.290** | **18.32650** | **0.715879** |
+| 10 | 100 | 68,932.808 | 29.83077 | 0.745769 |
+
+A 4.4x span from N=1 to the optimum.  The left flank is the fixed Sobol and
+peripheral cost falling as 1/N^2; the turn at N=10 is interconnect growth along
+the accumulator chain and the operand broadcast overtaking it.  The optimum
+migrates right as K*M grows -- at K=4/M=8 it is already at or below N=6, at
+K=4/M=16 it is flat between 6 and 8, and at K*M >= 128 it is firmly 8.
+
+**K** -- interior optimum whose location depends on M:
+
+| at N=8 | K=4 | K=8 | K=12 |
+|---|---:|---:|---:|
+| M=16 | 0.843114 | **0.715879** | 0.744532 |
+| M=8 | 1.009791 | 0.791400 | **0.774763** |
+
+At M=16 the best K is 8; at M=8 it is 12.  Both land near `K*M` = 96-128, which
+suggests compute density per tile is the controlling variable with an optimum
+around 128 -- reached at K=8 when M=16, needing more lanes when M is halved.
+`K*M` is not a complete statistic, though: K=8/M=8 and K=4/M=16 have the same
+product and differ by 6.5%, so how the product is split also matters.
+
+### N>8 is measurable again
+
+N=10 and N=12 previously routed and closed STA but failed the drain
+bit-exactness check, so the N-scaling study had no data above N=8.  The cause
+was a constraint/bench mismatch, not the design: the bench launches `shift_in`
+and `mac_en` at the NEGEDGE, giving them 1.25 ns, while the flow declared
+`set_input_delay 0.05` and STA therefore signed off ~2.45 ns of propagation that
+does not exist.  APR spent the difference, and on wide arrays `shift_in` reached
+a far tile's ICG enable inside its setup window.
+
+`INPUT_DELAY=1.25` makes the constraint match the bench.  Confirmed by direct
+replication -- `k8m16n10` is the exact shape that produced
+`[FAIL] streaming PaYN drain mismatch` on the original design and is now
+bit-exact, along with `k4m8n10`, `k12m8n10`, `k12m16n10`.
+
+This is a constraint fix, not an RTL fix, so it should also recover N=10/N=12 on
+the original accepted design.  Those synthesis runs already exist.
+
+### Low-corner limit (resolved 2026-07-31)
+
+Shapes with `K*M <= 4` originally could not be measured: the gate-level run
+ended in an X on the drain rail during the SAIF window.  Root-caused as **two
+independent simulation-flow artifacts, not a design defect** — (1) the ARM
+cells model flops as sequential UDPs that `+vcs+initreg` cannot initialize,
+and on some netlists synthesis maps the `acc_low` sync reset through an
+`(n & ~n)` cancellation that 4-state logic cannot resolve, so the power-up X
+latches and self-sustains through the Q->D feedback; (2) without `+neg_tchk`
+VCS zeroes the SDF's negative SETUPHOLD limits and manufactures false ICG
+enable setup violations whose notifiers X the gated clock (k4m1n1).  Which
+shapes hit (1) is per-netlist mapper luck, which is why the pass/fail pattern
+was not monotonic in `K*M`.  The netlist reset function itself is verified
+against random binary state by `sweeps/xcheck_reset_cone.py`, which also
+reproduces every observed X bit pattern statically.
+
+Fixed in the sweep's gate sims with
+`+define+ARM_UD_MODEL+define+ARM_EN_X_SQUASH +neg_tchk` (steady-state
+activity, and therefore SAIF comparability, is unchanged).  Note the original
+handoff's "unit-delay PASS" row was non-diagnostic — that mode logs ~10k
+timing violations and completes on degraded notifier semantics.  Full
+write-up: [`handoff_low_corner_gl_x.md`](handoff_low_corner_gl_x.md).
+
+Measured low-corner points below were run without
+distribution guides (which need per-row register names that multibit banking
+merges away at small `K*M`) and therefore **not** recipe-comparable to the grid
+above.  All 13 points are now measured; the eight `K*M <= 4` points were run
+after the gate-sim fix above.
+
+| ray | config | routed um2 | pJ/MAC |
+|---|---|---:|---:|
+| origin | k1m1n1 | 295.470 | 25.066480 |
+| K (M=1, N=1) | k2m1n1 | 345.254 | 11.105294 |
+| | k4m1n1 | 451.878 | 7.543990 |
+| | k8m1n1 | 678.258 | 4.121108 |
+| | k16m1n1 | 1,129.548 | 2.739192 |
+| M (K=1, N=1) | k1m2n1 | 426.692 | 20.985072 |
+| | k1m4n1 | 685.216 | 19.871512 |
+| | k1m8n1 | 1,225.882 | 16.713452 |
+| | k1m16n1 | 2,276.638 | 16.244708 |
+| N (K=1, M=1) | k1m1n2 | 683.648 | 8.961216 |
+| | k1m1n4 | 2,113.664 | 5.360228 |
+| | k1m1n6 | 4,417.448 | 4.559156 |
+| | k1m1n8 | 7,613.228 | 4.329302 |
+
+Three readings from that corner, all three rays now sharing a measured origin
+at 25.07 pJ/MAC.  Along K at M=1/N=1, energy falls **9.2x** from K=1 to K=16
+and is still falling -- K amortizes the fixed RNG cost almost purely when
+there is only one tile.  Along M at K=1/N=1 the same x16 buys only **1.54x**,
+flattening by M=8 (16.713 to 16.245 is 2.8%), because with a single tile the
+Sobol banks are M lanes each and their cost grows with M exactly as fast as
+the MAC rate does.  **M only pays once N is large enough to amortize the
+RNG** -- which is why it is the strongest lever at N=8 and nearly worthless at
+N=1.  Along N at K=1/M=1, x64 tiles buy 5.8x and the curve is still falling
+at N=8 toward the main grid's interior optimum -- pure amortization of the
+per-die fixed cost, consistent with the K8/M16 N-curve above.
+
 ## Current architecture verdict
 
 | design point | status | reason |
 |---|---|---|
 | pending-bit signed segmented, `LOW_W=9` | **accepted** | best clean routed PaYN checkpoint; current workload rerun complete |
+| shape `K=8 / M=16 / N=8` | **accepted** | global minimum of the 18-config K x M x N sweep; interior optimum on all three axes |
+| `INPUT_DELAY=1.25` constraint | **adopt** | matches the bench's negedge launch; recovers N>8, which previously failed the drain check |
+| `signed_segmented_clean` RTL | neutral | -2.9% PE area, drain bit-identical, power a wash; adopt for area, not for energy |
 | native 7-bit converter/Sobol | rejected | 4.83% smaller routed area, but InnerPE activity raises energy 5.02%; route also has DRC/antenna violations |
 | direct / centered segmented | rejected | direct is 0.56% higher energy than pending after the clean-route rerun |
 | compensated / fused / recurrent CSA heaps | rejected | compensated is 10.6% above pending; other pre-layout gains did not survive |

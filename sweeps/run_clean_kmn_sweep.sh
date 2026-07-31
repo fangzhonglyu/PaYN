@@ -41,6 +41,14 @@ TOP=payn_array_signed_segmented_clean
 SRC=designs/payn/variants/signed_segmented_clean/payn_array_signed_segmented_clean.sv
 TB=designs/payn/power/power_payn_array.sv
 LW=9; T=128; PERIOD=2.5; TOTAL_CYCLES=3072; IDLY=1.25
+# Distribution guides spread N*N tiles across the die.  They need each row's
+# a_bits_pipe/w_bits_pipe registers to be findable by a per-row name prefix, and
+# at small K*M multibit banking merges rows 0+1, 2+3, ... into shared cells --
+# the guide script then finds nothing for rows >= 1 and aborts.  For the tiny
+# low-corner shapes the guides are meaningless anyway (there is nothing to
+# spread), so run those with GUIDES=0.  Runs are named for which was used, so
+# guided and unguided results never collide.
+GUIDES=${GUIDES:-1}
 
 OUT=build/power_char/clean_kmn
 CSV=$OUT/results.csv
@@ -65,19 +73,42 @@ run_cfg() {
     # Guard the two invariants the RTL and the pJ/MAC arithmetic depend on.
     if [ $((1 << LW)) -lt $((K * M)) ]; then
         echo "$cfg,$K,$M,$N,,,,,,,,LOW_W_TOO_SMALL"; emit "$cfg,$K,$M,$N,,,,,,,,LOW_W_TOO_SMALL"; return 1; fi
-    if [ $((T % M)) -ne 0 ] || [ $(((K * M * N * N) % T)) -ne 0 ]; then
-        emit "$cfg,$K,$M,$N,,,,,,,,NON_INTEGER_SHAPE"; return 1; fi
+    if [ $((T % M)) -ne 0 ]; then
+        emit "$cfg,$K,$M,$N,,,,,,,,T_NOT_DIVISIBLE_BY_M"; return 1; fi
 
     local MAC_CYCLES=$((T / M))
     local N_BATCHES=$((TOTAL_CYCLES / MAC_CYCLES))
-    local MAC_PER_CYCLE=$((K * M * N * N / T))
+    [ "$N_BATCHES" -ge 1 ] || { emit "$cfg,$K,$M,$N,,,,,,,,NO_BATCHES"; return 1; }
+    # A rate, not a count.  Degenerate shapes retire less than one MAC per clock
+    # (K=M=N=1 is 1/128), so this must stay fractional -- bash integer division
+    # would floor it to 0 and the pJ/MAC divide would blow up.
+    local MAC_PER_CYCLE
+    MAC_PER_CYCLE=$(python3 -c "print($K*$M*$N*$N/$T)")
 
     local log=$OUT/$cfg.log
     local synrun=${cfg}_lw${LW}_id125
-    local apr1=${synrun}_distguide
-    local apr2=${synrun}_distguide_spp_fixed
+    local gtag; if [ "$GUIDES" = 1 ]; then gtag=distguide; else gtag=noguide; fi
+    local apr1=${synrun}_${gtag}
+    local apr2=${synrun}_${gtag}_spp_fixed
     local syn_dir=syn/build/$TARGET/$synrun
     local defs="+define+PAYN_ARRAY_DUT=$TOP+define+SC_K=$K+define+SC_M=$M+define+SC_NH=$N+define+SC_NW=$N+define+SC_OWIDTH=24+define+SC_T=$T+define+SC_BATCHES=$N_BATCHES"
+    # Gate-sim X hygiene -- root causes and evidence in
+    # doc/handoff_low_corner_gl_x.md (resolved 2026-07-31):
+    #  * ARM_UD_MODEL + ARM_EN_X_SQUASH: the ARM cells model flops as
+    #    sequential UDPs, which +vcs+initreg cannot initialize, so every
+    #    register powers up X.  At K*M <= 4 synthesis maps the acc_low sync
+    #    reset through an (n & ~n) cancellation that 4-state logic cannot
+    #    resolve, and the Q->D feedback locks the X in permanently.  The
+    #    squash define replaces X on a sequential UDP output with 0 at the
+    #    library's own hook.  Steady-state activity is untouched, so SAIF
+    #    from earlier runs without the define stays comparable.
+    #  * +neg_tchk: honor negative SETUPHOLD/RECREM limits from the SDF.
+    #    Without it VCS zeroes them ("Negative SETUPHOLD value replaced by
+    #    0") and manufactures false ICG enable setup violations whose
+    #    notifiers X the gated clock (k4m1n1: E at CK-9ps against a true
+    #    window ending at CK-17ps).  STA uses the negative values and
+    #    passes these paths.
+    local glargs="$defs+define+ARM_UD_MODEL+define+ARM_EN_X_SQUASH +neg_tchk"
 
     echo "[$cfg] K=$K M=$M N=$N MAC/cycle=$MAC_PER_CYCLE batches=$N_BATCHES" | tee -a "$log"
 
@@ -108,7 +139,7 @@ run_cfg() {
     #----------------------------------------------------------- APR pass 1 ---
     if [ ! -f "apr/build/$TARGET/$apr1/outputs/$TOP.apr.v" ]; then
         echo "[$cfg] APR pass 1 (distribution guides, bootstrap)" | tee -a "$log"
-        SC_DISTRIBUTION_GUIDES=1 SC_NH=$N SC_NW=$N \
+        SC_DISTRIBUTION_GUIDES=$GUIDES SC_NH=$N SC_NW=$N \
         SYNTH_RUN=$synrun RUN_NAME=$apr1 make apr TARGET=$TARGET >> "$log" 2>&1
     fi
     [ -f "apr/build/$TARGET/$apr1/outputs/$TOP.apr.v" ] || {
@@ -117,7 +148,7 @@ run_cfg() {
     echo "[$cfg] pass-1 gate sim -> bootstrap activity" | tee -a "$log"
     local bdir1=$OUT/${cfg}_gl_boot
     make sim GL=apr TARGET=$TARGET RUN=$apr1 TB=$TB BUILD_DIR=$bdir1 \
-         VCS_ARGS="$defs" >> "$log" 2>&1
+         VCS_ARGS="$glargs" >> "$log" 2>&1
     local boot_saif="apr/build/$TARGET/$apr1/activity/dut.saif"
     mkdir -p "apr/build/$TARGET/$apr1/activity"
     cp -f "$(readlink -f $bdir1/$TB/dut.saif)" "$boot_saif" 2>/dev/null
@@ -128,7 +159,7 @@ run_cfg() {
     APR_WORKLOAD_POWER_OPT=1 \
     APR_ACTIVITY_FILE="$(readlink -f "$boot_saif")" APR_ACTIVITY_SCOPE=Top/dut \
     APR_LEAKAGE_TO_DYNAMIC_RATIO=0.0 APR_DETAIL_WIRE_LENGTH_OPT_EFFORT=high \
-    SC_DISTRIBUTION_GUIDES=1 SC_NH=$N SC_NW=$N \
+    SC_DISTRIBUTION_GUIDES=$GUIDES SC_NH=$N SC_NW=$N \
     SYNTH_RUN=$synrun RUN_NAME=$apr2 make apr TARGET=$TARGET >> "$log" 2>&1
     local A2=apr/build/$TARGET/$apr2
     [ -f "$A2/outputs/$TOP.apr.v" ] || {
@@ -151,7 +182,7 @@ run_cfg() {
     # let a failed pass-2 sim through.
     local glog=$OUT/${cfg}_glsim2.log
     make sim GL=apr TARGET=$TARGET RUN=$apr2 TB=$TB BUILD_DIR=$bdir2 \
-         VCS_ARGS="$defs" > "$glog" 2>&1
+         VCS_ARGS="$glargs" > "$glog" 2>&1
     cat "$glog" >> "$log"
     grep -q "PASS:" "$glog" || {
         emit "$cfg,$K,$M,$N,$sarea,$sslack,$aarea,$wns,$hold,,,GLSIM_FAIL"; return 1; }
