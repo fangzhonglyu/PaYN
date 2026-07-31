@@ -1,0 +1,15 @@
+#!/bin/bash
+# Cleaned pending-bit PaYN array: identical behaviour and hierarchy names to
+# PAYN_SC_SIGNED_SEGMENTED, but the tile's +1 and -1 chains and their two select
+# banks collapse into one shared HIGH_W adder, and the PE's tied-off systolic
+# pass-through ports are removed.  Same knobs as the accepted target so an A/B
+# against it is apples-to-apples.  Override LOW_W with
+# SYN_DEFINES=PAYN_SEG_LOW_W=<n>.
+export TOP=payn_array_signed_segmented_clean
+export TECH=TSMC22
+export SRC_SV="payn/variants/signed_segmented_clean/payn_array_signed_segmented_clean.sv"
+export PERIOD=2.5
+export TSMC22_HPK=1
+export MULTIBIT_INFER=1
+export CLOCK_GATE=1
+export RTL_PREFLIGHT_CMD=${RTL_PREFLIGHT_CMD:-"BUILD_DIR=build/rtl_preflight/signed_segmented_clean SIM_SRCS=designs/payn/variants/signed_segmented_clean/payn_array_signed_segmented_clean.sv VCS_ARGS=+define+PAYN_ARRAY_EXTERNAL_RTL+PAYN_ARRAY_DUT=payn_array_signed_segmented_clean+define+SC_K=8+define+SC_M=16+define+SC_NH=8+define+SC_NW=8+define+SC_OWIDTH=24+define+SC_T=128 bash designs/payn/cosim/run_array.sh"}

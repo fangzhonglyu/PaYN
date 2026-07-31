@@ -116,6 +116,21 @@ module Top;
         if (monitor_x && $isunknown(acc_out_east))
             $fatal(1, "[X-FAIL] SC drain rail entered X during SAIF: %h", acc_out_east);
 
+`ifdef PAYN_XTRACE
+    // Debug only: dump the whole DUT so an X transition can be traced to its
+    // source net.  Never defined in normal power runs.
+    //   PAYN_XTRACE        : dump from t=0 (startup X; the $fatal ends the run)
+    //   +PAYN_XTRACE_DRAIN : hold the dump off until just before the drain, so
+    //                        the ~7.7 ms window stays a tractable file size
+    initial begin
+        $dumpfile("xtrace.vcd");
+        $dumpvars(0, dut);
+`ifdef PAYN_XTRACE_DRAIN
+        $dumpoff;
+`endif
+    end
+`endif
+
     `PAYN_ARRAY_DUT #(
         .K(K), .M(M), .N_H(N_H), .N_W(N_W), .WIDTH(WIDTH), .OWIDTH(OWIDTH)
 `ifdef PAYN_BLOCK_FINALIZE
@@ -226,6 +241,14 @@ module Top;
             load_w_sign = 1'b0;
         end
         @(posedge clk);
+        // Assert mac_en here, immediately after this posedge, rather than at the
+        // negedge below.  It gates acc_low's clock; the SDC constrains it with
+        // `set_input_delay 0.05`, so STA verified ~a full period of propagation,
+        // while a negedge launch grants only half.  On wide arrays it then reaches
+        // the shared acc_low ICG ~46 ps before the edge against a 55 ps setup,
+        // the notifier drives ENCLK to X, and the X lands in the accumulator.
+        // The first accumulating edge is unchanged -- this only buys setup margin.
+        mac_en = 1'b1;
         @(negedge clk);
         load_a = 1'b0;
         load_w = 1'b0;
@@ -243,7 +266,7 @@ module Top;
 `endif
         $set_toggle_region(dut);
         monitor_x = 1'b1;
-        mac_en = 1'b1;
+        // mac_en was asserted one half-cycle earlier (see above) for setup margin.
         $toggle_start;
         // MAC_CYCLES=1 opened the window with batch 1 already issued.
         next_batch = (MAC_CYCLES < 2 && N_BATCHES > 1) ? 2 : 1;
@@ -297,7 +320,19 @@ module Top;
         monitor_x = 1'b0;
         $toggle_report("dut.saif", 1.0e-12, "Top.dut");
 
+`ifdef PAYN_XTRACE_DRAIN
+        $dumpon;   // arm the dump for the drain only
+`endif
         // ---- drain outside SAIF; append the observed matrix to the trace ----
+        // Align to a posedge, then assert shift_in immediately after it.  shift_in
+        // gates acc_high; the SDC constrains it with `set_input_delay 0.05`, so STA
+        // verified ~a full period to cross the array.  Asserting at the negedge (as
+        // the plain `shift_in = 1` here used to) grants only half, and on wide
+        // arrays it reaches the far tiles' ICG enable inside the setup window --
+        // the notifier then drives ENCLK to X and corrupts the drained value.
+        // Traced at N=12: clk_gate_acc_high X at t=7704737, ~26 ps after the edge.
+        // The alignment edge itself has mac_en=0 and shift_in=0, so it shifts
+        // nothing and additionally retires any pending carry/borrow.
         acc_in_west = '0;
         shift_in = 1'b1;
         for (int s = 0; s < N_W; s++) begin

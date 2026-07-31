@@ -1,0 +1,11 @@
+#!/bin/bash
+# Standalone cleaned segmented InnerPE.  Port-for-port identical to SC_SEG_PE;
+# the two runs differ only in the PE instantiated, so any delta is the shared
+# HIGH_W adder replacing the two +-1 chains and their two select banks.
+export TOP=sc_seg_clean_pe_k8m16n8_lw9
+export TECH=TSMC22
+export SRC_SV="payn/variants/signed_segmented_clean/pe_top_signed_segmented_clean.sv"
+export PERIOD=2.5
+export TSMC22_HPK=1
+export MULTIBIT_INFER=1
+export CLOCK_GATE=1

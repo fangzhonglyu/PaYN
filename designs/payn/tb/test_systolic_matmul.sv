@@ -11,7 +11,16 @@
 `include "common/clk_util.sv"
 `include "payn/sobol.sv"
 `include "payn/pe_peripheral.sv"
+// Default to the accepted variant.  Pass SIM_SRCS=<grid file> together with
+// +define+PAYN_GRID_EXTERNAL_RTL+define+PAYN_GRID_DUT=<module> to run the same
+// regression against another grid (e.g. signed_segmented_clean).
+`ifndef PAYN_GRID_EXTERNAL_RTL
 `include "payn/variants/signed_segmented/inner_pe_grid_signed_segmented.sv"
+`endif
+
+`ifndef PAYN_GRID_DUT
+`define PAYN_GRID_DUT InnerPESignedSegmentedGrid
+`endif
 
 module Top;
     localparam int P_ROWS = 8;
@@ -200,7 +209,7 @@ module Top;
         end
     end
 
-    InnerPESignedSegmentedGrid #(
+    `PAYN_GRID_DUT #(
         .P_ROWS(P_ROWS),
         .P_COLS(P_COLS),
         .K(K),

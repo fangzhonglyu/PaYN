@@ -1,0 +1,13 @@
+#!/bin/bash
+# Standalone segmented InnerPE (the SC compute core: 8x8 tile array, K8/M16/
+# OW24/LOW_W9) synth.  Isolates u_pe -- ~86% of full-design power -- so a
+# core-only A/B is not diluted by the peripheral, Sobol banks and glue.
+# Same library and knobs as PAYN_SC_SIGNED_SEGMENTED so the comparison holds.
+# The M=16 stochastic streams enter as ports here; on-chip wires in the array.
+export TOP=sc_seg_pe_k8m16n8_lw9
+export TECH=TSMC22
+export SRC_SV="payn/variants/signed_segmented/pe_top_signed_segmented.sv"
+export PERIOD=2.5
+export TSMC22_HPK=1
+export MULTIBIT_INFER=1
+export CLOCK_GATE=1
