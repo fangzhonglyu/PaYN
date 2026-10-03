@@ -60,12 +60,14 @@ FRESH=${FRESH:-0}
 RTL_SAIF_VCS_ARGS=""
 
 # ---- design table --------------------------------------------------------
-# name | target | top | power_bench | validator | Tdefine | Tvalues
+# name | target | top | power_bench | validator | Tdefine | Tvalues | optional VCS flags
 TABLE=(
   "BP_ARRAY|TSMC22/BP_ARRAY|array_8|designs/baselines/binary_parallel/power/power_array_8.sv|validate_power_saif.py|STIM_CYCLES_N|4096"
   "BP_ARRAY_ASYM|TSMC22/BP_ARRAY_ASYM|array_8_asym_corr_v2|designs/baselines/binary_parallel/power/power_array_8_asym_corr_v2.sv|validate_power_saif.py|STIM_CYCLES_N|4096"
   "BS_ARRAY|TSMC22/BS_ARRAY|array_8|designs/baselines/binary_serial/power/power_array_8.sv|validate_power_saif.py|STIM_CYCLES_N|4096"
   "BOS_ARRAY|TSMC22/BOS_ARRAY|binary_os_array|designs/baselines/binary_os/power/power_binary_os_array.sv|validate_power_saif.py|STIM_CYCLES_N|4096"
+  "BOS_ARRAY_INT6|TSMC22/BOS_ARRAY_INT6|binary_os_array_int6|designs/baselines/binary_os/power/power_binary_os_array.sv|validate_power_saif.py|STIM_CYCLES_N|4096|+define+BOS_IWIDTH=6+define+BOS_GL_DUT=binary_os_array_int6 +neg_tchk +sdfverbose"
+  "BOS_ARRAY_INT4|TSMC22/BOS_ARRAY_INT4|binary_os_array_int4|designs/baselines/binary_os/power/power_binary_os_array.sv|validate_power_saif.py|STIM_CYCLES_N|4096|+define+BOS_IWIDTH=4+define+BOS_GL_DUT=binary_os_array_int4 +neg_tchk +sdfverbose"
   "BOS_ARRAY_ASYM|TSMC22/BOS_ARRAY_ASYM|binary_os_array_asym|designs/baselines/binary_os/power/power_binary_os_array_asym.sv|validate_power_saif.py|STIM_CYCLES_N|4096"
   "UR_ARRAY|TSMC22/UR_ARRAY|array_8|designs/baselines/unary_rate/power/power_array_8.sv|validate_power_saif.py|RATE_LEN_N|64,128,256"
   "UT_ARRAY|TSMC22/UT_ARRAY|array_8|designs/baselines/unary_temporal/power/power_array_8.sv|validate_power_saif.py|RATE_LEN_N|64,128,256"
@@ -90,7 +92,7 @@ fi
 
 overall=0
 for row in "${TABLE[@]}"; do
-  IFS='|' read -r name target top bench validator tdef tvals <<< "$row"
+  IFS='|' read -r name target top bench validator tdef tvals variant_args <<< "$row"
   want "$name" || continue
   log "===== $name ($target) ====="
   dlog="$OUT/$name"; mkdir -p "$dlog"
@@ -105,7 +107,7 @@ for row in "${TABLE[@]}"; do
     sbd="build/syn_saif/$name"
     log "  rtl workload SAIF (${tdef}=${_t0[0]}) ..."
     make -C "$REPO" --no-print-directory sim GL= TARGET= TOP=Top TB="$bench" \
-         BUILD_DIR="$sbd" VCS_ARGS="$RTL_SAIF_VCS_ARGS +define+${tdef}=${_t0[0]}" \
+         BUILD_DIR="$sbd" VCS_ARGS="$RTL_SAIF_VCS_ARGS $variant_args +define+${tdef}=${_t0[0]}" \
          > "$dlog/syn_saif.log" 2>&1
     ssaif="$REPO/$sbd/$bench/dut.saif"
     if [ ! -s "$ssaif" ] || ! grep -q "(INSTANCE " "$ssaif"; then
@@ -155,7 +157,7 @@ for row in "${TABLE[@]}"; do
 
     # gate-level sim (routed SDF, timing checks on) -> dut.saif
     make -C "$REPO" sim GL=apr TARGET="$target" RUN="$aprrun" \
-         TB="$bench" VCS_ARGS="+define+${tdef}=${T}" \
+         TB="$bench" VCS_ARGS="$variant_args +define+${tdef}=${T}" \
          > "$wlog/sim.log" 2>&1
     if ! grep -q "PASS:" "$wlog/sim.log" || [ ! -f "$saif" ]; then
       log "    SIM/FUNC FAIL (see $wlog/sim.log)"

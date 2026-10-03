@@ -1,0 +1,21 @@
+#!/bin/sh
+# Matched A7 full-array experiment with the 11-FA / 4-HA popcount16 network.
+# DC may optimize and remap the arithmetic in this arm.
+export TOP=payn_array_signed_segmented_popcount
+export TECH=TSMC22
+export SRC_SV="payn/variants/signed_segmented_popcount/payn_array_signed_segmented_popcount.sv"
+export PERIOD=2.5
+export INPUT_DELAY=1.25
+export OUTPUT_DELAY=0.05
+export TSMC22_CELL_TIER=sc7mcpp140z
+export TSMC22_LIB_FLAVORS=svt_c30
+export TSMC22_HPK_FLAVORS=svt_c30
+# Match routed control: only zero-pin, zero-capacitance bus holes are static.
+export ZERO_PINLESS_NET_ACTIVITY=1
+export TSMC22_HPK=1
+export MULTIBIT_INFER=1
+export CLOCK_GATE=1
+export SYN_DEFINES="${SYN_DEFINES:-PAYN_K=8 PAYN_M=16 PAYN_NH=8 PAYN_NW=8 PAYN_SEG_LOW_W=9}"
+export SYN_AREA_HIGH_EFFORT=0
+unset POST_LOAD_SCRIPT
+export RTL_PREFLIGHT_CMD=${RTL_PREFLIGHT_CMD:-"BUILD_DIR=build/rtl_preflight/popcount_inferred SIM_SRCS=designs/payn/variants/signed_segmented_popcount/payn_array_signed_segmented_popcount.sv VCS_ARGS=+define+PAYN_ARRAY_EXTERNAL_RTL+define+PAYN_ARRAY_DUT=payn_array_signed_segmented_popcount+define+PAYN_SEG_LOW_W=9+define+SC_K=8+define+SC_M=16+define+SC_NH=8+define+SC_NW=8+define+SC_OWIDTH=24+define+SC_T=128 bash designs/payn/cosim/run_array.sh"}

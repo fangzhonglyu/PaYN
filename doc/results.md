@@ -6,6 +6,104 @@ and the comparisons needed to interpret them.  Experiment commands and
 historical design points live in [`experiments.md`](experiments.md) and the
 linked design notes.
 
+## Carry-save lane interface (2026-10-02)
+
+The [`signed_segmented_csa`](../designs/payn/variants/signed_segmented_csa/README.md)
+variant is exact and drains bit-identically. Each M=16 lane counter stops
+before its half-adder ripple: the five redundant count bits have weights
+summing to 16, so a negative lane needs only five XORs, plus one shared
+`-16 * negatives` heap correction per tile. Same K8/M16/N8, LOW_W=9, T=128
+recipe and two-pass routed campaign as the counter results below.
+
+| implementation | routed cell area (um2) | power (mW) | pJ/MAC | setup / hold WNS (ns) |
+|---|---:|---:|---:|---:|
+| matched cleaned baseline | 47,932.290 | 18.32650 | 0.715879 | +0.191 / +0.167 |
+| popcount, library-mapped | 46,648.392 | 17.53869 | 0.685105 | +0.100 / +0.177 |
+| **carry-save lane interface** | **44,017.974** | **15.44682** | **0.603391** | **+0.146 / +0.193** |
+
+Against the library-mapped popcount point this is **-5.64% area, -11.93%
+power and +20.3% combined area/energy efficiency**. It is now the best recorded
+PaYN point at T=128 for energy and combined efficiency: 581.6 GMAC/s/mm2.
+Cleaned K12/M16/N10 remains the area-efficiency maximum at 615.0, but it has
+not been rebuilt with this tile. The saving sits in u_pe: routed area -8.25%,
+power 15.0 -> 13.0 mW. Total GL transitions fall 18% at identical operand
+activity.
+
+Fully qualified, with two documented exceptions:
+- the same targeted checkpoint repair both popcount arms needed (3 geometry
+  markers and 12 antenna violations closed on the first attempt);
+- one VCS-clamped negative SDF IOPATH delay (-2 ps at the max corner) on an
+  unchanged peripheral cell, accepted through a new opt-in validator bound
+  that records each clamp.
+
+Details and evidence are in the variant README. Machine-readable:
+`build/power_char/popcount_apr_20261002/results.csv`.
+
+## New qualified counter results (2026-10-01)
+
+The new **`signed_segmented_popcount` library-mapped variant** is now the best
+recorded PaYN energy and combined area/energy-efficiency point at T=128 and
+400 MHz. It uses K8/M16/N8, WIDTH8/OWIDTH24, LOW_W=9, the same signed segmented
+architecture and a revised 11-FA/4-HA unsigned counter per K lane.
+
+| implementation | routed cell area (um2) | power (mW) | pJ/MAC | setup / hold WNS (ns) |
+|---|---:|---:|---:|---:|
+| matched cleaned baseline | 47,932.290 | 18.32650 | 0.715879 | +0.191 / +0.167 |
+| new inferred counter | 46,459.546 | 17.80263 | 0.695415 | +0.087 / +0.185 |
+| **new preserved library mapping** | **46,648.392** | **17.53869** | **0.685105** | **+0.100 / +0.177** |
+
+These are fully routed, physically clean results using extracted parasitics
+and validated full-timing activity over 384 batches / 3,072 productive clocks.
+The existing cleaned baseline layout was remeasured without rerouting.
+The mapped result reduces power by **4.30%** and cell area by **2.68%** against
+that matched baseline; the earlier approximately 20% synthesis estimate did
+not survive the physical flow. Independent output checks, setup/hold,
+geometry/connectivity/antenna/placement, and activity/parasitic coverage all
+pass. Local checkpoint repairs are included in the final measurements.
+
+For `(GMAC/s/mm2) / (pJ/MAC)`, the mapped point is **7.37% better** than the
+cleaned K8/M16/N8 baseline and approximately **2.95% better** than the previous
+cleaned K8/M16/N10 combined winner. Highest area efficiency alone remains
+cleaned **K12/M16/N10**, at 615.009 GMAC/s/mm2. The new counter has only been
+measured at K8/M16/N8, so these are best recorded points rather than a global
+optimality claim.
+
+The updated ranking excludes the historical K=1 or M=1 low-corner campaign: its no-guide recipe differs, and later points used unit-delay models. Excluded rows remain in `excluded_historical_low_corner_points.csv` beside the new ranking.
+
+Full commands, validation, power-model corrections and stage-specific
+mechanism evidence are in the
+[counter experiment notes](../designs/payn/variants/signed_segmented_popcount/README.md).
+Machine-readable results are in
+`build/power_char/popcount_apr_20260930/results.csv` and its
+`ranked_area_energy_points.csv`. The older accepted comparison below is
+retained with its original measurement window and historical ratios.
+
+## Routed native INT6 and INT4 OS arrays (2026-10-02)
+
+Native signed INT6 and INT4 output-stationary arrays are now fully routed and
+power-characterized: 8x8 PEs, one signed multiply-accumulate per PE per cycle,
+24-bit accumulators/drain rails, 0.80 V and 400 MHz. This is 25.6 GMAC/s during
+the measured 4,096-cycle pure-MAC window; the output-checked final drain is
+outside that window.
+
+| design | routed cell area (um2) | power (mW) | pJ/MAC | setup / hold WNS (ns) |
+|---|---:|---:|---:|---:|
+| BOS native INT6 | 12,403.664 | 6.659681 | 0.260144 | +0.422 / +0.108 |
+| BOS native INT4 | 10,276.378 | 3.973779 | 0.155226 | +0.556 / +0.092 |
+
+Both pass geometry, antenna, connectivity, placement and setup/hold checks.
+Full-library max-SDF simulation passes with zero SDF errors and zero timing
+violations. Validated SAIF and extracted SPEF feed PrimeTime-PX with no default
+or unannotated activity and complete pin-to-pin parasitic coverage. Operand
+ranges are -32..31 and -8..7 respectively; these are different precisions, not
+accuracy-equivalent substitutes for INT8 or stochastic PaYN.
+
+Targets are `TSMC22/BOS_ARRAY_INT6` and `TSMC22/BOS_ARRAY_INT4`; route names are
+`bos_precision_20261002_int6` and `bos_precision_20261002_int4`. Final evidence:
+`build/bos_precision/bos_precision_20261002/results.csv`; reproduction details
+are in [experiments.md](experiments.md#binary-output-stationary-bos--88-int8int6int4-payn-dataflow).
+The old INT8 figures below retain their historical flow and input constraints.
+
 ## Workload used for the accepted PaYN result
 
 | parameter | value |
@@ -33,7 +131,7 @@ Two idle clocks after reset release let routed reset trees satisfy recovery
 before the first operand load.  They occur before SAIF starts and do not change
 the productive workload or its energy accounting.
 
-## Headline routed results
+## Previously accepted routed comparison
 
 All designs operate at 400 MHz and retire 64 MAC/cycle.  Energy is therefore
 `power / 25.6` in pJ/MAC.
@@ -660,9 +758,24 @@ Three conclusions:
    drain) and pays the tax on half the nets.  Measured
    (`PAYN_TPAD_MASK_W_ONLY`, `build/power_char/t_pad_wonly/`): T=120 drops
    from 18.410 to 18.301 mW, +1.23% -> +0.63% over T=128 -- the tax halves
-   with the masked-net count, confirming the mechanism causally.  A real
-   padded design should mask one side only, ideally before the Sobol
-   compare, where the tax would mostly vanish.
+   with the masked-net count, confirming the mechanism causally.
+
+   Masking at the product terms instead is a measured MISTAKE, despite their
+   q^2 ~ 6% duty (`PRODUCT_MASK=1`, netlist-derived forces from
+   `sweeps/gen_tpad_product_forces.py`, `build/power_char/t_pad_prodmask/`):
+   T=120 total rises to 19.003 mW (`u_pe` +5.24% vs T=128, against +1.40%
+   both-sides boundary and +0.72% W-only), T=17 to 23.878 mW.  A SAIF diff
+   shows +5.0% total toggles concentrated in the tile compressor trees: the
+   mask's assert edge and its deassert (which exposes the stale pad product
+   before the live wave arrives -- unavoidable for any flopped combinational
+   mask) inject off-schedule input waves, and the 128-input trees glitch
+   through an extra evaluation per block boundary.  The boundary mask is
+   glitch-free because the operand pipes absorb the mask timing: the trees
+   see one launch wave per cycle at the natural time, masked or not.
+   **Recommendation: mask one operand side at the array input (pipe D);
+   do not mask inside the combinational cone.**  (Masking upstream of the
+   Sobol compare produces the same boundary waveform as the boundary mask
+   and cannot beat it.)
 3. **A non-multiple T is never Pareto-optimal here.**  Within a step the full
    multiple has strictly better accuracy at equal energy (RMSE 0.0655 at
    T=128 vs 0.0687 at T=120, same 0.71-0.72 pJ/MAC) -- and the toggle tax
@@ -839,12 +952,19 @@ was not monotonic in `K*M`.  The netlist reset function itself is verified
 against random binary state by `sweeps/xcheck_reset_cone.py`, which also
 reproduces every observed X bit pattern statically.
 
-Fixed in the sweep's gate sims with
-`+define+ARM_UD_MODEL+define+ARM_EN_X_SQUASH +neg_tchk` (steady-state
-activity, and therefore SAIF comparability, is unchanged).  Note the original
-handoff's "unit-delay PASS" row was non-diagnostic — that mode logs ~10k
-timing violations and completes on degraded notifier semantics.  Full
-write-up: [`handoff_low_corner_gl_x.md`](handoff_low_corner_gl_x.md).
+The sweep's gate sims used
+`+define+ARM_UD_MODEL+define+ARM_EN_X_SQUASH +neg_tchk` to resolve those Xs.
+**2026-09-30 timing-model correction:** the A7 base and HPK `ARM_UD_MODEL`
+branches contain no `specify` blocks. Consequently these runs cannot annotate
+SDF cell paths or timing checks, and their steady-state activity is not
+established as comparable to full-timing runs. The eight low-corner points
+measured with those defines below remain historical estimates and require
+full-timing activity remeasurement before being used as routed-energy
+results. Their saved layout areas are unaffected. The new popcount campaign
+uses full models with `+neg_tchk +sdfverbose`; its corrected K8/M16/N8 baseline
+simulation reproduces the earlier measured activity exactly. The original
+X-debugging write-up is retained in
+[`handoff_low_corner_gl_x.md`](handoff_low_corner_gl_x.md).
 
 Measured low-corner points below were run without
 distribution guides (which need per-row register names that multibit banking

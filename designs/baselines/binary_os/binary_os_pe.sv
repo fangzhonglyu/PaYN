@@ -1,7 +1,7 @@
 `ifndef BINARY_OS_PE
 `define BINARY_OS_PE
 
-// One output-stationary binary PE: a single INT8 multiply-accumulate with a
+// One output-stationary binary PE: a signed IWIDTH-bit multiply-accumulate with a
 // stationary accumulator and its own operand pipeline registers.
 //
 // Everything the PE consumes is local.  A arrives from the west, is registered

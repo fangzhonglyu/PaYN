@@ -1,0 +1,7 @@
+arm,geometry,compute_mm2,leakage_mW,p1_point,p1_total_mW,p1_GMAC_s,p2_point,p2_total_mW,p2_GMAC_s,p3_point,p3_total_mW,p3_GMAC_s,p4_point,p4_total_mW,p4_GMAC_s
+PaYN 4x4 mesh (both operands),4x4 PEs x 64 tiles,0.6333,1.938,T=128,260.4,409.6,T=64,272.0,819.2,T=32,295.4,1638.4,T=16,364.0,3276.8
+Binary BOS,16x 8x8 arrays,0.2528,0.675,INT8,168.9,409.6,,,,,,,,,
+Binary BP (weight-stationary),16x 8x8 arrays,0.2646,0.855,INT8,169.7,409.6,,,,,,,,,
+bitmod Simple (weights only),4x4 tiles (1024 PEs),0.3579,,i8xi8,197.0,409.6,i6xi8,205.0,546.1,i4xi8,213.0,819.2,i2xi8,232.0,1638.4
+bitmod BitMoD f16 act (weights only),4x4 tiles (1024 PEs),1.1299,,i8xf16,466.0,409.6,i6xf16,484.0,546.1,f4xf16,485.0,819.2,,,
+uSystolic UR x2048 (rate length),2048x 8x8 arrays,21.8212,71.311,T=128,5805.5,409.6,T=64,5816.7,819.2,T=32*,5816.7,1638.4,T=16*,5816.7,3276.8

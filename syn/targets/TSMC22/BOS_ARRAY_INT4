@@ -1,0 +1,11 @@
+#!/bin/bash
+# Native signed INT4 output-stationary 8x8 mesh, OW24 accumulator/drain.
+export TOP=binary_os_array_int4
+export TECH=TSMC22
+export SRC_SV="baselines/binary_os/binary_os_array_native.sv"
+export PERIOD=2.5
+# Power/test benches launch on the falling edge: a half-cycle input budget.
+export INPUT_DELAY=${INPUT_DELAY:-1.25}
+export MULTIBIT_INFER=1
+export CLOCK_GATE=1
+export RTL_PREFLIGHT_CMD=${RTL_PREFLIGHT_CMD:-"make --no-print-directory sim GL= TARGET= TOP=Top TB=designs/baselines/binary_os/tb/test_binary_os_array.sv VCS_ARGS='+define+BOS_IWIDTH=4+define+BOS_GL_DUT=binary_os_array_int4' BUILD_DIR=build/rtl_preflight/binary_os_int4"}

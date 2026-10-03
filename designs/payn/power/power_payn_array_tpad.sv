@@ -182,6 +182,42 @@ module Top;
     localparam real PAD_RELEASE_DLY = PERIOD/2.0 - 0.1;
     bit pad_mask_en = 1'b0;
 
+`ifdef PAYN_TPAD_MASK_AT_PRODUCT
+    // Product-level masking (GL only): instead of zeroing the ~50%-duty
+    // operand-broadcast wires, force the pad lanes' product AND outputs
+    // (q^2 ~ 6% duty) inside every tile.  The force file is generated from
+    // the netlist by sweeps/gen_tpad_product_forces.py and included below;
+    // compile with +incdir pointing at it.  The operand wires then carry
+    // the unused pad-slice samples naturally, which is what a real
+    // mask-at-product implementation would do.
+    //
+    // Schedule: a slice's products occupy the interval AFTER its boundary
+    // interval, so sample pad_mask_en (the boundary schedule, still
+    // computed) at each posedge and apply it PAYN_TPAD_PROD_DLY_NS later.
+    // The delay must clear the hold window of the PREVIOUS slice's capture:
+    // dly >= clock insertion + t_hold - min(AND->acc D path).  At 0.25 ns
+    // the fastest tree paths lost that race and sporadically corrupted the
+    // preceding capture (caught by the GL cosim); 0.6 ns clears it while
+    // still beating the natural launch (insertion + clk->q), so the pad
+    // slice's setup is easier than the timed path STA signed off.
+`ifndef PAYN_TPAD_PROD_DLY_NS
+`define PAYN_TPAD_PROD_DLY_NS 0.6
+`endif
+    bit pad_prod_mask_en = 1'b0;
+    bit pad_prod_sample = 1'b0;
+
+    always @(posedge clk) begin
+        pad_prod_sample = pad_mask_en;
+        #(`PAYN_TPAD_PROD_DLY_NS);
+        pad_prod_mask_en = pad_prod_sample;
+    end
+
+`ifdef PAYN_XTRACE
+    initial $dumpvars(1, pad_mask_en, pad_prod_sample, pad_prod_mask_en);
+`endif
+
+    `include "tpad_product_forces.svh"
+`else
     // PAYN_TPAD_MASK_W_ONLY: a product bit dies when EITHER operand bit is
     // zero, so masking only the W side is functionally identical (bit-exact
     // same drain, reference unchanged) but pays the boundary-net toggle tax
@@ -208,6 +244,7 @@ module Top;
                 end
         end
     end
+`endif
 
 `ifdef GL_SIM
     initial begin

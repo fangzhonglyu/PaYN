@@ -1,0 +1,22 @@
+#!/bin/sh
+# Edge stochastic number generator alone (held operands + Sobol banks +
+# comparator/decoder logic), K8/M16/N8, for the stratified-SNG area A/B.
+# Knobs match sweeps/run_popcount_synth.sh so the area is comparable to the
+# peripheral + Sobol portion of the popcount array.
+export TOP=payn_sng_baseline
+export TECH=TSMC22
+export SRC_SV="payn/variants/stratified_sng/sng_area_tops.sv"
+export PERIOD=2.5
+export INPUT_DELAY=1.25
+export OUTPUT_DELAY=0.05
+export TSMC22_CELL_TIER=sc7mcpp140z
+export TSMC22_LIB_FLAVORS=svt_c30
+export TSMC22_HPK_FLAVORS=svt_c30
+export TSMC22_HPK=1
+export MULTIBIT_INFER=1
+export CLOCK_GATE=1
+export MINPOWER=0
+export FLATTEN=0
+export SYN_AREA_HIGH_EFFORT=0
+export MAX_FANOUT=16
+export SYN_DEFINES="${SYN_DEFINES:-PAYN_K=8 PAYN_M=16 PAYN_NH=8 PAYN_NW=8}"

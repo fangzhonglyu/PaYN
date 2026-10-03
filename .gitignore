@@ -36,3 +36,4 @@ __pycache__/
 innovus.cmd*
 innovus.log*
 *.cmd[0-9]*
+sdfAnnotateInfo

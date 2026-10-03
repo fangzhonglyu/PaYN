@@ -84,6 +84,22 @@ run_point() {
     local defs="+define+PAYN_ARRAY_DUT=${TOP} +define+SC_K=${K} +define+SC_M=${M} +define+SC_NH=${N_H} +define+SC_NW=${N_W} +define+SC_OWIDTH=24 +define+SC_T=${t} +define+SC_BATCHES=${batches}"
     if [[ -n "${SEED}" ]]; then defs="${defs} +define+SC_SEED=${SEED}"; fi
     if [[ -n "${EXTRA_DEFS:-}" ]]; then defs="${defs} ${EXTRA_DEFS}"; fi
+    # PRODUCT_MASK=1: mask at the tile product terms (q^2 duty) instead of
+    # the operand boundary.  The force file is netlist-derived, so it applies
+    # to the GL stage only; the RTL validation stage keeps boundary masking,
+    # which is bit-exact identical (and = a & w dies either way).
+    local gl_extra=""
+    if [[ "${PRODUCT_MASK:-0}" == 1 ]]; then
+        local fdir
+        mkdir -p "${OUT_ROOT}/${label}"
+        fdir="$(readlink -f "${OUT_ROOT}/${label}")"
+        python3 sweeps/gen_tpad_product_forces.py \
+            "${BASE_DIR}/outputs/${TOP}.apr.v" "${t}" --k ${K} --m ${M} \
+            --out "${fdir}/tpad_product_forces.svh" || {
+            printf '%s\n' "${t},${mac_cycles},${pad_lanes},,,,,,,,FORCEGEN_FAIL" \
+                > "${OUT_ROOT}/${label}.row"; return; }
+        gl_extra="+define+PAYN_TPAD_MASK_AT_PRODUCT +incdir+${fdir}"
+    fi
     local saif trace
 
     if ((t <= 0 || batches < 1)); then
@@ -119,7 +135,7 @@ run_point() {
     # ---- stage 2: max-SDF gate sim on the reused route ----
     RTL_PREFLIGHT_CMD=true make sim GL=apr TARGET=${TARGET} RUN=${BASE_RUN} \
         USE_DW=1 BUILD_DIR="${build_dir}" TB="${TB}" \
-        VCS_ARGS="${defs}" \
+        VCS_ARGS="${defs} ${gl_extra}" \
         >> "${log}" 2>&1
 
     saif=${build_dir}/${TB}/dut.saif

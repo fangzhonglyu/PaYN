@@ -22,7 +22,7 @@
 // N_H*N_W accumulators are checked, not just the east column.
 
 `ifndef GL_SIM
-`include "baselines/binary_os/binary_os_array.sv"
+`include "baselines/binary_os/binary_os_array_native.sv"
 `endif
 
 `ifndef BOS_GL_DUT
@@ -101,9 +101,7 @@ module Top;
 `endif
     end
 `else
-    binary_os_array #(
-        .IWIDTH(IWIDTH), .N_H(N_H), .N_W(N_W), .OWIDTH(OWIDTH)
-    ) dut (.*);
+    `BOS_GL_DUT #(.N_H(N_H), .N_W(N_W), .OWIDTH(OWIDTH)) dut (.*);
 `endif
 
     // -------- reference model: per-PE operand hops + stationary accumulator ----
@@ -159,6 +157,10 @@ module Top;
     int drain_errors = 0;
 
     initial begin
+        assert ($bits(dut.a_in) == N_H*IWIDTH && $bits(dut.w_in) == N_W*IWIDTH)
+            else $fatal(1, "DUT operand width does not match BOS_IWIDTH");
+        assert ($bits(dut.acc_in_west) == N_H*OWIDTH && $bits(dut.acc_out_east) == N_H*OWIDTH)
+            else $fatal(1, "DUT accumulator rails do not match BOS_OWIDTH");
         assert (DRAIN_PERIOD >= 0)
             else $fatal(1, "BOS_DRAIN_PERIOD must be non-negative");
         assert (STIM_CYCLES > 0)
@@ -192,7 +194,7 @@ module Top;
 `else
         // RTL runs feed SYN_SAIF_FILE (workload-driven synthesis). Without the
         // "sv" argument VCS skips SystemVerilog-typed nets and the SAIF comes
-        // out empty; it also needs -lca on the VCS command line.
+        // out empty; VCS also requires -lca and -debug_access+pp for this RTL capture.
         $set_gate_level_monitoring("rtl_on", "sv");
 `endif
         $set_toggle_region(dut);

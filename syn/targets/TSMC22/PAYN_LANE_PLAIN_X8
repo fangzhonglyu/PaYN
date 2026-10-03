@@ -1,0 +1,20 @@
+#!/bin/sh
+# One tile's K=8 lane hit counters, combinational, for the stratified-SNG
+# lane-logic area A/B.  plain = 16 AND + 11FA/4HA popcount per lane (inferred);
+# strat = closed-form StratLaneCount.  Same library/knobs as the array runs.
+export TOP=payn_lane_plain_x8
+export TECH=TSMC22
+export SRC_SV="payn/variants/stratified_sng/strat_lane_count.sv"
+export PERIOD=2.5
+export INPUT_DELAY=1.25
+export OUTPUT_DELAY=0.05
+export TSMC22_CELL_TIER=sc7mcpp140z
+export TSMC22_LIB_FLAVORS=svt_c30
+export TSMC22_HPK_FLAVORS=svt_c30
+export TSMC22_HPK=1
+export MULTIBIT_INFER=1
+export CLOCK_GATE=1
+export MINPOWER=0
+export FLATTEN=0
+export SYN_AREA_HIGH_EFFORT=0
+export MAX_FANOUT=16

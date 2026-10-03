@@ -83,17 +83,128 @@ bash sweeps/run_power_char.sh BS_ARRAY
 
 ---
 
-## Binary output-stationary (BOS) — 8×8 INT8, PaYN dataflow
+## Binary output-stationary (BOS) — 8×8 INT8/INT6/INT4, PaYN dataflow
 
 `designs/baselines/binary_os/`
 
 | role | file |
 |---|---|
-| design | `binary_os_pe.sv` (`BinaryOSPE`, one INT8 MAC + 2 hop regs + accumulator) · `binary_os_array.sv` (`BinaryOSArray`/`Flat` + `binary_os_array` synth top) · asym `binary_os_asym.sv` |
+| design | `binary_os_pe.sv` (`BinaryOSPE`, one signed MAC + 2 hop regs + accumulator) · `binary_os_array.sv` (`BinaryOSArray`/`Flat` + INT8 top) · `binary_os_array_native.sv` (fixed INT6/INT4 tops) · asym `binary_os_asym.sv` |
 | functional TB | `tb/test_binary_os_array.sv` · asym `tb/test_binary_os_asym.sv` (both independent golden matmuls, not structural mirrors) |
 | power bench | `power/power_binary_os_array.sv` (per-cycle output check + full drained-matrix check) · asym `power/power_binary_os_array_asym.sv` (drain inside the SAIF window) |
-| targets | `BOS_ARRAY`, `BOS_ARRAY_ASYM` |
+| targets | `BOS_ARRAY`, `BOS_ARRAY_INT6`, `BOS_ARRAY_INT4`, `BOS_ARRAY_ASYM` |
 | breakdown | `sweeps/pt_binary_os_power.tcl` (emits the `bin_*` keys `pe_taxonomy.py` already reads) |
+
+**Native precision variants (2026-10-01).** The arithmetic core was already
+parameterized, but only INT8 OS targets and builds existed. Native INT6 in the
+older results is `BP_ARRAY_INT6`, a different dataflow. The new
+`binary_os_array_native.sv` fixes the multiplier and operand-hop widths while
+retaining the same 8x8 mesh, signed arithmetic, 24-bit stationary accumulators,
+and 24-bit east drain rails:
+
+| target / top | operand range | product bits | default RTL register bits per PE |
+|---|---:|---:|---:|
+| `BOS_ARRAY` / `binary_os_array` | -128…127 | 16 | 40 |
+| `BOS_ARRAY_INT6` / `binary_os_array_int6` | -32…31 | 12 | 36 |
+| `BOS_ARRAY_INT4` / `binary_os_array_int4` | -8…7 | 8 | 32 |
+
+These are narrower hardware implementations, not narrower stimulus on INT8
+hardware. The native tops retain configurable `N_H`, `N_W`, and `OWIDTH`.
+The shared test covers independent signed golden matrix products (including
+both operand extremes), hold behavior, nonzero west injection, drain-over-MAC
+priority, and positive/negative 24-bit accumulator wraparound. The power bench
+uses `BOS_GL_DUT` for both RTL and gate simulation, ensuring synthesis activity
+comes from the actual selected top. Width assertions catch a mismatched bench.
+
+```bash
+# Loads all six prescribed EDA modules, disables notifications and uses the
+# minimal VCS debug access: +pp for RTL SAIF, no full +all database.
+# Defaults to widths 6 and 4; include 8 for a fresh matched INT8 baseline.
+bash sweeps/run_bos_precision_synth.sh 8 6 4
+```
+
+This driver runs RTL matrix checks and 4,096 checked workload clocks before
+workload-driven synthesis, then reruns the golden matrix checks on vendor-cell
+netlists. The synthesis gate checks use no-SDF unit-delay models strictly for
+functional verification; they are not timing or power measurements. All arms
+use A7 SVT + HPK, multibit inference, clock gating, 2.5 ns clocks and 1.25 ns
+input delays. Run/artifact names are isolated by `CAMPAIGN` (default
+`bos_precision_20261001`), and existing artifacts are never overwritten.
+
+Completed synthesis/verification results (`bos_precision_20261001`):
+
+| precision | synthesis cell area (um2) | change vs matched INT8 | synthesis setup slack (ns) | RTL/workload/mapped-cell checks |
+|---|---:|---:|---:|---|
+| INT8 | 13,428.940 | — | +1.020 | PASS |
+| INT6 | 10,548.034 | -21.45% | +1.020 | PASS |
+| INT4 | 8,591.562 | -36.02% | +1.010 | PASS |
+
+All three gate netlists also passed explicit port-width checks: 64/48/32-bit
+operand edge buses for INT8/INT6/INT4 and 192-bit accumulator edge rails for
+all three. Written SDCs were checked for the same 2.5 ns clock and 1.25 ns
+input delays. Reports and per-stage logs are under
+`build/bos_precision/bos_precision_20261001/`; mapped netlists are in
+`syn/build/TSMC22/<target>/bos_precision_20261001_int<width>/`.
+These are **synthesis** areas and slacks, not routed measurements. An initial
+RTL-SAIF compile attempt requiring `-debug_access+pp` is preserved separately
+in `bos_precision_20261001_failed_saif_debug`; the completed campaign uses
+that required option for RTL activity capture.
+
+The synthesis and APR targets are available through the sibling ASTRAEA flow.
+The existing full characterization driver now also accepts the new names and
+propagates their widths/top names to both RTL and routed benches:
+
+```bash
+NTFY_CHNL= bash sweeps/run_power_char.sh BOS_ARRAY_INT6 BOS_ARRAY_INT4
+```
+
+The dedicated native-precision routed flow reuses the verified synthesis
+artifacts, runs both widths independently, and requires full physical and
+power qualification before writing a result:
+
+```bash
+NTFY_CHNL= bash sweeps/run_bos_precision_apr.sh 6 4
+```
+
+Its defaults are `SYN_CAMPAIGN=bos_precision_20261001` and
+`CAMPAIGN=bos_precision_20261002`. It uses the BOS physical recipe: 75% core
+utilization, HPK/multibit support, APR power optimization, 0.125 ns clock
+uncertainty, and the saved 1.25 ns input delays. Final activity uses full
+library models, maximum SDF delays, `+neg_tchk +sdfverbose`, 4,096 MAC clocks,
+and an independently checked final drain. PrimeTime-PX uses extracted SPEF;
+geometry/antenna/connectivity/placement, setup/hold, SDF/timing diagnostics,
+SAIF, and activity/parasitic coverage must all pass. The drain occurs outside
+the measured interval, matching the plain INT8 OS benchmark. Only explicit
+stage PASS markers allow resumption; changed settings or unfinished outputs
+require inspection rather than silent reuse.
+
+**Completed routed results (2026-10-02):** both arrays passed full physical
+qualification and extracted PrimeTime-PX power analysis at 0.80 V, 400 MHz.
+The workload measures 4,096 productive MAC cycles (262,144 useful MACs), with
+the checked final drain outside the energy window.
+
+| precision | routed cell area (um2) | power (mW) | pJ/MAC | setup / hold WNS (ns) |
+|---|---:|---:|---:|---:|
+| INT6 | 12,403.664 | 6.659681 | 0.260144 | +0.422 / +0.108 |
+| INT4 | 10,276.378 | 3.973779 | 0.155226 | +0.556 / +0.092 |
+
+Both have zero geometry, antenna, connectivity and placement violations. The
+full-model maximum-SDF simulations each passed all output checks with zero
+SDF errors and zero timing violations (including startup). The 192 enumerated
+UHICD warnings use the known hierarchy-output DEVICE-delay fallback. Validated
+SAIF has X-free outputs and the expected 2.5 ns period. PT-PX has zero default
+or unannotated activity nets and zero unannotated pin-to-pin parasitic nets.
+
+Aggregate results and per-stage evidence are in
+`build/bos_precision/bos_precision_20261002/`. Final GDS, netlists, SDF, SPEF,
+STA and power reports are under
+`apr/build/TSMC22/BOS_ARRAY_INT6/bos_precision_20261002_int6/` and
+`apr/build/TSMC22/BOS_ARRAY_INT4/bos_precision_20261002_int4/`.
+Revalidate/report with `python3 sweeps/report_bos_precision_apr.py`.
+These runs used the existing verified native synthesis outputs; neither
+needed a separate checkpoint repair. The historical power figures below
+refer to INT8 only, whose earlier synthesis input constraint differs from the
+1.25 ns used in the native-precision campaign.
 
 The point of this design is to be a **dataflow-matched binary control for PaYN**: same
 stationary accumulator, same `mac_en`/`shift_in` contract, same row-serial east drain, same

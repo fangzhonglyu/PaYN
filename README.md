@@ -23,11 +23,12 @@ designs/
   baselines/
     binary_parallel/        BP array_8 (+ asymmetric INT8 correction)
     binary_serial/          BS array_8
-    binary_os/              BOS binary_os_array — output-stationary INT8 8x8 PE
+    binary_os/              BOS — output-stationary INT8/INT6/INT4 8x8 PE
                             array with the PaYN dataflow (stationary accumulator,
                             row-serial east drain), binary MACs instead of SC lanes
-      binary_os_pe.sv         BinaryOSPE — one INT8 MAC + A/W hop regs + accumulator
-      binary_os_array.sv      BinaryOSArray/Flat + binary_os_array synth top
+      binary_os_pe.sv         BinaryOSPE — signed MAC + A/W hop regs + accumulator
+      binary_os_array.sv      BinaryOSArray/Flat + binary_os_array INT8 top
+      binary_os_array_native.sv  fixed-width INT6 and INT4 synthesis tops
     unary_rate/             UR array_8 (Sobol rate coding)
     unary_temporal/         UT array_8 (temporal + Sobol)
 syn/targets/TSMC22/         synthesis targets (parameterized)
@@ -57,6 +58,13 @@ make sim TB=designs/baselines/binary_parallel/tb/test_array_8_power_workload.sv
 
 # Binary output-stationary array vs an independent golden matmul:
 make sim TB=designs/baselines/binary_os/tb/test_binary_os_array.sv
+
+# Native INT8/INT6/INT4 OS: golden tests, workload SAIF, synthesis, gate checks:
+bash sweeps/run_bos_precision_synth.sh 8 6 4
+
+# Route native INT6/INT4, run max-SDF checks, and measure extracted power:
+bash sweeps/run_bos_precision_apr.sh 6 4
+python3 sweeps/report_bos_precision_apr.py
 
 # Bit-exact array cosim (RTL vs the Python reference):
 bash designs/payn/cosim/run_peripheral.sh

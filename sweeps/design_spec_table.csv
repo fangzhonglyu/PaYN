@@ -1,0 +1,22 @@
+# Cross-design spec table: TSMC22 A7/SVT 0.80 V, 2.5 ns (400 MHz), routed,
+# PT-PX SAIF-annotated unless noted.  Sources:
+#   PaYN  apr/build/.../PAYN_SC_SIGNED_SEGMENTED_CLEAN/k8m16n8_lw9_id125_distguide_spp_fixed
+#         (clean variant; accepted original: 51,906 um2 / 18.172 mW / 0.70984 pJ/MAC)
+#   UR    apr/build/.../UR_ARRAY/20260718_185135 + build/power_char/UR_ARRAY__T128/power.rpt
+#         (RATE_LEN=128 rate-coded unary, 7-bit logical, 64 PEs / 128 cyc = 0.5 MAC/cyc)
+#   BOS   apr/build/.../BOS_ARRAY/20260728_143921 + build/power_char/bos_drain0_power.rpt
+#         (drain-free continuous headline workload)
+#   BP    apr/build/.../BP_ARRAY/20260718_165153  (pre-multibit flow: zero HPK
+#         multibit flops -- cross-flow vs PaYN/BOS, see results.md)
+#   bitmod Simple  doc/bitmod_data - jul29.csv i8xi8 row (collaborator flow,
+#         block-level totals only, not replicated locally; 1,024 PEs)
+#   bitmod BitMoD  same CSV, i8xf16 row: the FP variant (f16 activations,
+#         per-group dequant, float accumulate).  RTL is migrated locally but
+#         timing never closed and no local PT-PX run exists -- reported only.
+design,arch,PEs,GMAC_s,area_um2,net_switching_mW,cell_internal_mW,dynamic_mW,leakage_mW,total_mW,pJ_MAC,GMAC_s_mm2
+PaYN K8M16 8x8 T128,SC pending-bit output-stationary,64,25.6,47932.290,9.649582,8.538272,18.187854,0.138643,18.326497,0.715879,534.1
+uSystolic UR 8x8 T128,rate-coded unary systolic,64,0.2,10654.854,1.139431,1.660471,2.799902,0.034817,2.834720,14.173600,18.8
+Binary INT8 BOS 8x8,INT8 output-stationary,64,25.6,15797.404,5.108543,5.408433,10.516976,0.042187,10.559160,0.412467,1620.5
+Binary INT8 BP 8x8,INT8 weight-stationary systolic,64,25.6,16536.226,4.793127,5.756882,10.550009,0.053443,10.603450,0.414197,1548.1
+bitmod Simple i8xi8,term-serial Booth-digit bit-serial,1024,409.6,357858,,,,,197.0,0.482000,1144.6
+bitmod BitMoD i8xf16,term-serial Booth + f16 dequant/float-acc,1024,409.6,1129910,,,,,466.0,1.137000,362.5
