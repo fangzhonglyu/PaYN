@@ -17,10 +17,10 @@
 //
 // Plusargs: +CASE=<dir with a.mem, b.mem>  +EXPECT=<out_L*.mem>  +L=<length>
 //           +N=<rows of A> +M=<rows of B> +D=<columns>   (default 8, 8, 128)
-//           +CBSG=<0|1>  (SC_A_ENCODER=1 only: 0 = UT, 1 = C-BSG)
 //
 // SC_A_ENCODER=0: the testbench computes kA = round(bA*L/128) (UT) itself.
-// SC_A_ENCODER=1: the on-chip encoder computes kA from bA under cbsg_mode;
+// SC_A_ENCODER=1: the on-chip encoder computes kA from bA, with the scheme
+// fixed at compile time by SC_CBSG (0 = UT, 1 = C-BSG; payn_array A_CBSG);
 // A is fed one K-block ahead of W, so each spatial tile starts with a
 // pre-load of block 0's A.
 //
@@ -42,6 +42,9 @@
 `endif
 `ifndef SC_A_ENCODER
 `define SC_A_ENCODER 0
+`endif
+`ifndef SC_CBSG
+`define SC_CBSG 0
 `endif
 `ifndef SC_MAX_N
 `define SC_MAX_N 64
@@ -67,6 +70,7 @@ module Top;
     localparam int GRID = 128;
     localparam int Q_MAX = 127;
     localparam int A_ENCODER = `SC_A_ENCODER;
+    localparam int CBSG = `SC_CBSG;
 
     logic clk = 1'b0;
     logic reset = 1'b0;
@@ -74,7 +78,6 @@ module Top;
     logic load_a = 1'b0, load_w = 1'b0;
     logic load_a_sign = 1'b0, load_w_sign = 1'b0;
     logic [15:0] d_base = '0;
-    logic cbsg_mode = 1'b0;
     logic [7:0] stream_len = 8'd128;
 
     logic [N_H*K*WIDTH-1:0] a_binary_in = '0;
@@ -93,7 +96,7 @@ module Top;
 
     payn_array #(
         .K(K), .M(M), .N_H(N_H), .N_W(N_W), .WIDTH(WIDTH), .OWIDTH(OWIDTH),
-        .STREAM_MODE(1), .RNG_SHIFT(1), .A_ENCODER(A_ENCODER)
+        .STREAM_MODE(1), .RNG_SHIFT(1), .A_ENCODER(A_ENCODER), .A_CBSG(CBSG)
     ) dut (.*);
 
     // round(|q| * 128 / 127): |q| for |q| <= 63, |q| + 1 for |q| >= 64.
@@ -144,8 +147,7 @@ module Top;
         $readmemh({case_dir, "/a.mem"}, a_mem, 0, N*D - 1);
         $readmemh({case_dir, "/b.mem"}, b_mem, 0, MB*D - 1);
         $readmemh(expect_file, expect_mem, 0, N*MB - 1);
-        if (!$value$plusargs("CBSG=%d", cbsg_mode)) cbsg_mode = 1'b0;
-        if (cbsg_mode && !A_ENCODER) $fatal(1, "+CBSG=1 needs SC_A_ENCODER=1");
+        if (CBSG && !A_ENCODER) $fatal(1, "SC_CBSG=1 needs SC_A_ENCODER=1");
         stream_len = 8'(L);
         L_g = L; N_g = N; D_g = D;
         cycles = (L + M - 1) / M;
@@ -239,11 +241,11 @@ module Top;
         if (errors == 0)
             $display("PASS: %0dx%0dx%0d L=%0d array K%0d/M%0d/%0dx%0d %s: all %0d accumulators match",
                      N, MB, D, L, K, M, N_H, N_W,
-                     !A_ENCODER ? "host-UT" : (cbsg_mode ? "enc-CBSG" : "enc-UT"), N*MB);
+                     !A_ENCODER ? "host-UT" : (CBSG ? "enc-CBSG" : "enc-UT"), N*MB);
         else
             $display("FAIL: %0dx%0dx%0d L=%0d array K%0d/M%0d/%0dx%0d %s: %0d of %0d differ",
                      N, MB, D, L, K, M, N_H, N_W,
-                     !A_ENCODER ? "host-UT" : (cbsg_mode ? "enc-CBSG" : "enc-UT"), errors, N*MB);
+                     !A_ENCODER ? "host-UT" : (CBSG ? "enc-CBSG" : "enc-UT"), errors, N*MB);
         $finish;
     end
 endmodule

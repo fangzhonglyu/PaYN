@@ -20,11 +20,13 @@
 //
 // A paths: SC_A_ENCODER=0 feeds the host-side UT kA. SC_A_ENCODER=1 feeds bA to
 // the on-chip encoder one batch ahead (its count overlaps the previous batch,
-// so the MAC stream stays gapless) with cbsg_mode = SC_CBSG (0 = UT, 1 = C-BSG).
+// so the MAC stream stays gapless); its scheme is fixed when the design is
+// built (payn_array A_CBSG / PAYN_A_CBSG). SC_CBSG must match it (0 = UT,
+// 1 = C-BSG): it only labels the trace for cosim_streaming_ut.py.
 //
-// RTL runs need +define+PAYN_STREAM_MODE=1 (and +define+PAYN_A_ENCODER=1 for
-// the encoder); the gate-level netlist is synthesized with them. Needs
-// DesignWare: USE_DW=1.
+// RTL runs need +define+PAYN_STREAM_MODE=1 (and +define+PAYN_A_ENCODER=1 plus
+// +define+PAYN_A_CBSG=<0|1> for the encoder); the gate-level netlist is
+// synthesized with them. Needs DesignWare: USE_DW=1.
 
 `ifndef GL_SIM
 `ifndef PAYN_ARRAY_EXTERNAL_RTL
@@ -93,7 +95,6 @@ module Top;
     logic rng_en = 1'b0, mac_en = 1'b0, shift_in = 1'b0;
     logic rng_restart = 1'b0;
     logic [15:0] d_base = '0;
-    logic cbsg_mode = 1'(`SC_CBSG);
     logic [7:0] stream_len = 8'(T);
     logic load_a = 1'b0, load_w = 1'b0, load_a_sign = 1'b0, load_w_sign = 1'b0;
 
@@ -227,7 +228,7 @@ module Top;
         assert (trace_file != 0)
             else $fatal(1, "cannot open array_streaming_ut_rtl.txt");
         $fwrite(trace_file, "STREAMCFG_UT %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d\n",
-                K, M, N_H, N_W, WIDTH, OWIDTH, T, N_BATCHES, A_ENCODER, cbsg_mode);
+                K, M, N_H, N_W, WIDTH, OWIDTH, T, N_BATCHES, A_ENCODER, `SC_CBSG);
         draw_batches();
 
         if (A_ENCODER) begin

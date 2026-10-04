@@ -33,6 +33,9 @@
 `ifndef PAYN_A_ENCODER
 `define PAYN_A_ENCODER 0
 `endif
+`ifndef PAYN_A_CBSG
+`define PAYN_A_CBSG 0
+`endif
 
 // PaYN SC array: shared Sobol banks + edge peripheral + one InnerPE tile grid,
 // wired into a single synth/PnR/power target. Binary edge operands
@@ -74,11 +77,12 @@ module payn_array #(
     // A_ENCODER=1 (STREAM_MODE=1 only): on-chip A encoder (sc_a_encoder).
     //   a_binary_in is then the A threshold bA (same encoding as W) for the
     //   NEXT K-block -- A runs one block ahead of W -- and the encoder turns it
-    //   into kA under the runtime toggle cbsg_mode:
+    //   into kA under the compile-time scheme A_CBSG:
     //     0 = UT    : kA = round(bA * L / 128)
     //     1 = C-BSG : kA = #ones of A's Sobol stream (emulator k_table)
     //   L comes from stream_len. A_ENCODER=0 keeps a_binary_in = kA from the host.
-    parameter int A_ENCODER = `PAYN_A_ENCODER
+    parameter int A_ENCODER = `PAYN_A_ENCODER,
+    parameter int A_CBSG = `PAYN_A_CBSG       // A_ENCODER=1 only (synth: PAYN_A_CBSG)
 ) (
     input logic clk,
     input logic reset,        // sync for InnerPE, async for peripheral + Sobol
@@ -86,7 +90,6 @@ module payn_array #(
     input logic rng_en,       // advance both Sobol banks
     input logic rng_restart = 1'b0,   // STREAM_MODE=1: restart streams at t=0
     input logic [15:0] d_base = '0,   // STREAM_MODE=1: K-block's first column (latched with load_a/load_w)
-    input logic cbsg_mode = 1'b0,     // A_ENCODER=1: 0 = UT, 1 = C-BSG
     input logic [7:0] stream_len = 8'd128,  // A_ENCODER=1: stream length L
     input logic load_a,       // latch A binary operands into the peripheral
     input logic load_w,       // latch W binary operands into the peripheral
@@ -136,11 +139,12 @@ module payn_array #(
 
     if (STREAM_MODE == 1 && A_ENCODER == 1) begin : g_a_encoder
         sc_a_encoder #(
-            .K(K), .M(M), .N_H(N_H), .WIDTH(WIDTH), .RNG_SHIFT(RNG_SHIFT)
+            .K(K), .M(M), .N_H(N_H), .WIDTH(WIDTH), .RNG_SHIFT(RNG_SHIFT),
+            .CBSG(A_CBSG)
         ) u_a_encoder (
             .clk, .reset,
             .load(load_a), .enable(rng_en),
-            .cbsg_mode, .stream_len,
+            .stream_len,
             .a_binary_in, .a_signs_in, .d_base_in(d_base),
             .a_k_out(periph_a_binary), .a_signs_out(periph_a_signs),
             .d_base_out(periph_d_base)

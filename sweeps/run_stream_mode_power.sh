@@ -2,21 +2,20 @@
 # Area + post-PnR power of payn_array stream modes through the identical
 # ASTRAEA tutorial flow:  synth -> apr -> GL power-bench sim (SAIF) -> power_apr.
 #
-# Arms (one synthesized+routed design each; `enc` is measured twice on the
-# same layout because cbsg_mode is a runtime toggle):
+# Arms (one synthesized+routed design each; the encoder's scheme is a
+# compile-time choice, so UT and C-BSG are separate builds):
 #   sm0       STREAM_MODE=0 control (legacy Sobol A and W, plain AND)
 #   sm1       STREAM_MODE=1, host-side UT kA (A_ENCODER=0)
-#   enc       STREAM_MODE=1 + on-chip A encoder (A_ENCODER=1):
-#               enc_ut    cbsg_mode=0  (UT)
-#               enc_cbsg  cbsg_mode=1  (C-BSG)
+#   enc_ut    STREAM_MODE=1 + on-chip A encoder, A_CBSG=0 (UT)
+#   enc_cbsg  STREAM_MODE=1 + on-chip A encoder, A_CBSG=1 (C-BSG)
 #
 # All: TSMC22/PAYN_SC_SWEEP, K8/M16/N8x8, OWIDTH=24, T=128, 2.5 ns, 384
 # back-to-back batches (3072 MAC cycles) in the SAIF window, uniform 7-bit
 # magnitudes with random signs. Each run's gate-level drain is checked
 # bit-exact before its SAIF is used.
 #
-#   bash sweeps/run_stream_mode_power.sh              # sm0 sm1 enc
-#   bash sweeps/run_stream_mode_power.sh enc          # one arm
+#   bash sweeps/run_stream_mode_power.sh              # all four arms
+#   bash sweeps/run_stream_mode_power.sh enc_cbsg     # one arm
 #
 # Needs AFS tokens for the TSMC22 kit (kinit && aklog) and a python with numpy
 # + matplotlib on PATH (or PYTHON_BIN_DIR=<venv>/bin).
@@ -101,7 +100,7 @@ UTRACE=array_streaming_ut_rtl.txt
 UCHK=designs/payn/cosim/cosim_streaming_ut.py
 
 ARMS=("$@")
-[ ${#ARMS[@]} -gt 0 ] || ARMS=(sm0 sm1 enc)
+[ ${#ARMS[@]} -gt 0 ] || ARMS=(sm0 sm1 enc_ut enc_cbsg)
 for a in "${ARMS[@]}"; do
     case $a in
         sm0)
@@ -113,11 +112,11 @@ for a in "${ARMS[@]}"; do
             implement sm1 "PAYN_STREAM_MODE=1" \
                 "BUILD_DIR=build/rtl_preflight/sm1 bash designs/payn/cosim/run_ut_matmul.sh" \
             && measure sm1 sm1 $UTB $UTRACE $UCHK "+define+SC_A_ENCODER=0" ;;
-        enc)
-            implement enc "PAYN_STREAM_MODE=1 PAYN_A_ENCODER=1" \
-                "BUILD_DIR=build/rtl_preflight/enc A_ENCODER=1 bash designs/payn/cosim/run_ut_matmul.sh" \
-            && { measure enc_ut   enc $UTB $UTRACE $UCHK "+define+SC_A_ENCODER=1+define+SC_CBSG=0"
-                 measure enc_cbsg enc $UTB $UTRACE $UCHK "+define+SC_A_ENCODER=1+define+SC_CBSG=1"; } ;;
+        enc_ut|enc_cbsg)
+            cbsg=$([ "$a" = enc_cbsg ] && echo 1 || echo 0)
+            implement $a "PAYN_STREAM_MODE=1 PAYN_A_ENCODER=1 PAYN_A_CBSG=$cbsg" \
+                "BUILD_DIR=build/rtl_preflight/$a A_ENCODER=1 bash designs/payn/cosim/run_ut_matmul.sh" \
+            && measure $a $a $UTB $UTRACE $UCHK "+define+SC_A_ENCODER=1+define+SC_CBSG=$cbsg" ;;
         *) echo "unknown arm: $a" >&2 ;;
     esac
 done
