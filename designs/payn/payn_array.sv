@@ -23,6 +23,12 @@
 `ifndef PAYN_NW
 `define PAYN_NW 9
 `endif
+`ifndef PAYN_STREAM_MODE
+`define PAYN_STREAM_MODE 0
+`endif
+`ifndef PAYN_RNG_SHIFT
+`define PAYN_RNG_SHIFT 1
+`endif
 
 // PaYN SC array: shared Sobol banks + edge peripheral + one InnerPE tile grid,
 // wired into a single synth/PnR/power target. Binary edge operands
@@ -48,12 +54,26 @@ module payn_array #(
     parameter logic [WIDTH-1:0] A_SHIFT_STRIDE = 8'h53,
     parameter int W_DIRECTION_SET = 1,
     parameter logic [WIDTH-1:0] W_SHIFT_BASE   = 8'h9d,
-    parameter logic [WIDTH-1:0] W_SHIFT_STRIDE = 8'h2b
+    parameter logic [WIDTH-1:0] W_SHIFT_STRIDE = 8'h2b,
+    // STREAM_MODE=0: legacy (both operands Sobol-compared, plain AND).
+    // STREAM_MODE=1: unary temporal A + sample-ordered Sobol W, plain AND.
+    //   A lanes are the sample index c*M+m, so a_binary_in = k gives a
+    //   thermometer stream of k ones (k = round(b*L/G) is the host-side
+    //   quantization of the A magnitude onto L samples). W lanes are samples
+    //   c*M .. c*M+M-1 of the W_DIRECTION_SET Sobol sequence, XOR'd with the
+    //   per-column mask bitrev((d_base+depth) mod 64) and shifted right by
+    //   RNG_SHIFT. Because A's ones are contiguous from sample 0, this plain
+    //   AND equals gating W's generator on the A bit, and samples past L
+    //   are zero without extra masking (k <= L).
+    parameter int STREAM_MODE = `PAYN_STREAM_MODE,
+    parameter int RNG_SHIFT = `PAYN_RNG_SHIFT   // STREAM_MODE=1 only
 ) (
     input logic clk,
     input logic reset,        // sync for InnerPE, async for peripheral + Sobol
 
     input logic rng_en,       // advance both Sobol banks
+    input logic rng_restart = 1'b0,   // STREAM_MODE=1: restart streams at t=0
+    input logic [15:0] d_base = '0,   // STREAM_MODE=1: K-block's first column (latched with load_a/load_w)
     input logic load_a,       // latch A binary operands into the peripheral
     input logic load_w,       // latch W binary operands into the peripheral
     input logic load_a_sign,  // load A signs into the InnerPE pipe
@@ -77,18 +97,22 @@ module payn_array #(
         .WIDTH(WIDTH), .M(M),
         .DIRECTION_SET(A_DIRECTION_SET),
         .DIGITAL_SHIFT_BASE(A_SHIFT_BASE),
-        .DIGITAL_SHIFT_STRIDE(A_SHIFT_STRIDE)
+        .DIGITAL_SHIFT_STRIDE(A_SHIFT_STRIDE),
+        .MODE(STREAM_MODE == 1 ? 2 : 0)
     ) u_a_rng (
-        .clk, .reset, .enable(rng_en), .random_values(a_random_values)
+        .clk, .reset, .enable(rng_en), .restart(rng_restart),
+        .random_values(a_random_values)
     );
 
     sobol_bank #(
         .WIDTH(WIDTH), .M(M),
         .DIRECTION_SET(W_DIRECTION_SET),
         .DIGITAL_SHIFT_BASE(W_SHIFT_BASE),
-        .DIGITAL_SHIFT_STRIDE(W_SHIFT_STRIDE)
+        .DIGITAL_SHIFT_STRIDE(W_SHIFT_STRIDE),
+        .MODE(STREAM_MODE == 1 ? 1 : 0)
     ) u_w_rng (
-        .clk, .reset, .enable(rng_en), .random_values(w_random_values)
+        .clk, .reset, .enable(rng_en), .restart(rng_restart),
+        .random_values(w_random_values)
     );
 
     // ---- edge peripheral: binary -> stochastic streams ----------------------
@@ -101,12 +125,15 @@ module payn_array #(
         .K(K), .M(M), .N_H(N_H), .N_W(N_W), .WIDTH(WIDTH),
         .SCRAMBLE_ENABLE(SCRAMBLE_ENABLE),
         .A_SCRAMBLE_SALT(A_SCRAMBLE_SALT),
-        .W_SCRAMBLE_SALT(W_SCRAMBLE_SALT)
+        .W_SCRAMBLE_SALT(W_SCRAMBLE_SALT),
+        .A_SCRAMBLE_ENABLE(STREAM_MODE == 1 ? 1'b0 : SCRAMBLE_ENABLE),
+        .MASK_MODE(STREAM_MODE == 1 ? 1 : 0),
+        .W_RNG_SHIFT(STREAM_MODE == 1 ? RNG_SHIFT : 0)
     ) u_peripheral (
         .clk, .reset,
         .load_a, .load_w,
         .a_binary_in, .a_signs_in, .w_binary_in, .w_signs_in,
-        .a_random_values, .w_random_values,
+        .a_random_values, .w_random_values, .d_base,
         .a_bits, .a_signs, .w_bits, .w_signs
     );
 

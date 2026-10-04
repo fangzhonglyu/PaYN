@@ -62,6 +62,8 @@ module Top;
     logic clk = 1'b0;
     logic reset = 1'b0;
     logic rng_en = 1'b0, mac_en = 1'b0, shift_in = 1'b0;
+    logic rng_restart = 1'b0;       // STREAM_MODE=1 only; tied off for .*
+    logic [15:0] d_base = '0;       // STREAM_MODE=1 only; tied off for .*
     logic load_a = 1'b0, load_w = 1'b0;
     logic load_a_sign = 1'b0, load_w_sign = 1'b0;
 `ifdef PAYN_BLOCK_FINALIZE

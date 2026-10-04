@@ -1,0 +1,9 @@
+// expected acc[n][m] at stream length L=16, SC_MULT_SCHEME=ut, int32 two's complement, 8 rows x 8 values
+ffffff87 ffffffcd ffffffd1 0000003b 0000000d 00000008 0000001e ffffff8e
+ffffffaf 00000021 ffffffec ffffffcf 000000a4 0000006b 0000005e ffffffbb
+00000015 0000002a 00000028 ffffffaa ffffffd4 ffffff94 ffffffbd 00000013
+ffffffed 0000001a 0000007c ffffffca ffffffbb 0000001f 0000003b 00000022
+00000004 ffffffaa ffffffb4 ffffffa6 ffffff8a fffffff5 00000052 00000002
+00000043 0000004e 00000022 fffffffb ffffffad 0000002b fffffffb ffffffb2
+ffffffce 0000000a 00000025 fffffff0 00000068 ffffffd0 00000042 00000023
+ffffffe7 0000005b ffffffea fffffff2 00000034 00000034 ffffffd3 ffffffb9

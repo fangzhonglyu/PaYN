@@ -14,6 +14,7 @@ module Top;
     logic clk = 1'b0;
     logic reset = 1'b1;
     logic enable = 1'b0;
+    logic [15:0] d_base = '0;       // MASK_MODE=1 only; tied off for .*
     logic load_a = 1'b0;
     logic load_w = 1'b0;
 
