@@ -2,20 +2,20 @@
 
 `include "common/clk_util.sv"
 
-// Power + output-checking bench for the integrated SC array (payn_array).
+// Power + output-checking bench for payn_array (C-BSG).
 //
-// A length-T stochastic block takes MAC_CYCLES=T/M clocks.  One binary
-// magnitude/sign batch is held for those clocks while Sobol advances every
-// clock, producing a new M-bit parallel stochastic slice each cycle.  The
-// measured workload runs many blocks back-to-back so magnitude/sign reload
-// activity is represented instead of being hidden outside the SAIF window.
+// A length-T stochastic block takes MAC_CYCLES = T/M clocks. Every batch is one
+// K-block: rng_restart is asserted with its loads, so its streams start at
+// sample 0 (gapless -- the restart edge emits cycle 0), and d_base = batch*K
+// selects its column masks (latched with the operands). The measured workload
+// runs many blocks back-to-back so operand reload activity is inside the SAIF
+// window. Operands are the emulator's thresholds: a logical magnitude m
+// (uniform 0..127, random sign) maps to b = round(m * 128 / 127).
 //
-// After the long run, the accumulator matrix is drained and all issued batches
-// plus the drain are written to array_streaming_rtl.txt.  The bit-exact check is
-// post-hoc: designs/payn/cosim/cosim_streaming.py recomputes every cycle and
-// asserts a bit-for-bit match (run via designs/payn/cosim/run_power_array.sh).
-// Inputs are launched at the NEGEDGE (full half-cycle setup,
-// insertion-independent) so routed clock insertion cannot race the launch.
+// After the run the accumulator is drained and all batches plus the drain go to
+// array_streaming_rtl.txt; cosim_streaming.py checks it bit-for-bit against the
+// emulator's C-BSG definition (run_power_array.sh). Inputs are launched at the
+// NEGEDGE (full half-cycle setup, insertion-independent).
 //
 // Needs DesignWare for the RTL InnerTile heap: make sim ... USE_DW=1
 
@@ -30,27 +30,19 @@
 `endif
 
 `ifndef SC_K
-`define SC_K 6
+`define SC_K 8
 `endif
 `ifndef SC_M
 `define SC_M 16
 `endif
 `ifndef SC_NH
-`define SC_NH 9
+`define SC_NH 8
 `endif
 `ifndef SC_NW
-`define SC_NW 9
+`define SC_NW 8
 `endif
 `ifndef SC_WIDTH
 `define SC_WIDTH 8
-`endif
-// Numeric workload precision: the bipolar operand is a MAG_WIDTH-bit unsigned
-// magnitude plus a separate sign bit.  The existing hardware comparator and
-// Sobol threshold remain WIDTH=8, so encode a logical magnitude m as
-// m << (WIDTH-MAG_WIDTH).  For the default 7-to-8-bit case this maps 0..127 to
-// even thresholds 0..254 and preserves P(bit=1)=m/128.
-`ifndef SC_MAG_WIDTH
-`define SC_MAG_WIDTH 7
 `endif
 `ifndef SC_OWIDTH
 `define SC_OWIDTH 24
@@ -59,13 +51,10 @@
 `define SC_T 128
 `endif
 `ifndef SC_BATCHES
-`define SC_BATCHES 256
+`define SC_BATCHES 384
 `endif
 `ifndef SC_SEED
 `define SC_SEED 32'hDEAD_BEEF
-`endif
-`ifndef SC_RNG_FULL_PERIOD_WRAP
-`define SC_RNG_FULL_PERIOD_WRAP 0
 `endif
 `ifndef ASTRAEA_CLK_PERIOD_NS
 `define ASTRAEA_CLK_PERIOD_NS 2.5
@@ -77,39 +66,21 @@ module Top;
     localparam int N_H = `SC_NH;
     localparam int N_W = `SC_NW;
     localparam int WIDTH = `SC_WIDTH;
-    localparam int MAG_WIDTH = `SC_MAG_WIDTH;
-    localparam int MAG_SHIFT = WIDTH - MAG_WIDTH;
-    localparam logic [WIDTH-1:0] LOGICAL_MAG_MASK =
-        {WIDTH{1'b1}} >> (WIDTH - MAG_WIDTH);
     localparam int OWIDTH = `SC_OWIDTH;
     localparam int T = `SC_T;
     localparam int MAC_CYCLES = T / M;
     localparam int N_BATCHES = `SC_BATCHES;
     localparam int TOTAL_MAC_CYCLES = N_BATCHES * MAC_CYCLES;
-    localparam bit RNG_FULL_PERIOD_WRAP = `SC_RNG_FULL_PERIOD_WRAP;
+    localparam int GRID = 128;
+    localparam int Q_MAX = 127;
     localparam real PERIOD = `ASTRAEA_CLK_PERIOD_NS;
-`ifdef PAYN_GATED_CBSG
-    localparam bit GATED_CBSG = 1'b1;
-`else
-    localparam bit GATED_CBSG = 1'b0;
-`endif
 
     logic clk, reset, timeout;
     logic rng_en = 1'b0, mac_en = 1'b0, shift_in = 1'b0;
-    logic [15:0] d_base = '0;       // STREAM_MODE=1 only; tied off for .*
+    logic rng_restart = 1'b0;
+    logic [15:0] d_base = '0;
+    logic [7:0] stream_len = 8'(T);
     logic load_a = 1'b0, load_w = 1'b0, load_a_sign = 1'b0, load_w_sign = 1'b0;
-`ifdef PAYN_GATED_CBSG
-    // payn_array_gated_cbsg: every batch load starts a K-block, which resets
-    // the gated W generators.
-    logic rng_restart;
-    assign rng_restart = load_a;
-`else
-    logic rng_restart = 1'b0;       // STREAM_MODE=1 only; tied off for .*
-`endif
-    logic [7:0] stream_len = 8'(T);   // A_ENCODER / gated C-BSG only; tied off for .*
-`ifdef PAYN_BLOCK_FINALIZE
-    logic block_finalize = 1'b0;
-`endif
 
     logic [N_H*K*WIDTH-1:0] a_binary_in = '0;
     logic [N_H*K-1:0]       a_signs_in = '0;
@@ -131,26 +102,8 @@ module Top;
         if (monitor_x && $isunknown(acc_out_east))
             $fatal(1, "[X-FAIL] SC drain rail entered X during SAIF: %h", acc_out_east);
 
-`ifdef PAYN_XTRACE
-    // Debug only: dump the whole DUT so an X transition can be traced to its
-    // source net.  Never defined in normal power runs.
-    //   PAYN_XTRACE        : dump from t=0 (startup X; the $fatal ends the run)
-    //   +PAYN_XTRACE_DRAIN : hold the dump off until just before the drain, so
-    //                        the ~7.7 ms window stays a tractable file size
-    initial begin
-        $dumpfile("xtrace.vcd");
-        $dumpvars(0, dut);
-`ifdef PAYN_XTRACE_DRAIN
-        $dumpoff;
-`endif
-    end
-`endif
-
     `PAYN_ARRAY_DUT #(
         .K(K), .M(M), .N_H(N_H), .N_W(N_W), .WIDTH(WIDTH), .OWIDTH(OWIDTH)
-`ifdef PAYN_BLOCK_FINALIZE
-        , .BLOCK_T(MAC_CYCLES)
-`endif
     ) dut (.*);
 
 `ifdef GL_SIM
@@ -164,21 +117,25 @@ module Top;
     end
 `endif
 
-    task automatic randomize_batch;
+    // round(m * 128 / 127) for a logical magnitude m in 0..127.
+    function automatic int threshold(input int m);
+        return (m * GRID * 2 + Q_MAX) / (2 * Q_MAX);
+    endfunction
+
+    task automatic randomize_batch(input int batch);
         for (int i = 0; i < N_H*K; i++) begin
-            a_binary_in[i*WIDTH +: WIDTH] =
-                (WIDTH'($urandom) & LOGICAL_MAG_MASK) << MAG_SHIFT;
+            a_binary_in[i*WIDTH +: WIDTH] = WIDTH'(threshold($urandom & 7'h7f));
             a_signs_in[i] = $urandom & 1;
         end
         for (int i = 0; i < N_W*K; i++) begin
-            w_binary_in[i*WIDTH +: WIDTH] =
-                (WIDTH'($urandom) & LOGICAL_MAG_MASK) << MAG_SHIFT;
+            w_binary_in[i*WIDTH +: WIDTH] = WIDTH'(threshold($urandom & 7'h7f));
             w_signs_in[i] = $urandom & 1;
         end
+        d_base = 16'(batch * K);
     endtask
 
     task automatic write_batch(input int batch);
-        $fwrite(trace_file, "BATCH %0d\nAMAG", batch);
+        $fwrite(trace_file, "BATCH %0d %0d\nAMAG", batch, d_base);
         for (int i = 0; i < N_H*K; i++)
             $fwrite(trace_file, " %0d", a_binary_in[i*WIDTH +: WIDTH]);
         $fwrite(trace_file, "\nASIGN");
@@ -193,161 +150,103 @@ module Top;
         $fwrite(trace_file, "\n");
     endtask
 
+    task automatic issue_batch(input int batch);
+        randomize_batch(batch);
+        write_batch(batch);
+        rng_restart = 1'b1;
+        load_a = 1'b1;
+        load_w = 1'b1;
+        load_a_sign = 1'b1;
+        load_w_sign = 1'b1;
+    endtask
+
+    task automatic idle_controls;
+        rng_restart = 1'b0;
+        load_a = 1'b0;
+        load_w = 1'b0;
+        load_a_sign = 1'b0;
+        load_w_sign = 1'b0;
+    endtask
+
     initial begin
         int next_batch;
 
-        assert (T > 0 && M > 0 && (T % M) == 0)
-            else $fatal(1, "SC_T=%0d must be a positive multiple of M=%0d", T, M);
-        assert (MAG_WIDTH > 0 && MAG_WIDTH <= WIDTH)
-            else $fatal(1, "SC_MAG_WIDTH=%0d must be in [1, SC_WIDTH=%0d]",
-                        MAG_WIDTH, WIDTH);
-        assert (MAC_CYCLES >= 1)
-            else $fatal(1, "streaming bench requires T/M >= 1");
+        assert (T > 0 && M > 0 && (T % M) == 0 && T <= GRID)
+            else $fatal(1, "SC_T=%0d must be a multiple of M=%0d and <= %0d", T, M, GRID);
+        assert (MAC_CYCLES >= 2)
+            else $fatal(1, "streaming bench requires T/M >= 2");
         assert (N_BATCHES > 0)
             else $fatal(1, "SC_BATCHES must be positive");
-`ifdef PAYN_BLOCK_FINALIZE
-        assert (N_BATCHES == 1)
-            else $fatal(1, "PAYN_BLOCK_FINALIZE currently requires SC_BATCHES=1");
-`endif
 
         seed_state = `SC_SEED;
         void'($urandom(seed_state));
 
         clk_utils.set_clock(PERIOD);
         clk_utils.do_reset();
-
         // Let routed reset trees settle for two complete clocks before loading
-        // operands.  This is outside the SAIF window and avoids recovery
-        // notifiers caused by reset insertion delay in older checkpoints.
+        // operands (outside the SAIF window).
         repeat (2) @(negedge clk);
 
         trace_file = $fopen("array_streaming_rtl.txt", "w");
         assert (trace_file != 0)
             else $fatal(1, "cannot open array_streaming_rtl.txt");
-        $fwrite(trace_file,
-                "STREAMCFG %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d\n",
-                K, M, N_H, N_W, WIDTH, OWIDTH, T, N_BATCHES,
-                RNG_FULL_PERIOD_WRAP, GATED_CBSG);
+        $fwrite(trace_file, "STREAMCFG %0d %0d %0d %0d %0d %0d %0d %0d\n",
+                K, M, N_H, N_W, WIDTH, OWIDTH, T, N_BATCHES);
 
-        // Launch batch zero and fill the peripheral/InnerPE input pipeline.
-        // With nonblocking clocked stages, its first generated slice reaches
-        // the accumulator two clocks after this load edge.
-        randomize_batch();
-        write_batch(0);
+        // Batch zero: restart + load on the same edge, then fill the pipe.
+        issue_batch(0);
         rng_en = 1'b1;
-        load_a = 1'b1;
-        load_w = 1'b1;
-        load_a_sign = 1'b1;
-        load_w_sign = 1'b1;
         @(posedge clk);
         @(negedge clk);
-        // At MAC_CYCLES=1 every window clock is a block boundary, so the
-        // operand feed has to run two batches ahead of the accumulator instead
-        // of one.  Issue batch 1 in this second pre-window clock; the window
-        // then opens already owing batch 2.  For MAC_CYCLES >= 2 this branch is
-        // not taken and the prologue is unchanged.
-        if (MAC_CYCLES < 2 && N_BATCHES > 1) begin
-            randomize_batch();
-            write_batch(1);
-        end else begin
-            load_a = 1'b0;
-            load_w = 1'b0;
-            load_a_sign = 1'b0;
-            load_w_sign = 1'b0;
-        end
+        idle_controls();
         @(posedge clk);
-        // Assert mac_en here, immediately after this posedge, rather than at the
-        // negedge below.  It gates acc_low's clock; the SDC constrains it with
-        // `set_input_delay 0.05`, so STA verified ~a full period of propagation,
-        // while a negedge launch grants only half.  On wide arrays it then reaches
-        // the shared acc_low ICG ~46 ps before the edge against a 55 ps setup,
-        // the notifier drives ENCLK to X, and the X lands in the accumulator.
-        // The first accumulating edge is unchanged -- this only buys setup margin.
+        // Assert mac_en right after this posedge rather than at the negedge: it
+        // gates the accumulator clock and the SDC gives it a full period, while
+        // a negedge launch would grant only half. The first accumulating edge is
+        // unchanged -- this only buys setup margin.
         mac_en = 1'b1;
         @(negedge clk);
-        load_a = 1'b0;
-        load_w = 1'b0;
-        load_a_sign = 1'b0;
-        load_w_sign = 1'b0;
 
-        // ---- SAIF window: many contiguous T/M-cycle stochastic blocks ----
+        // ---- SAIF window: back-to-back T/M-cycle K-blocks ----
 `ifdef GL_SIM
         $set_gate_level_monitoring("rtl_on");
 `else
-        // RTL runs feed SYN_SAIF_FILE (workload-driven synthesis). Without the
-        // "sv" argument VCS skips SystemVerilog-typed nets and the SAIF comes
-        // out empty; it also needs -lca on the VCS command line.
+        // RTL runs feed SYN_SAIF_FILE; "sv" is needed for SV-typed nets (and
+        // VCS needs -lca).
         $set_gate_level_monitoring("rtl_on", "sv");
 `endif
         $set_toggle_region(dut);
         monitor_x = 1'b1;
-        // mac_en was asserted one half-cycle earlier (see above) for setup margin.
         $toggle_start;
-        // MAC_CYCLES=1 opened the window with batch 1 already issued.
-        next_batch = (MAC_CYCLES < 2 && N_BATCHES > 1) ? 2 : 1;
+        next_batch = 1;
 
         for (int cycle = 0; cycle < TOTAL_MAC_CYCLES; cycle++) begin
-            load_a = 1'b0;
-            load_w = 1'b0;
-            load_a_sign = 1'b0;
-            load_w_sign = 1'b0;
-
-            // The peripheral adds one stage and the InnerPE adds one bit/sign
-            // stage.  Issuing the next batch two cycles before the current
-            // block ends makes the accumulator see exactly MAC_CYCLES slices
-            // from each batch with no bubble.
-            // Equivalent to (cycle % MAC_CYCLES) == MAC_CYCLES - 2 whenever
-            // MAC_CYCLES >= 2, but also well-defined at MAC_CYCLES = 1, where
-            // it fires every clock.
-            if (((cycle + 2) % MAC_CYCLES) == 0 &&
-                next_batch < N_BATCHES) begin
-                randomize_batch();
-                write_batch(next_batch);
+            idle_controls();
+            // Issue the next block two cycles before this one ends (peripheral
+            // + InnerPE stages) so the accumulator sees exactly MAC_CYCLES
+            // slices per block with no bubble.
+            if (((cycle + 2) % MAC_CYCLES) == 0 && next_batch < N_BATCHES) begin
+                issue_batch(next_batch);
                 next_batch++;
-                load_a = 1'b1;
-                load_w = 1'b1;
-                load_a_sign = 1'b1;
-                load_w_sign = 1'b1;
             end
-
             @(posedge clk);
             @(negedge clk);
         end
 
         assert (next_batch == N_BATCHES)
-            else $fatal(1, "issued %0d of %0d streaming batches",
-                        next_batch, N_BATCHES);
+            else $fatal(1, "issued %0d of %0d streaming batches", next_batch, N_BATCHES);
         mac_en = 1'b0;
         rng_en = 1'b0;
-        load_a = 1'b0;
-        load_w = 1'b0;
-        load_a_sign = 1'b0;
-        load_w_sign = 1'b0;
-`ifdef PAYN_BLOCK_FINALIZE
-        block_finalize = 1'b1;
-        @(posedge clk);
-        @(negedge clk);
-        block_finalize = 1'b0;
-`endif
+        idle_controls();
 
         #1ps;
         $toggle_stop;
         monitor_x = 1'b0;
         $toggle_report("dut.saif", 1.0e-12, "Top.dut");
 
-`ifdef PAYN_XTRACE_DRAIN
-        $dumpon;   // arm the dump for the drain only
-`endif
-        // ---- drain outside SAIF; append the observed matrix to the trace ----
-        // Align to a posedge, then assert shift_in immediately after it.  shift_in
-        // gates acc_high; the SDC constrains it with `set_input_delay 0.05`, so STA
-        // verified ~a full period to cross the array.  Asserting at the negedge (as
-        // the plain `shift_in = 1` here used to) grants only half, and on wide
-        // arrays it reaches the far tiles' ICG enable inside the setup window --
-        // the notifier then drives ENCLK to X and corrupts the drained value.
-        // Traced at N=12: clk_gate_acc_high X at t=7704737, ~26 ps after the edge.
-        // The alignment edge itself has mac_en=0 and shift_in=0, so it shifts
-        // nothing and additionally retires any pending carry/borrow.
+        // ---- drain outside SAIF ----
+        // shift_in is asserted right after a posedge for the same setup-margin
+        // reason as mac_en; the alignment edge has mac_en=0 and shifts nothing.
         acc_in_west = '0;
         shift_in = 1'b1;
         for (int s = 0; s < N_W; s++) begin

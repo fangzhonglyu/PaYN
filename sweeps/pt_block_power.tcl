@@ -49,7 +49,7 @@ set fh [open $OUT w]
 puts $fh "DESIGN $DESIGN_NAME"
 puts $fh [format "%-16s %8s %14s %14s %14s %14s" block cells internal_mW switch_mW leak_mW total_mW]
 set grand 0.0
-foreach b {u_pe u_peripheral u_a_rng u_w_rng} {
+foreach b {u_pe u_peripheral u_a_rng} {
     set r [blk $b]
     set grand [expr {$grand + [lindex $r 4]}]
     puts $fh [format "%-16s %8d %14.6f %14.6f %14.6f %14.6f" $b [lindex $r 0] \

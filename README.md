@@ -10,16 +10,20 @@ flow. PaYN is a **design repo**: it consumes the [ASTRAEA](../ASTRAEA) flow engi
 ```
 designs/
   common/                 shared bench utils (clk_util, defines)
-  payn/                   the SC accelerator (manual tile / PE / peripheral)
+  payn/                   the SC accelerator: C-BSG, bit-exact with the
+                          scmp_kernels emulator (SC_MULT_SCHEME=cbsg)
     inner_tile.sv           InnerTile — output-stationary MAC + row-serial drain
     inner_tile_comb.sv      combinational tile cone + flat GF22/ROC analysis top
-    inner_pe.sv             InnerPE / InnerPEFlat — the N_H×N_W tile array
-    pe_peripheral.sv        sc_pe_peripheral — binary→stochastic edge streams
-    sobol.sv                sobol_generator / sobol_bank — shared Sobol RNGs
-    payn_array.sv           (Phase 1) integrated banks + peripheral + InnerPE top
+    inner_pe.sv             InnerPE / InnerPEFlat — the N_H×N_W tile array with
+                            W generators gated by A (per row/depth) and per-tile
+                            W comparators
+    pe_peripheral.sv        sc_pe_peripheral — A binary→rate-encoded streams
+                            (emulator column mask, 7-bit grid)
+    sobol.sv                sobol_bank — M consecutive Sobol words per cycle
+    payn_array.sv           A bank + A peripheral + C-BSG InnerPE top
     tb/                     functional testbenches
-    power/                  SAIF power benches (output-checked)
-    cosim/                  bit-exact array model (sc_kernel.py) + RTL cosim harness
+    power/                  SAIF power bench (output-checked)
+    cosim/                  emulator goldens + RTL comparison (see cosim/README.md)
   baselines/
     binary_parallel/        BP array_8 (+ asymmetric INT8 correction)
     binary_serial/          BS array_8
@@ -51,21 +55,20 @@ Every design keeps RTL at its top level; tests live in `tb/`, power benches in
 ```bash
 # Functional simulation (RTL). SC designs instantiate DesignWare DW02_tree, so
 # they need the DesignWare sim library via USE_DW=1 (requires $SYNOPSYS):
-make sim TB=designs/payn/tb/test_inner_pe.sv USE_DW=1
-make sim TB=designs/payn/tb/test_peripheral.sv          # peripheral: no DW needed
 make sim TB=designs/baselines/binary_parallel/tb/test_array_8_power_workload.sv
 
 # Binary output-stationary array vs an independent golden matmul:
 make sim TB=designs/baselines/binary_os/tb/test_binary_os_array.sv
 
-# Bit-exact array cosim (RTL vs the Python reference):
-bash designs/payn/cosim/run_peripheral.sh
+# payn_array vs. the emulator's C-BSG vectors, bit-exact (needs ../gpu_aversion):
+bash designs/payn/cosim/run_matmul.sh
 
-# Multi-PE systolic regression (2x3 signed-segmented InnerPE grid):
-bash designs/payn/cosim/run_systolic_pe_grid.sh
+# Dimension sweep vs. emulator goldens; streaming power bench (cosim/README.md):
+CASES_DIR=<cases> GOLDEN_DIR=<goldens> bash designs/payn/cosim/run_sweep.sh
+bash designs/payn/cosim/run_power_array.sh VCS_ARGS="-lca" GL= TARGET=
 
-# Large end-to-end matmul: 8x8 K8/M16/N8 PEs, 64x64 result, T=128:
-bash designs/payn/cosim/run_systolic_matmul.sh
+# PaYN area / power through synth -> apr -> GL SAIF -> power_apr:
+bash sweeps/run_sc_power.sh
 
 # Synthesis / APR / power (see syn/targets, apr/targets):
 make synth TARGET=TSMC22/BP_ARRAY

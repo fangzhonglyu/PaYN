@@ -1,15 +1,12 @@
 #!/bin/bash
-# Parameterized PaYN SC array for the tile-config sweep. Shape is set per run via
-# SYN_DEFINES, e.g. SYN_DEFINES="PAYN_K=8 PAYN_M=8 PAYN_NH=4 PAYN_NW=4"
-# (the payn_array default params are `ifndef-driven). Same library/knobs as
-# PAYN_SC (svt_c30 / sc7mcpp140z). No fixed RTL preflight — the driver runs a
-# per-config bit-exact cosim instead.
+# Parameterized PaYN SC array (C-BSG) for shape sweeps. Shape is set per run via
+# SYN_DEFINES, e.g. SYN_DEFINES="PAYN_K=8 PAYN_M=16 PAYN_NH=8 PAYN_NW=8".
+# Same library/knobs as PAYN_SC. No fixed RTL preflight -- the driver runs a
+# per-config bit-exact check instead.
 export TOP=payn_array
 export TECH=TSMC22
 export SRC_SV="payn/payn_array.sv"
 export PERIOD=2.5
-# The physically compatible HPK adds two-bit flop cells.  MULTIBIT_INFER alone
-# cannot bank registers when only the base library is loaded.
 export TSMC22_HPK=1
 export MULTIBIT_INFER=1
 export CLOCK_GATE=1

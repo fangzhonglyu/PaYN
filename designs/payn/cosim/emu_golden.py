@@ -4,19 +4,18 @@
 Computes acc[n][m] = sum_d sign(A[n,d]) * sign(B[m,d]) * count_d with the
 production emulator tables (scmp_kernels.sc.kernels.build_enable_tables) and the
 production tiled Triton kernel, at the deployed configuration (sc_prec=8,
-bipolar, 7-bit RNG grid, Sobol "q"/"k" seeds, bitrev masks), for a chosen
-multiplication scheme (SC_MULT_SCHEME = cbsg | ut | and).
+bipolar, 7-bit RNG grid, Sobol "q"/"k" seeds, bitrev masks) and the C-BSG
+multiplication scheme (SC_MULT_SCHEME=cbsg) that payn_array implements.
 
 Operands are int8 .mem files in the t9_sc_matmul format (one row per line,
-two's-complement hex, `//` header). With --check-cbsg DIR the script first
-reproduces DIR/out_L*.mem under cbsg, validating this harness against the
-mentor-provided vectors.
+two's-complement hex, `//` header). With --check the script first reproduces
+CASE/out_L*.mem, validating this harness against the mentor-provided vectors.
 
 Runs on a GPU, or on CPU under the Triton interpreter (TRITON_INTERPRET=1 is
 set automatically when no GPU is present).
 
     python emu_golden.py --case ../../../../gpu_aversion/t9_sc_matmul/uniform \
-        --scheme ut --lengths 128,64,43,16 --out vectors_ut/uniform
+        --lengths 128,64,43,16 --out goldens/uniform
 """
 from __future__ import annotations
 
@@ -117,11 +116,10 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--case", type=Path, required=True,
                     help="directory holding a.mem and b.mem")
-    ap.add_argument("--scheme", default="ut", choices=["cbsg", "ut", "and"])
     ap.add_argument("--lengths", default="128,64,43,16")
     ap.add_argument("--out", type=Path, help="write out_L{L}.mem here")
-    ap.add_argument("--check-cbsg", action="store_true",
-                    help="first reproduce CASE/out_L*.mem under cbsg")
+    ap.add_argument("--check", action="store_true",
+                    help="first reproduce CASE/out_L*.mem (t9 C-BSG vectors)")
     args = ap.parse_args()
 
     if os.environ.get("TRITON_INTERPRET") == "1":
@@ -132,22 +130,22 @@ def main() -> int:
     lengths = [int(x) for x in args.lengths.split(",")]
     ok = True
 
-    if args.check_cbsg:
+    if args.check:
         for L in lengths:
             ref = args.case / f"out_L{L}.mem"
             if not ref.exists():
                 continue
             match = np.array_equal(emulator_acc(qa, qb, L, "cbsg"), read_mem(ref, 32))
             ok &= match
-            print(f"[{'PASS' if match else 'FAIL'}] cbsg L={L} reproduces {ref}")
+            print(f"[{'PASS' if match else 'FAIL'}] L={L} reproduces {ref}")
 
     if args.out:
         args.out.mkdir(parents=True, exist_ok=True)
         for L in lengths:
-            acc = emulator_acc(qa, qb, L, args.scheme)
+            acc = emulator_acc(qa, qb, L, "cbsg")
             write_mem(args.out / f"out_L{L}.mem", acc,
                       f"expected acc[n][m] at stream length L={L}, SC_MULT_SCHEME="
-                      f"{args.scheme}, int32 two's complement, "
+                      f"cbsg, int32 two's complement, "
                       f"{acc.shape[0]} rows x {acc.shape[1]} values")
             print(f"wrote {args.out / f'out_L{L}.mem'}")
     return 0 if ok else 1
