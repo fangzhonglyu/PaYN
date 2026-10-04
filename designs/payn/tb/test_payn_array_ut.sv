@@ -26,7 +26,15 @@
 //
 // Array shape via defines SC_K / SC_M / SC_NH / SC_NW. Needs DesignWare.
 
+// +define+SC_GATED: payn_array_gated_cbsg with STREAMS=1 (traditional gated C-BSG on
+// the emulator's streams); it takes bA for the current block. Compare against
+// C-BSG goldens.
+
+`ifdef SC_GATED
+`include "payn/variants/gated_cbsg/payn_array_gated_cbsg.sv"
+`else
 `include "payn/payn_array.sv"
+`endif
 
 `ifndef SC_K
 `define SC_K 8
@@ -70,6 +78,11 @@ module Top;
     localparam int GRID = 128;
     localparam int Q_MAX = 127;
     localparam int A_ENCODER = `SC_A_ENCODER;
+`ifdef SC_GATED
+    localparam int GATED = 1;
+`else
+    localparam int GATED = 0;
+`endif
     localparam int CBSG = `SC_CBSG;
 
     logic clk = 1'b0;
@@ -94,10 +107,17 @@ module Top;
 
     always #1.25 clk = ~clk;
 
+`ifdef SC_GATED
+    payn_array_gated_cbsg #(
+        .K(K), .M(M), .N_H(N_H), .N_W(N_W), .WIDTH(WIDTH), .OWIDTH(OWIDTH),
+        .STREAMS(1), .RNG_SHIFT(1)
+    ) dut (.*);
+`else
     payn_array #(
         .K(K), .M(M), .N_H(N_H), .N_W(N_W), .WIDTH(WIDTH), .OWIDTH(OWIDTH),
         .STREAM_MODE(1), .RNG_SHIFT(1), .A_ENCODER(A_ENCODER), .A_CBSG(CBSG)
     ) dut (.*);
+`endif
 
     // round(|q| * 128 / 127): |q| for |q| <= 63, |q| + 1 for |q| >= 64.
     function automatic int threshold(input logic [7:0] q);
@@ -125,7 +145,8 @@ module Top;
                 q = (row < N_g && col < D_g) ? a_mem[row*D_g + col] : 8'h00;
                 b = threshold(q);
                 a_binary_in[(h*K + k)*WIDTH +: WIDTH] =
-                    A_ENCODER ? WIDTH'(b) : WIDTH'((b * L_g + GRID / 2) / GRID);
+                    (A_ENCODER || GATED) ? WIDTH'(b)
+                                         : WIDTH'((b * L_g + GRID / 2) / GRID);
                 a_signs_in[h*K + k] = q[7];
             end
     endtask
@@ -148,6 +169,7 @@ module Top;
         $readmemh({case_dir, "/b.mem"}, b_mem, 0, MB*D - 1);
         $readmemh(expect_file, expect_mem, 0, N*MB - 1);
         if (CBSG && !A_ENCODER) $fatal(1, "SC_CBSG=1 needs SC_A_ENCODER=1");
+        if (GATED && A_ENCODER) $fatal(1, "SC_GATED excludes SC_A_ENCODER");
         stream_len = 8'(L);
         L_g = L; N_g = N; D_g = D;
         cycles = (L + M - 1) / M;
@@ -241,11 +263,11 @@ module Top;
         if (errors == 0)
             $display("PASS: %0dx%0dx%0d L=%0d array K%0d/M%0d/%0dx%0d %s: all %0d accumulators match",
                      N, MB, D, L, K, M, N_H, N_W,
-                     !A_ENCODER ? "host-UT" : (CBSG ? "enc-CBSG" : "enc-UT"), N*MB);
+                     GATED ? "gated-CBSG" : (!A_ENCODER ? "host-UT" : (CBSG ? "enc-CBSG" : "enc-UT")), N*MB);
         else
             $display("FAIL: %0dx%0dx%0d L=%0d array K%0d/M%0d/%0dx%0d %s: %0d of %0d differ",
                      N, MB, D, L, K, M, N_H, N_W,
-                     !A_ENCODER ? "host-UT" : (CBSG ? "enc-CBSG" : "enc-UT"), errors, N*MB);
+                     GATED ? "gated-CBSG" : (!A_ENCODER ? "host-UT" : (CBSG ? "enc-CBSG" : "enc-UT")), errors, N*MB);
         $finish;
     end
 endmodule

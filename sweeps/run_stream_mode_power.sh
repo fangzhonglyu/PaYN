@@ -8,15 +8,18 @@
 #   sm1       STREAM_MODE=1, host-side UT kA (A_ENCODER=0)
 #   enc_ut    STREAM_MODE=1 + on-chip A encoder, A_CBSG=0 (UT)
 #   enc_cbsg  STREAM_MODE=1 + on-chip A encoder, A_CBSG=1 (C-BSG)
-#   gated     payn_array_gated_cbsg: traditional C-BSG, PaYN's original A/W
-#             generation, W gated by A (target PAYN_SC_GATED_CBSG)
+#   gated_orig  payn_array_gated_cbsg STREAMS=0: traditional C-BSG (W gated
+#               by A) with PaYN's original A/W generation
+#   gated_emu   payn_array_gated_cbsg STREAMS=1: traditional C-BSG on the
+#               emulator's streams (bit-exact with its C-BSG)
+#             (both on target PAYN_SC_GATED_CBSG)
 #
 # All: TSMC22/PAYN_SC_SWEEP, K8/M16/N8x8, OWIDTH=24, T=128, 2.5 ns, 384
 # back-to-back batches (3072 MAC cycles) in the SAIF window, uniform 7-bit
 # magnitudes with random signs. Each run's gate-level drain is checked
 # bit-exact before its SAIF is used.
 #
-#   bash sweeps/run_stream_mode_power.sh              # all five arms
+#   bash sweeps/run_stream_mode_power.sh              # all six arms
 #   bash sweeps/run_stream_mode_power.sh enc_cbsg     # one arm
 #
 # Needs AFS tokens for the TSMC22 kit (kinit && aklog) and a python with numpy
@@ -104,7 +107,7 @@ UTRACE=array_streaming_ut_rtl.txt
 UCHK=designs/payn/cosim/cosim_streaming_ut.py
 
 ARMS=("$@")
-[ ${#ARMS[@]} -gt 0 ] || ARMS=(sm0 sm1 enc_ut enc_cbsg gated)
+[ ${#ARMS[@]} -gt 0 ] || ARMS=(sm0 sm1 enc_ut enc_cbsg gated_orig gated_emu)
 for a in "${ARMS[@]}"; do
     case $a in
         sm0)
@@ -121,13 +124,19 @@ for a in "${ARMS[@]}"; do
             implement $a "PAYN_STREAM_MODE=1 PAYN_A_ENCODER=1 PAYN_A_CBSG=$cbsg" \
                 "BUILD_DIR=build/rtl_preflight/$a A_ENCODER=1 bash designs/payn/cosim/run_ut_matmul.sh" \
             && measure $a $a $UTB $UTRACE $UCHK "+define+SC_A_ENCODER=1+define+SC_CBSG=$cbsg" ;;
-        gated)
+        gated_orig)
             ( TARGET=$GATED_TARGET; TOP=$GATED_TOP
-              implement gated "" \
-                  "BUILD_DIR=build/rtl_preflight/gated SIM_SRCS=designs/payn/variants/gated_cbsg/payn_array_gated_cbsg.sv bash designs/payn/cosim/run_power_array.sh VCS_ARGS='-lca +define+PAYN_ARRAY_EXTERNAL_RTL+define+PAYN_ARRAY_DUT=payn_array_gated_cbsg+define+PAYN_GATED_CBSG+define+SC_K=$K+define+SC_M=$M+define+SC_NH=$N+define+SC_NW=$N+define+SC_OWIDTH=$OW+define+SC_T=$T+define+SC_BATCHES=16' GL= TARGET=" \
-              && measure gated gated designs/payn/power/power_payn_array.sv \
+              implement gated_orig "PAYN_GATED_STREAMS=0" \
+                  "BUILD_DIR=build/rtl_preflight/gated_orig SIM_SRCS=designs/payn/variants/gated_cbsg/payn_array_gated_cbsg.sv bash designs/payn/cosim/run_power_array.sh VCS_ARGS='-lca +define+PAYN_ARRAY_EXTERNAL_RTL+define+PAYN_ARRAY_DUT=payn_array_gated_cbsg+define+PAYN_GATED_CBSG+define+PAYN_GATED_STREAMS=0+define+SC_K=$K+define+SC_M=$M+define+SC_NH=$N+define+SC_NW=$N+define+SC_OWIDTH=$OW+define+SC_T=$T+define+SC_BATCHES=16' GL= TARGET=" \
+              && measure gated_orig gated_orig designs/payn/power/power_payn_array.sv \
                   array_streaming_rtl.txt designs/payn/cosim/cosim_streaming.py \
                   "+define+PAYN_ARRAY_DUT=payn_array_gated_cbsg+define+PAYN_GATED_CBSG" ) ;;
+        gated_emu)
+            ( TARGET=$GATED_TARGET; TOP=$GATED_TOP
+              implement gated_emu "PAYN_GATED_STREAMS=1" \
+                  "BUILD_DIR=build/rtl_preflight/gated_emu SIM_SRCS=designs/payn/variants/gated_cbsg/payn_array_gated_cbsg.sv bash designs/payn/cosim/run_power_array_ut.sh VCS_ARGS='-lca +define+PAYN_ARRAY_EXTERNAL_RTL+define+PAYN_ARRAY_DUT=payn_array_gated_cbsg+define+PAYN_GATED_STREAMS=1+define+SC_GATED+define+SC_K=$K+define+SC_M=$M+define+SC_NH=$N+define+SC_NW=$N+define+SC_OWIDTH=$OW+define+SC_T=$T+define+SC_BATCHES=16' GL= TARGET=" \
+              && measure gated_emu gated_emu $UTB $UTRACE $UCHK \
+                  "+define+PAYN_ARRAY_DUT=payn_array_gated_cbsg+define+SC_GATED" ) ;;
         *) echo "unknown arm: $a" >&2 ;;
     esac
 done

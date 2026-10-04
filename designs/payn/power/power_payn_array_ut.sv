@@ -24,6 +24,11 @@
 // built (payn_array A_CBSG / PAYN_A_CBSG). SC_CBSG must match it (0 = UT,
 // 1 = C-BSG): it only labels the trace for cosim_streaming_ut.py.
 //
+// +define+SC_GATED: DUT is payn_array_gated_cbsg with STREAMS=1 (gated W on
+// the emulator's streams; PAYN_ARRAY_DUT=payn_array_gated_cbsg,
+// PAYN_GATED_STREAMS=1). It takes bA for the current batch; the trace is
+// labelled C-BSG so the checker counts A's ones from the emulator stream.
+//
 // RTL runs need +define+PAYN_STREAM_MODE=1 (and +define+PAYN_A_ENCODER=1 plus
 // +define+PAYN_A_CBSG=<0|1> for the encoder); the gate-level netlist is
 // synthesized with them. Needs DesignWare: USE_DW=1.
@@ -90,6 +95,11 @@ module Top;
     localparam int Q_MAX = 127;
     localparam real PERIOD = `ASTRAEA_CLK_PERIOD_NS;
     localparam int A_ENCODER = `SC_A_ENCODER;
+`ifdef SC_GATED
+    localparam int GATED = 1;
+`else
+    localparam int GATED = 0;
+`endif
 
     logic clk, reset, timeout;
     logic rng_en = 1'b0, mac_en = 1'b0, shift_in = 1'b0;
@@ -152,7 +162,7 @@ module Top;
                 b = threshold($urandom & 7'h7f);
                 // Encoder takes bA; host-side UT feeds kA = round(bA*T/128).
                 a_bat[bt][i*WIDTH +: WIDTH] =
-                    A_ENCODER ? WIDTH'(b) : WIDTH'((b * T + GRID / 2) / GRID);
+                    (A_ENCODER || GATED) ? WIDTH'(b) : WIDTH'((b * T + GRID / 2) / GRID);
                 as_bat[bt][i] = $urandom & 1;
             end
             for (int i = 0; i < N_W*K; i++) begin
@@ -228,7 +238,8 @@ module Top;
         assert (trace_file != 0)
             else $fatal(1, "cannot open array_streaming_ut_rtl.txt");
         $fwrite(trace_file, "STREAMCFG_UT %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d\n",
-                K, M, N_H, N_W, WIDTH, OWIDTH, T, N_BATCHES, A_ENCODER, `SC_CBSG);
+                K, M, N_H, N_W, WIDTH, OWIDTH, T, N_BATCHES,
+                (A_ENCODER || GATED) ? 1 : 0, GATED ? 1 : `SC_CBSG);
         draw_batches();
 
         if (A_ENCODER) begin
