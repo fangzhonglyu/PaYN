@@ -6,6 +6,7 @@
 `include "payn/sobol.sv"
 `include "payn/pe_peripheral.sv"
 `include "payn/inner_pe.sv"
+`include "payn/a_encoder.sv"
 
 // Default shape is `ifndef-driven so the synth flow can sweep configs via
 // SYN_DEFINES (e.g. SYN_DEFINES="PAYN_K=8 PAYN_M=8 PAYN_NH=4 PAYN_NW=4").
@@ -28,6 +29,9 @@
 `endif
 `ifndef PAYN_RNG_SHIFT
 `define PAYN_RNG_SHIFT 1
+`endif
+`ifndef PAYN_A_ENCODER
+`define PAYN_A_ENCODER 0
 `endif
 
 // PaYN SC array: shared Sobol banks + edge peripheral + one InnerPE tile grid,
@@ -66,7 +70,15 @@ module payn_array #(
     //   AND equals gating W's generator on the A bit, and samples past L
     //   are zero without extra masking (k <= L).
     parameter int STREAM_MODE = `PAYN_STREAM_MODE,
-    parameter int RNG_SHIFT = `PAYN_RNG_SHIFT   // STREAM_MODE=1 only
+    parameter int RNG_SHIFT = `PAYN_RNG_SHIFT,  // STREAM_MODE=1 only
+    // A_ENCODER=1 (STREAM_MODE=1 only): on-chip A encoder (sc_a_encoder).
+    //   a_binary_in is then the A threshold bA (same encoding as W) for the
+    //   NEXT K-block -- A runs one block ahead of W -- and the encoder turns it
+    //   into kA under the runtime toggle cbsg_mode:
+    //     0 = UT    : kA = round(bA * L / 128)
+    //     1 = C-BSG : kA = #ones of A's Sobol stream (emulator k_table)
+    //   L comes from stream_len. A_ENCODER=0 keeps a_binary_in = kA from the host.
+    parameter int A_ENCODER = `PAYN_A_ENCODER
 ) (
     input logic clk,
     input logic reset,        // sync for InnerPE, async for peripheral + Sobol
@@ -74,6 +86,8 @@ module payn_array #(
     input logic rng_en,       // advance both Sobol banks
     input logic rng_restart = 1'b0,   // STREAM_MODE=1: restart streams at t=0
     input logic [15:0] d_base = '0,   // STREAM_MODE=1: K-block's first column (latched with load_a/load_w)
+    input logic cbsg_mode = 1'b0,     // A_ENCODER=1: 0 = UT, 1 = C-BSG
+    input logic [7:0] stream_len = 8'd128,  // A_ENCODER=1: stream length L
     input logic load_a,       // latch A binary operands into the peripheral
     input logic load_w,       // latch W binary operands into the peripheral
     input logic load_a_sign,  // load A signs into the InnerPE pipe
@@ -115,6 +129,28 @@ module payn_array #(
         .random_values(w_random_values)
     );
 
+    // ---- optional A encoder (STREAM_MODE=1, A_ENCODER=1) --------------------
+    logic [N_H*K*WIDTH-1:0] periph_a_binary;
+    logic [N_H*K-1:0]       periph_a_signs;
+    logic [15:0]            periph_d_base;
+
+    if (STREAM_MODE == 1 && A_ENCODER == 1) begin : g_a_encoder
+        sc_a_encoder #(
+            .K(K), .M(M), .N_H(N_H), .WIDTH(WIDTH), .RNG_SHIFT(RNG_SHIFT)
+        ) u_a_encoder (
+            .clk, .reset,
+            .load(load_a), .enable(rng_en),
+            .cbsg_mode, .stream_len,
+            .a_binary_in, .a_signs_in, .d_base_in(d_base),
+            .a_k_out(periph_a_binary), .a_signs_out(periph_a_signs),
+            .d_base_out(periph_d_base)
+        );
+    end else begin : g_no_a_encoder
+        assign periph_a_binary = a_binary_in;
+        assign periph_a_signs = a_signs_in;
+        assign periph_d_base = d_base;
+    end
+
     // ---- edge peripheral: binary -> stochastic streams ----------------------
     logic [N_H*K*M-1:0] a_bits;
     logic [N_H*K-1:0]   a_signs;
@@ -132,8 +168,9 @@ module payn_array #(
     ) u_peripheral (
         .clk, .reset,
         .load_a, .load_w,
-        .a_binary_in, .a_signs_in, .w_binary_in, .w_signs_in,
-        .a_random_values, .w_random_values, .d_base,
+        .a_binary_in(periph_a_binary), .a_signs_in(periph_a_signs),
+        .w_binary_in, .w_signs_in,
+        .a_random_values, .w_random_values, .d_base(periph_d_base),
         .a_bits, .a_signs, .w_bits, .w_signs
     );
 

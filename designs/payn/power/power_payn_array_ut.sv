@@ -18,8 +18,13 @@
 // array_streaming_ut_rtl.txt; cosim_streaming_ut.py checks it bit-for-bit
 // against an emulator-defined reference (run_power_array_ut.sh).
 //
-// RTL runs need +define+PAYN_STREAM_MODE=1 (payn_array's default STREAM_MODE);
-// the gate-level netlist is synthesized with it. Needs DesignWare: USE_DW=1.
+// A paths: SC_A_ENCODER=0 feeds the host-side UT kA. SC_A_ENCODER=1 feeds bA to
+// the on-chip encoder one batch ahead (its count overlaps the previous batch,
+// so the MAC stream stays gapless) with cbsg_mode = SC_CBSG (0 = UT, 1 = C-BSG).
+//
+// RTL runs need +define+PAYN_STREAM_MODE=1 (and +define+PAYN_A_ENCODER=1 for
+// the encoder); the gate-level netlist is synthesized with them. Needs
+// DesignWare: USE_DW=1.
 
 `ifndef GL_SIM
 `ifndef PAYN_ARRAY_EXTERNAL_RTL
@@ -58,6 +63,12 @@
 `ifndef SC_SEED
 `define SC_SEED 32'hDEAD_BEEF
 `endif
+`ifndef SC_A_ENCODER
+`define SC_A_ENCODER 0
+`endif
+`ifndef SC_CBSG
+`define SC_CBSG 0
+`endif
 `ifndef ASTRAEA_CLK_PERIOD_NS
 `define ASTRAEA_CLK_PERIOD_NS 2.5
 `endif
@@ -76,11 +87,14 @@ module Top;
     localparam int GRID = 128;
     localparam int Q_MAX = 127;
     localparam real PERIOD = `ASTRAEA_CLK_PERIOD_NS;
+    localparam int A_ENCODER = `SC_A_ENCODER;
 
     logic clk, reset, timeout;
     logic rng_en = 1'b0, mac_en = 1'b0, shift_in = 1'b0;
     logic rng_restart = 1'b0;
     logic [15:0] d_base = '0;
+    logic cbsg_mode = 1'(`SC_CBSG);
+    logic [7:0] stream_len = 8'(T);
     logic load_a = 1'b0, load_w = 1'b0, load_a_sign = 1'b0, load_w_sign = 1'b0;
 
     logic [N_H*K*WIDTH-1:0] a_binary_in = '0;
@@ -123,39 +137,60 @@ module Top;
         return (m * GRID * 2 + Q_MAX) / (2 * Q_MAX);
     endfunction
 
-    task automatic randomize_batch(input int batch);
-        for (int i = 0; i < N_H*K; i++) begin
-            int b;
-            b = threshold($urandom & 7'h7f);
-            a_binary_in[i*WIDTH +: WIDTH] = WIDTH'((b * T + GRID / 2) / GRID);
-            a_signs_in[i] = $urandom & 1;
+    // All batches are drawn up front: with the encoder, A is presented one
+    // batch ahead of W.
+    logic [N_H*K*WIDTH-1:0] a_bat [N_BATCHES];
+    logic [N_H*K-1:0]       as_bat [N_BATCHES];
+    logic [N_W*K*WIDTH-1:0] w_bat [N_BATCHES];
+    logic [N_W*K-1:0]       ws_bat [N_BATCHES];
+
+    task automatic draw_batches;
+        for (int bt = 0; bt < N_BATCHES; bt++) begin
+            for (int i = 0; i < N_H*K; i++) begin
+                int b;
+                b = threshold($urandom & 7'h7f);
+                // Encoder takes bA; host-side UT feeds kA = round(bA*T/128).
+                a_bat[bt][i*WIDTH +: WIDTH] =
+                    A_ENCODER ? WIDTH'(b) : WIDTH'((b * T + GRID / 2) / GRID);
+                as_bat[bt][i] = $urandom & 1;
+            end
+            for (int i = 0; i < N_W*K; i++) begin
+                w_bat[bt][i*WIDTH +: WIDTH] = WIDTH'(threshold($urandom & 7'h7f));
+                ws_bat[bt][i] = $urandom & 1;
+            end
         end
-        for (int i = 0; i < N_W*K; i++) begin
-            w_binary_in[i*WIDTH +: WIDTH] = WIDTH'(threshold($urandom & 7'h7f));
-            w_signs_in[i] = $urandom & 1;
-        end
-        d_base = 16'(batch * K);
     endtask
 
-    task automatic write_batch(input int batch);
-        $fwrite(trace_file, "BATCH %0d %0d\nAMAG", batch, d_base);
+    // Present batch bt's A (and its d_base) on the A inputs; zeros past the end.
+    task automatic present_a(input int bt);
+        a_binary_in = (bt < N_BATCHES) ? a_bat[bt] : '0;
+        a_signs_in = (bt < N_BATCHES) ? as_bat[bt] : '0;
+        d_base = 16'(bt * K);
+    endtask
+
+    task automatic write_batch(input int bt);
+        $fwrite(trace_file, "BATCH %0d %0d\nAMAG", bt, bt * K);
         for (int i = 0; i < N_H*K; i++)
-            $fwrite(trace_file, " %0d", a_binary_in[i*WIDTH +: WIDTH]);
+            $fwrite(trace_file, " %0d", a_bat[bt][i*WIDTH +: WIDTH]);
         $fwrite(trace_file, "\nASIGN");
         for (int i = 0; i < N_H*K; i++)
-            $fwrite(trace_file, " %0d", a_signs_in[i]);
+            $fwrite(trace_file, " %0d", as_bat[bt][i]);
         $fwrite(trace_file, "\nWMAG");
         for (int i = 0; i < N_W*K; i++)
-            $fwrite(trace_file, " %0d", w_binary_in[i*WIDTH +: WIDTH]);
+            $fwrite(trace_file, " %0d", w_bat[bt][i*WIDTH +: WIDTH]);
         $fwrite(trace_file, "\nWSIGN");
         for (int i = 0; i < N_W*K; i++)
-            $fwrite(trace_file, " %0d", w_signs_in[i]);
+            $fwrite(trace_file, " %0d", ws_bat[bt][i]);
         $fwrite(trace_file, "\n");
     endtask
 
-    task automatic issue_batch(input int batch);
-        randomize_batch(batch);
-        write_batch(batch);
+    // Load batch bt into the peripheral (with the encoder, its kA comes out of
+    // the encoder while batch bt+1's A goes in).
+    task automatic issue_batch(input int bt);
+        write_batch(bt);
+        present_a(A_ENCODER ? bt + 1 : bt);
+        w_binary_in = w_bat[bt];
+        w_signs_in = ws_bat[bt];
         rng_restart = 1'b1;
         load_a = 1'b1;
         load_w = 1'b1;
@@ -191,8 +226,24 @@ module Top;
         trace_file = $fopen("array_streaming_ut_rtl.txt", "w");
         assert (trace_file != 0)
             else $fatal(1, "cannot open array_streaming_ut_rtl.txt");
-        $fwrite(trace_file, "STREAMCFG_UT %0d %0d %0d %0d %0d %0d %0d %0d\n",
-                K, M, N_H, N_W, WIDTH, OWIDTH, T, N_BATCHES);
+        $fwrite(trace_file, "STREAMCFG_UT %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d\n",
+                K, M, N_H, N_W, WIDTH, OWIDTH, T, N_BATCHES, A_ENCODER, cbsg_mode);
+        draw_batches();
+
+        if (A_ENCODER) begin
+            // Pre-load batch 0's A into the encoder and let it count (outside
+            // the SAIF window): load with rng_en starts the count gaplessly.
+            present_a(0);
+            load_a = 1'b1;
+            rng_en = 1'b1;
+            @(posedge clk);
+            @(negedge clk);
+            load_a = 1'b0;
+            repeat (MAC_CYCLES - 1) begin
+                @(posedge clk);
+                @(negedge clk);
+            end
+        end
 
         // Batch zero: restart + load on the same edge, then fill the pipe.
         issue_batch(0);
