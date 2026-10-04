@@ -1,0 +1,1232 @@
+section,item,value,note
+area,BP HW-ring 1x1,1801.8,inside 1186.1 outside 615.7; 4.09% of 44018; claimed 1482
+area,BP HW-ring 4x4,8862.8,inside 6700.1 outside 2162.7; 1.70% of 521892; claimed 7885
+area,BP HW-ring 4x8,13516.6,inside 11353.9 outside 2162.7; 1.33% of 1016043; claimed 12099
+L_sweep,BP HW-ring 1x1 L=64,0.1111,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-ring 1x1 L=128,0.2222,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-ring 1x1 L=256,0.4,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-ring 1x1 L=512,0.6667,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-ring 1x1 L=1024,1.0,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-ring 1x1 L=2048,1.3333,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-ring 1x1 L=4096,1.6,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-ring 1x1 L=11008,1.8298,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP best-mode 1x1 L=64,0.3478,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP best-mode 1x1 L=128,0.6957,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP best-mode 1x1 L=256,1.0323,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP best-mode 1x1 L=512,0.6667,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP best-mode 1x1 L=1024,1.0,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP best-mode 1x1 L=2048,1.3333,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP best-mode 1x1 L=4096,1.6,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP best-mode 1x1 L=11008,1.8298,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-self 1x1 L=64,0.3478,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-self 1x1 L=128,0.6957,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-self 1x1 L=256,1.0323,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-self 1x1 L=512,1.3617,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-self 1x1 L=1024,1.6203,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-self 1x1 L=2048,1.7902,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-self 1x1 L=4096,1.8893,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-self 1x1 L=11008,1.9573,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP-S 1x1 L=64,0.1111,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP-S 1x1 L=128,0.2222,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP-S 1x1 L=256,0.4,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP-S 1x1 L=512,0.6667,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP-S 1x1 L=1024,1.0,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP-S 1x1 L=2048,1.3333,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP-S 1x1 L=4096,1.6,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP-S 1x1 L=11008,1.8298,"MAC/cycle/tile, M=N=4096"
+L_sweep,"CNSB (Booth spatial, E2) 1x1 L=64",0.5,"MAC/cycle/tile, M=N=4096"
+L_sweep,"CNSB (Booth spatial, E2) 1x1 L=128",0.6667,"MAC/cycle/tile, M=N=4096"
+L_sweep,"CNSB (Booth spatial, E2) 1x1 L=256",0.8,"MAC/cycle/tile, M=N=4096"
+L_sweep,"CNSB (Booth spatial, E2) 1x1 L=512",0.8889,"MAC/cycle/tile, M=N=4096"
+L_sweep,"CNSB (Booth spatial, E2) 1x1 L=1024",0.9412,"MAC/cycle/tile, M=N=4096"
+L_sweep,"CNSB (Booth spatial, E2) 1x1 L=2048",0.9697,"MAC/cycle/tile, M=N=4096"
+L_sweep,"CNSB (Booth spatial, E2) 1x1 L=4096",0.9846,"MAC/cycle/tile, M=N=4096"
+L_sweep,"CNSB (Booth spatial, E2) 1x1 L=11008",0.9942,"MAC/cycle/tile, M=N=4096"
+L_sweep,WO-ring (+collector) 1x1 L=64,0.5714,"MAC/cycle/tile, M=N=4096"
+L_sweep,WO-ring (+collector) 1x1 L=128,0.7273,"MAC/cycle/tile, M=N=4096"
+L_sweep,WO-ring (+collector) 1x1 L=256,0.8421,"MAC/cycle/tile, M=N=4096"
+L_sweep,WO-ring (+collector) 1x1 L=512,0.8889,"MAC/cycle/tile, M=N=4096"
+L_sweep,WO-ring (+collector) 1x1 L=1024,0.9412,"MAC/cycle/tile, M=N=4096"
+L_sweep,WO-ring (+collector) 1x1 L=2048,0.9697,"MAC/cycle/tile, M=N=4096"
+L_sweep,WO-ring (+collector) 1x1 L=4096,0.9846,"MAC/cycle/tile, M=N=4096"
+L_sweep,WO-ring (+collector) 1x1 L=11008,0.9885,"MAC/cycle/tile, M=N=4096"
+L_sweep,Reduction-outer rot. 1x1 L=64,0.8649,"MAC/cycle/tile, M=N=4096"
+L_sweep,Reduction-outer rot. 1x1 L=128,0.9275,"MAC/cycle/tile, M=N=4096"
+L_sweep,Reduction-outer rot. 1x1 L=256,0.9624,"MAC/cycle/tile, M=N=4096"
+L_sweep,Reduction-outer rot. 1x1 L=512,0.966,"MAC/cycle/tile, M=N=4096"
+L_sweep,Reduction-outer rot. 1x1 L=1024,0.9752,"MAC/cycle/tile, M=N=4096"
+L_sweep,Reduction-outer rot. 1x1 L=2048,0.9799,"MAC/cycle/tile, M=N=4096"
+L_sweep,Reduction-outer rot. 1x1 L=4096,0.9823,"MAC/cycle/tile, M=N=4096"
+L_sweep,Reduction-outer rot. 1x1 L=11008,0.9834,"MAC/cycle/tile, M=N=4096"
+L_sweep,SC T=128 (ref) 1x1 L=64,0.8889,"MAC/cycle/tile, M=N=4096"
+L_sweep,SC T=128 (ref) 1x1 L=128,0.9412,"MAC/cycle/tile, M=N=4096"
+L_sweep,SC T=128 (ref) 1x1 L=256,0.9697,"MAC/cycle/tile, M=N=4096"
+L_sweep,SC T=128 (ref) 1x1 L=512,0.9846,"MAC/cycle/tile, M=N=4096"
+L_sweep,SC T=128 (ref) 1x1 L=1024,0.9922,"MAC/cycle/tile, M=N=4096"
+L_sweep,SC T=128 (ref) 1x1 L=2048,0.9961,"MAC/cycle/tile, M=N=4096"
+L_sweep,SC T=128 (ref) 1x1 L=4096,0.9981,"MAC/cycle/tile, M=N=4096"
+L_sweep,SC T=128 (ref) 1x1 L=11008,0.9993,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-ring 4x4 L=64,0.0784,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-ring 4x4 L=128,0.1569,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-ring 4x4 L=256,0.2909,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-ring 4x4 L=512,0.5079,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-ring 4x4 L=1024,0.8101,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-ring 4x4 L=2048,1.1532,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-ring 4x4 L=4096,1.4629,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-ring 4x4 L=11008,1.7596,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP best-mode 4x4 L=64,0.2991,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP best-mode 4x4 L=128,0.5981,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP best-mode 4x4 L=256,0.9209,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP best-mode 4x4 L=512,0.5079,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP best-mode 4x4 L=1024,0.8101,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP best-mode 4x4 L=2048,1.1532,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP best-mode 4x4 L=4096,1.4629,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP best-mode 4x4 L=11008,1.7596,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-self 4x4 L=64,0.1509,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-self 4x4 L=128,0.3019,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-self 4x4 L=256,0.5246,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-self 4x4 L=512,0.8312,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-self 4x4 L=1024,1.1743,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-self 4x4 L=2048,1.4798,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-self 4x4 L=4096,1.701,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-self 4x4 L=11008,1.8772,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP-S 4x4 L=64,0.0256,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP-S 4x4 L=128,0.0513,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP-S 4x4 L=256,0.1,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP-S 4x4 L=512,0.1905,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP-S 4x4 L=1024,0.3478,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP-S 4x4 L=2048,0.5926,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP-S 4x4 L=4096,0.9143,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP-S 4x4 L=11008,1.3871,"MAC/cycle/tile, M=N=4096"
+L_sweep,"CNSB (Booth spatial, E2) 4x4 L=64",0.1739,"MAC/cycle/tile, M=N=4096"
+L_sweep,"CNSB (Booth spatial, E2) 4x4 L=128",0.2963,"MAC/cycle/tile, M=N=4096"
+L_sweep,"CNSB (Booth spatial, E2) 4x4 L=256",0.4571,"MAC/cycle/tile, M=N=4096"
+L_sweep,"CNSB (Booth spatial, E2) 4x4 L=512",0.6275,"MAC/cycle/tile, M=N=4096"
+L_sweep,"CNSB (Booth spatial, E2) 4x4 L=1024",0.7711,"MAC/cycle/tile, M=N=4096"
+L_sweep,"CNSB (Booth spatial, E2) 4x4 L=2048",0.8707,"MAC/cycle/tile, M=N=4096"
+L_sweep,"CNSB (Booth spatial, E2) 4x4 L=4096",0.9309,"MAC/cycle/tile, M=N=4096"
+L_sweep,"CNSB (Booth spatial, E2) 4x4 L=11008",0.9731,"MAC/cycle/tile, M=N=4096"
+L_sweep,WO-ring (+collector) 4x4 L=64,0.4507,"MAC/cycle/tile, M=N=4096"
+L_sweep,WO-ring (+collector) 4x4 L=128,0.6214,"MAC/cycle/tile, M=N=4096"
+L_sweep,WO-ring (+collector) 4x4 L=256,0.7665,"MAC/cycle/tile, M=N=4096"
+L_sweep,WO-ring (+collector) 4x4 L=512,0.805,"MAC/cycle/tile, M=N=4096"
+L_sweep,WO-ring (+collector) 4x4 L=1024,0.892,"MAC/cycle/tile, M=N=4096"
+L_sweep,WO-ring (+collector) 4x4 L=2048,0.9429,"MAC/cycle/tile, M=N=4096"
+L_sweep,WO-ring (+collector) 4x4 L=4096,0.9706,"MAC/cycle/tile, M=N=4096"
+L_sweep,WO-ring (+collector) 4x4 L=11008,0.978,"MAC/cycle/tile, M=N=4096"
+L_sweep,Reduction-outer rot. 4x4 L=64,0.6154,"MAC/cycle/tile, M=N=4096"
+L_sweep,Reduction-outer rot. 4x4 L=128,0.7619,"MAC/cycle/tile, M=N=4096"
+L_sweep,Reduction-outer rot. 4x4 L=256,0.8649,"MAC/cycle/tile, M=N=4096"
+L_sweep,Reduction-outer rot. 4x4 L=512,0.8678,"MAC/cycle/tile, M=N=4096"
+L_sweep,Reduction-outer rot. 4x4 L=1024,0.8982,"MAC/cycle/tile, M=N=4096"
+L_sweep,Reduction-outer rot. 4x4 L=2048,0.9143,"MAC/cycle/tile, M=N=4096"
+L_sweep,Reduction-outer rot. 4x4 L=4096,0.9225,"MAC/cycle/tile, M=N=4096"
+L_sweep,Reduction-outer rot. 4x4 L=11008,0.9263,"MAC/cycle/tile, M=N=4096"
+L_sweep,SC T=128 (ref) 4x4 L=64,0.6275,"MAC/cycle/tile, M=N=4096"
+L_sweep,SC T=128 (ref) 4x4 L=128,0.7711,"MAC/cycle/tile, M=N=4096"
+L_sweep,SC T=128 (ref) 4x4 L=256,0.8707,"MAC/cycle/tile, M=N=4096"
+L_sweep,SC T=128 (ref) 4x4 L=512,0.9309,"MAC/cycle/tile, M=N=4096"
+L_sweep,SC T=128 (ref) 4x4 L=1024,0.9642,"MAC/cycle/tile, M=N=4096"
+L_sweep,SC T=128 (ref) 4x4 L=2048,0.9818,"MAC/cycle/tile, M=N=4096"
+L_sweep,SC T=128 (ref) 4x4 L=4096,0.9908,"MAC/cycle/tile, M=N=4096"
+L_sweep,SC T=128 (ref) 4x4 L=11008,0.9966,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-ring 4x8 L=64,0.058,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-ring 4x8 L=128,0.1159,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-ring 4x8 L=256,0.2192,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-ring 4x8 L=512,0.3951,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-ring 4x8 L=1024,0.6598,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-ring 4x8 L=2048,0.9922,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-ring 4x8 L=4096,1.3264,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-ring 4x8 L=11008,1.6822,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP best-mode 4x8 L=64,0.256,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP best-mode 4x8 L=128,0.512,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP best-mode 4x8 L=256,0.8153,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP best-mode 4x8 L=512,0.3951,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP best-mode 4x8 L=1024,0.6598,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP best-mode 4x8 L=2048,0.9922,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP best-mode 4x8 L=4096,1.3264,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP best-mode 4x8 L=11008,1.6822,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-self 4x8 L=64,0.0899,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-self 4x8 L=128,0.1798,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-self 4x8 L=256,0.3299,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-self 4x8 L=512,0.5664,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-self 4x8 L=1024,0.8828,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-self 4x8 L=2048,1.2249,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-self 4x8 L=4096,1.5193,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP HW-self 4x8 L=11008,1.7893,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP-S 4x8 L=64,0.0133,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP-S 4x8 L=128,0.0267,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP-S 4x8 L=256,0.0526,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP-S 4x8 L=512,0.1026,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP-S 4x8 L=1024,0.1951,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP-S 4x8 L=2048,0.3556,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP-S 4x8 L=4096,0.6038,"MAC/cycle/tile, M=N=4096"
+L_sweep,BP-S 4x8 L=11008,1.075,"MAC/cycle/tile, M=N=4096"
+L_sweep,"CNSB (Booth spatial, E2) 4x8 L=64",0.0976,"MAC/cycle/tile, M=N=4096"
+L_sweep,"CNSB (Booth spatial, E2) 4x8 L=128",0.1778,"MAC/cycle/tile, M=N=4096"
+L_sweep,"CNSB (Booth spatial, E2) 4x8 L=256",0.3019,"MAC/cycle/tile, M=N=4096"
+L_sweep,"CNSB (Booth spatial, E2) 4x8 L=512",0.4638,"MAC/cycle/tile, M=N=4096"
+L_sweep,"CNSB (Booth spatial, E2) 4x8 L=1024",0.6337,"MAC/cycle/tile, M=N=4096"
+L_sweep,"CNSB (Booth spatial, E2) 4x8 L=2048",0.7758,"MAC/cycle/tile, M=N=4096"
+L_sweep,"CNSB (Booth spatial, E2) 4x8 L=4096",0.8737,"MAC/cycle/tile, M=N=4096"
+L_sweep,"CNSB (Booth spatial, E2) 4x8 L=11008",0.949,"MAC/cycle/tile, M=N=4096"
+L_sweep,WO-ring (+collector) 4x8 L=64,0.3596,"MAC/cycle/tile, M=N=4096"
+L_sweep,WO-ring (+collector) 4x8 L=128,0.5289,"MAC/cycle/tile, M=N=4096"
+L_sweep,WO-ring (+collector) 4x8 L=256,0.6919,"MAC/cycle/tile, M=N=4096"
+L_sweep,WO-ring (+collector) 4x8 L=512,0.7232,"MAC/cycle/tile, M=N=4096"
+L_sweep,WO-ring (+collector) 4x8 L=1024,0.8393,"MAC/cycle/tile, M=N=4096"
+L_sweep,WO-ring (+collector) 4x8 L=2048,0.9127,"MAC/cycle/tile, M=N=4096"
+L_sweep,WO-ring (+collector) 4x8 L=4096,0.9543,"MAC/cycle/tile, M=N=4096"
+L_sweep,WO-ring (+collector) 4x8 L=11008,0.9656,"MAC/cycle/tile, M=N=4096"
+L_sweep,Reduction-outer rot. 4x8 L=64,0.4571,"MAC/cycle/tile, M=N=4096"
+L_sweep,Reduction-outer rot. 4x8 L=128,0.6275,"MAC/cycle/tile, M=N=4096"
+L_sweep,Reduction-outer rot. 4x8 L=256,0.7711,"MAC/cycle/tile, M=N=4096"
+L_sweep,Reduction-outer rot. 4x8 L=512,0.7734,"MAC/cycle/tile, M=N=4096"
+L_sweep,Reduction-outer rot. 4x8 L=1024,0.8205,"MAC/cycle/tile, M=N=4096"
+L_sweep,Reduction-outer rot. 4x8 L=2048,0.8463,"MAC/cycle/tile, M=N=4096"
+L_sweep,Reduction-outer rot. 4x8 L=4096,0.8598,"MAC/cycle/tile, M=N=4096"
+L_sweep,Reduction-outer rot. 4x8 L=11008,0.866,"MAC/cycle/tile, M=N=4096"
+L_sweep,SC T=128 (ref) 4x8 L=64,0.4638,"MAC/cycle/tile, M=N=4096"
+L_sweep,SC T=128 (ref) 4x8 L=128,0.6337,"MAC/cycle/tile, M=N=4096"
+L_sweep,SC T=128 (ref) 4x8 L=256,0.7758,"MAC/cycle/tile, M=N=4096"
+L_sweep,SC T=128 (ref) 4x8 L=512,0.8737,"MAC/cycle/tile, M=N=4096"
+L_sweep,SC T=128 (ref) 4x8 L=1024,0.9326,"MAC/cycle/tile, M=N=4096"
+L_sweep,SC T=128 (ref) 4x8 L=2048,0.9651,"MAC/cycle/tile, M=N=4096"
+L_sweep,SC T=128 (ref) 4x8 L=4096,0.9823,"MAC/cycle/tile, M=N=4096"
+L_sweep,SC T=128 (ref) 4x8 L=11008,0.9933,"MAC/cycle/tile, M=N=4096"
+llm,4x4 prefill S=512 QKV proj BP HW-ring,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=512 QKV proj BP best-mode,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=512 QKV proj BP HW-self,1.701,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 prefill S=512 QKV proj BP-S,0.9143,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 prefill S=512 QKV proj CNSB (Booth spatial, E2)",0.9309,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 prefill S=512 QKV proj WO-ring (+collector),0.9706,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 prefill S=512 QKV proj Reduction-outer rot.,0.9225,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 prefill S=512 QKV proj SC T=128 (ref),0.9908,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 prefill S=512 O proj BP HW-ring,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=512 O proj BP best-mode,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=512 O proj BP HW-self,1.701,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 prefill S=512 O proj BP-S,0.9143,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 prefill S=512 O proj CNSB (Booth spatial, E2)",0.9309,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 prefill S=512 O proj WO-ring (+collector),0.9706,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 prefill S=512 O proj Reduction-outer rot.,0.9225,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 prefill S=512 O proj SC T=128 (ref),0.9908,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 prefill S=512 FFN gate+up BP HW-ring,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=512 FFN gate+up BP best-mode,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=512 FFN gate+up BP HW-self,1.701,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 prefill S=512 FFN gate+up BP-S,0.9143,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 prefill S=512 FFN gate+up CNSB (Booth spatial, E2)",0.9309,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 prefill S=512 FFN gate+up WO-ring (+collector),0.9706,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 prefill S=512 FFN gate+up Reduction-outer rot.,0.9225,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 prefill S=512 FFN gate+up SC T=128 (ref),0.9908,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 prefill S=512 FFN down BP HW-ring,1.7596,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=512 FFN down BP best-mode,1.7596,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=512 FFN down BP HW-self,1.8772,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 prefill S=512 FFN down BP-S,1.3871,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 prefill S=512 FFN down CNSB (Booth spatial, E2)",0.9731,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 prefill S=512 FFN down WO-ring (+collector),0.978,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 prefill S=512 FFN down Reduction-outer rot.,0.9263,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 prefill S=512 FFN down SC T=128 (ref),0.9966,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 prefill S=512 QK^T (L=hd=128) BP HW-ring,0.1569,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=512 QK^T (L=hd=128) BP best-mode,0.5981,MAC/cycle/tile; mode BP HB-ring; blocks 32x32
+llm,4x4 prefill S=512 QK^T (L=hd=128) BP HW-self,0.3019,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 prefill S=512 QK^T (L=hd=128) BP-S,0.0513,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 prefill S=512 QK^T (L=hd=128) CNSB (Booth spatial, E2)",0.2963,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 prefill S=512 QK^T (L=hd=128) WO-ring (+collector),0.6214,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x4 prefill S=512 QK^T (L=hd=128) Reduction-outer rot.,0.7619,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 prefill S=512 QK^T (L=hd=128) SC T=128 (ref),0.7711,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 prefill S=512 SV (L=S=512) BP HW-ring,0.5079,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=512 SV (L=S=512) BP best-mode,0.5079,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=512 SV (L=S=512) BP HW-self,0.8312,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 prefill S=512 SV (L=S=512) BP-S,0.1905,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 prefill S=512 SV (L=S=512) CNSB (Booth spatial, E2)",0.6275,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 prefill S=512 SV (L=S=512) WO-ring (+collector),0.805,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 prefill S=512 SV (L=S=512) Reduction-outer rot.,0.8678,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 prefill S=512 SV (L=S=512) SC T=128 (ref),0.9309,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm_total,4x4 prefill S=512 BP HW-ring,1058.2,GMAC/s/mm2 all-in excl. memory; util 1.3713
+llm_total,4x4 prefill S=512 BP best-mode,1132.4,GMAC/s/mm2 all-in excl. memory; util 1.4673
+llm_total,4x4 prefill S=512 BP HW-self,1247.2,GMAC/s/mm2 all-in excl. memory; util 1.6400
+llm_total,4x4 prefill S=512 BP-S,624.7,GMAC/s/mm2 all-in excl. memory; util 0.8055
+llm_total,"4x4 prefill S=512 CNSB (Booth spatial, E2)",705.5,GMAC/s/mm2 all-in excl. memory; util 0.9152
+llm_total,4x4 prefill S=512 WO-ring (+collector),749.9,GMAC/s/mm2 all-in excl. memory; util 0.9647
+llm_total,4x4 prefill S=512 Reduction-outer rot.,682.6,GMAC/s/mm2 all-in excl. memory; util 0.9208
+llm_total,4x4 prefill S=512 SC T=128 (ref),775.8,GMAC/s/mm2 all-in excl. memory; util 0.9885
+llm,4x4 prefill S=2048 QKV proj BP HW-ring,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=2048 QKV proj BP best-mode,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=2048 QKV proj BP HW-self,1.701,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 prefill S=2048 QKV proj BP-S,0.9143,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 prefill S=2048 QKV proj CNSB (Booth spatial, E2)",0.9309,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 prefill S=2048 QKV proj WO-ring (+collector),0.9706,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 prefill S=2048 QKV proj Reduction-outer rot.,0.9225,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 prefill S=2048 QKV proj SC T=128 (ref),0.9908,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 prefill S=2048 O proj BP HW-ring,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=2048 O proj BP best-mode,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=2048 O proj BP HW-self,1.701,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 prefill S=2048 O proj BP-S,0.9143,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 prefill S=2048 O proj CNSB (Booth spatial, E2)",0.9309,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 prefill S=2048 O proj WO-ring (+collector),0.9706,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 prefill S=2048 O proj Reduction-outer rot.,0.9225,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 prefill S=2048 O proj SC T=128 (ref),0.9908,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 prefill S=2048 FFN gate+up BP HW-ring,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=2048 FFN gate+up BP best-mode,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=2048 FFN gate+up BP HW-self,1.701,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 prefill S=2048 FFN gate+up BP-S,0.9143,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 prefill S=2048 FFN gate+up CNSB (Booth spatial, E2)",0.9309,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 prefill S=2048 FFN gate+up WO-ring (+collector),0.9706,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 prefill S=2048 FFN gate+up Reduction-outer rot.,0.9225,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 prefill S=2048 FFN gate+up SC T=128 (ref),0.9908,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 prefill S=2048 FFN down BP HW-ring,1.7596,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=2048 FFN down BP best-mode,1.7596,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=2048 FFN down BP HW-self,1.8772,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 prefill S=2048 FFN down BP-S,1.3871,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 prefill S=2048 FFN down CNSB (Booth spatial, E2)",0.9731,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 prefill S=2048 FFN down WO-ring (+collector),0.978,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 prefill S=2048 FFN down Reduction-outer rot.,0.9263,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 prefill S=2048 FFN down SC T=128 (ref),0.9966,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 prefill S=2048 QK^T (L=hd=128) BP HW-ring,0.1569,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=2048 QK^T (L=hd=128) BP best-mode,0.5981,MAC/cycle/tile; mode BP HB-ring; blocks 32x32
+llm,4x4 prefill S=2048 QK^T (L=hd=128) BP HW-self,0.3019,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 prefill S=2048 QK^T (L=hd=128) BP-S,0.0513,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 prefill S=2048 QK^T (L=hd=128) CNSB (Booth spatial, E2)",0.2963,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 prefill S=2048 QK^T (L=hd=128) WO-ring (+collector),0.6214,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x4 prefill S=2048 QK^T (L=hd=128) Reduction-outer rot.,0.7619,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 prefill S=2048 QK^T (L=hd=128) SC T=128 (ref),0.7711,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 prefill S=2048 SV (L=S=2048) BP HW-ring,1.1532,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=2048 SV (L=S=2048) BP best-mode,1.1532,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=2048 SV (L=S=2048) BP HW-self,1.4798,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 prefill S=2048 SV (L=S=2048) BP-S,0.5926,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 prefill S=2048 SV (L=S=2048) CNSB (Booth spatial, E2)",0.8707,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 prefill S=2048 SV (L=S=2048) WO-ring (+collector),0.9429,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 prefill S=2048 SV (L=S=2048) Reduction-outer rot.,0.9143,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 prefill S=2048 SV (L=S=2048) SC T=128 (ref),0.9818,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm_total,4x4 prefill S=2048 BP HW-ring,872.3,GMAC/s/mm2 all-in excl. memory; util 1.1303
+llm_total,4x4 prefill S=2048 BP best-mode,1095.1,GMAC/s/mm2 all-in excl. memory; util 1.4190
+llm_total,4x4 prefill S=2048 BP HW-self,1111.5,GMAC/s/mm2 all-in excl. memory; util 1.4616
+llm_total,4x4 prefill S=2048 BP-S,444.6,GMAC/s/mm2 all-in excl. memory; util 0.5733
+llm_total,"4x4 prefill S=2048 CNSB (Booth spatial, E2)",667.1,GMAC/s/mm2 all-in excl. memory; util 0.8654
+llm_total,4x4 prefill S=2048 WO-ring (+collector),738.9,GMAC/s/mm2 all-in excl. memory; util 0.9506
+llm_total,4x4 prefill S=2048 Reduction-outer rot.,678.7,GMAC/s/mm2 all-in excl. memory; util 0.9156
+llm_total,4x4 prefill S=2048 SC T=128 (ref),769.9,GMAC/s/mm2 all-in excl. memory; util 0.9809
+llm,4x4 prefill S=4096 QKV proj BP HW-ring,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=4096 QKV proj BP best-mode,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=4096 QKV proj BP HW-self,1.701,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 prefill S=4096 QKV proj BP-S,0.9143,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 prefill S=4096 QKV proj CNSB (Booth spatial, E2)",0.9309,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 prefill S=4096 QKV proj WO-ring (+collector),0.9706,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 prefill S=4096 QKV proj Reduction-outer rot.,0.9225,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 prefill S=4096 QKV proj SC T=128 (ref),0.9908,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 prefill S=4096 O proj BP HW-ring,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=4096 O proj BP best-mode,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=4096 O proj BP HW-self,1.701,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 prefill S=4096 O proj BP-S,0.9143,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 prefill S=4096 O proj CNSB (Booth spatial, E2)",0.9309,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 prefill S=4096 O proj WO-ring (+collector),0.9706,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 prefill S=4096 O proj Reduction-outer rot.,0.9225,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 prefill S=4096 O proj SC T=128 (ref),0.9908,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 prefill S=4096 FFN gate+up BP HW-ring,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=4096 FFN gate+up BP best-mode,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=4096 FFN gate+up BP HW-self,1.701,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 prefill S=4096 FFN gate+up BP-S,0.9143,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 prefill S=4096 FFN gate+up CNSB (Booth spatial, E2)",0.9309,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 prefill S=4096 FFN gate+up WO-ring (+collector),0.9706,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 prefill S=4096 FFN gate+up Reduction-outer rot.,0.9225,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 prefill S=4096 FFN gate+up SC T=128 (ref),0.9908,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 prefill S=4096 FFN down BP HW-ring,1.7596,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=4096 FFN down BP best-mode,1.7596,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=4096 FFN down BP HW-self,1.8772,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 prefill S=4096 FFN down BP-S,1.3871,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 prefill S=4096 FFN down CNSB (Booth spatial, E2)",0.9731,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 prefill S=4096 FFN down WO-ring (+collector),0.978,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 prefill S=4096 FFN down Reduction-outer rot.,0.9263,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 prefill S=4096 FFN down SC T=128 (ref),0.9966,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 prefill S=4096 QK^T (L=hd=128) BP HW-ring,0.1569,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=4096 QK^T (L=hd=128) BP best-mode,0.5981,MAC/cycle/tile; mode BP HB-ring; blocks 32x32
+llm,4x4 prefill S=4096 QK^T (L=hd=128) BP HW-self,0.3019,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 prefill S=4096 QK^T (L=hd=128) BP-S,0.0513,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 prefill S=4096 QK^T (L=hd=128) CNSB (Booth spatial, E2)",0.2963,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 prefill S=4096 QK^T (L=hd=128) WO-ring (+collector),0.6214,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x4 prefill S=4096 QK^T (L=hd=128) Reduction-outer rot.,0.7619,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 prefill S=4096 QK^T (L=hd=128) SC T=128 (ref),0.7711,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 prefill S=4096 SV (L=S=4096) BP HW-ring,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=4096 SV (L=S=4096) BP best-mode,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=4096 SV (L=S=4096) BP HW-self,1.701,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 prefill S=4096 SV (L=S=4096) BP-S,0.9143,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 prefill S=4096 SV (L=S=4096) CNSB (Booth spatial, E2)",0.9309,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 prefill S=4096 SV (L=S=4096) WO-ring (+collector),0.9706,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 prefill S=4096 SV (L=S=4096) Reduction-outer rot.,0.9225,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 prefill S=4096 SV (L=S=4096) SC T=128 (ref),0.9908,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm_total,4x4 prefill S=4096 BP HW-ring,723.8,GMAC/s/mm2 all-in excl. memory; util 0.9378
+llm_total,4x4 prefill S=4096 BP best-mode,1054.5,GMAC/s/mm2 all-in excl. memory; util 1.3664
+llm_total,4x4 prefill S=4096 BP HW-self,986.2,GMAC/s/mm2 all-in excl. memory; util 1.2969
+llm_total,4x4 prefill S=4096 BP-S,332.7,GMAC/s/mm2 all-in excl. memory; util 0.4289
+llm_total,"4x4 prefill S=4096 CNSB (Booth spatial, E2)",627.3,GMAC/s/mm2 all-in excl. memory; util 0.8137
+llm_total,4x4 prefill S=4096 WO-ring (+collector),726.5,GMAC/s/mm2 all-in excl. memory; util 0.9346
+llm_total,4x4 prefill S=4096 Reduction-outer rot.,674.3,GMAC/s/mm2 all-in excl. memory; util 0.9096
+llm_total,4x4 prefill S=4096 SC T=128 (ref),763.0,GMAC/s/mm2 all-in excl. memory; util 0.9722
+llm,4x4 prefill S=2048 hd=64 QKV proj BP HW-ring,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=2048 hd=64 QKV proj BP best-mode,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=2048 hd=64 QKV proj BP HW-self,1.701,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 prefill S=2048 hd=64 QKV proj BP-S,0.9143,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 prefill S=2048 hd=64 QKV proj CNSB (Booth spatial, E2)",0.9309,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 prefill S=2048 hd=64 QKV proj WO-ring (+collector),0.9706,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 prefill S=2048 hd=64 QKV proj Reduction-outer rot.,0.9225,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 prefill S=2048 hd=64 QKV proj SC T=128 (ref),0.9908,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 prefill S=2048 hd=64 O proj BP HW-ring,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=2048 hd=64 O proj BP best-mode,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=2048 hd=64 O proj BP HW-self,1.701,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 prefill S=2048 hd=64 O proj BP-S,0.9143,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 prefill S=2048 hd=64 O proj CNSB (Booth spatial, E2)",0.9309,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 prefill S=2048 hd=64 O proj WO-ring (+collector),0.9706,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 prefill S=2048 hd=64 O proj Reduction-outer rot.,0.9225,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 prefill S=2048 hd=64 O proj SC T=128 (ref),0.9908,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 prefill S=2048 hd=64 FFN gate+up BP HW-ring,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=2048 hd=64 FFN gate+up BP best-mode,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=2048 hd=64 FFN gate+up BP HW-self,1.701,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 prefill S=2048 hd=64 FFN gate+up BP-S,0.9143,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 prefill S=2048 hd=64 FFN gate+up CNSB (Booth spatial, E2)",0.9309,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 prefill S=2048 hd=64 FFN gate+up WO-ring (+collector),0.9706,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 prefill S=2048 hd=64 FFN gate+up Reduction-outer rot.,0.9225,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 prefill S=2048 hd=64 FFN gate+up SC T=128 (ref),0.9908,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 prefill S=2048 hd=64 FFN down BP HW-ring,1.7596,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=2048 hd=64 FFN down BP best-mode,1.7596,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=2048 hd=64 FFN down BP HW-self,1.8772,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 prefill S=2048 hd=64 FFN down BP-S,1.3871,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 prefill S=2048 hd=64 FFN down CNSB (Booth spatial, E2)",0.9731,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 prefill S=2048 hd=64 FFN down WO-ring (+collector),0.978,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 prefill S=2048 hd=64 FFN down Reduction-outer rot.,0.9263,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 prefill S=2048 hd=64 FFN down SC T=128 (ref),0.9966,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 prefill S=2048 hd=64 QK^T (L=hd=64) BP HW-ring,0.0784,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=2048 hd=64 QK^T (L=hd=64) BP best-mode,0.2991,MAC/cycle/tile; mode BP HB-ring; blocks 32x32
+llm,4x4 prefill S=2048 hd=64 QK^T (L=hd=64) BP HW-self,0.1509,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 prefill S=2048 hd=64 QK^T (L=hd=64) BP-S,0.0256,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 prefill S=2048 hd=64 QK^T (L=hd=64) CNSB (Booth spatial, E2)",0.1739,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 prefill S=2048 hd=64 QK^T (L=hd=64) WO-ring (+collector),0.4507,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x4 prefill S=2048 hd=64 QK^T (L=hd=64) Reduction-outer rot.,0.6154,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 prefill S=2048 hd=64 QK^T (L=hd=64) SC T=128 (ref),0.6275,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 prefill S=2048 hd=64 SV (L=S=2048) BP HW-ring,1.1532,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=2048 hd=64 SV (L=S=2048) BP best-mode,1.1532,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 prefill S=2048 hd=64 SV (L=S=2048) BP HW-self,1.4798,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 prefill S=2048 hd=64 SV (L=S=2048) BP-S,0.5926,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 prefill S=2048 hd=64 SV (L=S=2048) CNSB (Booth spatial, E2)",0.8707,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 prefill S=2048 hd=64 SV (L=S=2048) WO-ring (+collector),0.9429,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 prefill S=2048 hd=64 SV (L=S=2048) Reduction-outer rot.,0.9143,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 prefill S=2048 hd=64 SV (L=S=2048) SC T=128 (ref),0.9818,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm_total,4x4 prefill S=2048 hd=64 BP HW-ring,854.9,GMAC/s/mm2 all-in excl. memory; util 1.1078
+llm_total,4x4 prefill S=2048 hd=64 BP best-mode,1078.6,GMAC/s/mm2 all-in excl. memory; util 1.3976
+llm_total,4x4 prefill S=2048 hd=64 BP HW-self,1089.5,GMAC/s/mm2 all-in excl. memory; util 1.4327
+llm_total,4x4 prefill S=2048 hd=64 BP-S,435.7,GMAC/s/mm2 all-in excl. memory; util 0.5617
+llm_total,"4x4 prefill S=2048 hd=64 CNSB (Booth spatial, E2)",665.3,GMAC/s/mm2 all-in excl. memory; util 0.8630
+llm_total,4x4 prefill S=2048 hd=64 WO-ring (+collector),738.3,GMAC/s/mm2 all-in excl. memory; util 0.9498
+llm_total,4x4 prefill S=2048 hd=64 Reduction-outer rot.,677.6,GMAC/s/mm2 all-in excl. memory; util 0.9141
+llm_total,4x4 prefill S=2048 hd=64 SC T=128 (ref),769.6,GMAC/s/mm2 all-in excl. memory; util 0.9805
+llm,4x4 decode ctx=2048 B=1 QKV proj BP HW-ring,0.3657,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 decode ctx=2048 B=1 QKV proj BP best-mode,0.3657,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 decode ctx=2048 B=1 QKV proj BP HW-self,0.4252,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 decode ctx=2048 B=1 QKV proj BP-S,0.2286,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 decode ctx=2048 B=1 QKV proj CNSB (Booth spatial, E2)",0.1164,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 decode ctx=2048 B=1 QKV proj WO-ring (+collector),0.0303,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 decode ctx=2048 B=1 QKV proj Reduction-outer rot.,0.0288,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 decode ctx=2048 B=1 QKV proj SC T=128 (ref),0.031,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 decode ctx=2048 B=1 O proj BP HW-ring,0.3657,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 decode ctx=2048 B=1 O proj BP best-mode,0.3657,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 decode ctx=2048 B=1 O proj BP HW-self,0.4252,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 decode ctx=2048 B=1 O proj BP-S,0.2286,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 decode ctx=2048 B=1 O proj CNSB (Booth spatial, E2)",0.1164,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 decode ctx=2048 B=1 O proj WO-ring (+collector),0.0303,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 decode ctx=2048 B=1 O proj Reduction-outer rot.,0.0288,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 decode ctx=2048 B=1 O proj SC T=128 (ref),0.031,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 decode ctx=2048 B=1 FFN gate+up BP HW-ring,0.3657,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 decode ctx=2048 B=1 FFN gate+up BP best-mode,0.3657,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 decode ctx=2048 B=1 FFN gate+up BP HW-self,0.4252,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 decode ctx=2048 B=1 FFN gate+up BP-S,0.2286,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 decode ctx=2048 B=1 FFN gate+up CNSB (Booth spatial, E2)",0.1164,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 decode ctx=2048 B=1 FFN gate+up WO-ring (+collector),0.0303,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 decode ctx=2048 B=1 FFN gate+up Reduction-outer rot.,0.0288,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 decode ctx=2048 B=1 FFN gate+up SC T=128 (ref),0.031,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 decode ctx=2048 B=1 FFN down BP HW-ring,0.4399,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 decode ctx=2048 B=1 FFN down BP best-mode,0.4399,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 decode ctx=2048 B=1 FFN down BP HW-self,0.4693,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 decode ctx=2048 B=1 FFN down BP-S,0.3468,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 decode ctx=2048 B=1 FFN down CNSB (Booth spatial, E2)",0.1216,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 decode ctx=2048 B=1 FFN down WO-ring (+collector),0.0306,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 decode ctx=2048 B=1 FFN down Reduction-outer rot.,0.0289,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 decode ctx=2048 B=1 FFN down SC T=128 (ref),0.0311,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 decode ctx=2048 B=1 QK^T (L=hd=128) BP HW-ring,0.0392,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 decode ctx=2048 B=1 QK^T (L=hd=128) BP best-mode,0.0392,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 decode ctx=2048 B=1 QK^T (L=hd=128) BP HW-self,0.0755,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 decode ctx=2048 B=1 QK^T (L=hd=128) BP-S,0.0128,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 decode ctx=2048 B=1 QK^T (L=hd=128) CNSB (Booth spatial, E2)",0.037,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 decode ctx=2048 B=1 QK^T (L=hd=128) WO-ring (+collector),0.0194,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x4 decode ctx=2048 B=1 QK^T (L=hd=128) Reduction-outer rot.,0.0238,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 decode ctx=2048 B=1 QK^T (L=hd=128) SC T=128 (ref),0.0241,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 decode ctx=2048 B=1 SV (L=S=2048) BP HW-ring,0.2883,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 decode ctx=2048 B=1 SV (L=S=2048) BP best-mode,0.2883,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 decode ctx=2048 B=1 SV (L=S=2048) BP HW-self,0.3699,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 decode ctx=2048 B=1 SV (L=S=2048) BP-S,0.1481,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 decode ctx=2048 B=1 SV (L=S=2048) CNSB (Booth spatial, E2)",0.1088,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 decode ctx=2048 B=1 SV (L=S=2048) WO-ring (+collector),0.0295,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 decode ctx=2048 B=1 SV (L=S=2048) Reduction-outer rot.,0.0286,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 decode ctx=2048 B=1 SV (L=S=2048) SC T=128 (ref),0.0307,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm_total,4x4 decode ctx=2048 B=1 BP HW-ring,218.1,GMAC/s/mm2 all-in excl. memory; util 0.2826
+llm_total,4x4 decode ctx=2048 B=1 BP best-mode,218.1,GMAC/s/mm2 all-in excl. memory; util 0.2826
+llm_total,4x4 decode ctx=2048 B=1 BP HW-self,277.9,GMAC/s/mm2 all-in excl. memory; util 0.3654
+llm_total,4x4 decode ctx=2048 B=1 BP-S,111.2,GMAC/s/mm2 all-in excl. memory; util 0.1433
+llm_total,"4x4 decode ctx=2048 B=1 CNSB (Booth spatial, E2)",83.4,GMAC/s/mm2 all-in excl. memory; util 0.1082
+llm_total,4x4 decode ctx=2048 B=1 WO-ring (+collector),23.1,GMAC/s/mm2 all-in excl. memory; util 0.0297
+llm_total,4x4 decode ctx=2048 B=1 Reduction-outer rot.,21.2,GMAC/s/mm2 all-in excl. memory; util 0.0286
+llm_total,4x4 decode ctx=2048 B=1 SC T=128 (ref),24.1,GMAC/s/mm2 all-in excl. memory; util 0.0307
+llm,4x4 decode ctx=2048 B=16 QKV proj BP HW-ring,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 decode ctx=2048 B=16 QKV proj BP best-mode,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 decode ctx=2048 B=16 QKV proj BP HW-self,1.701,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 decode ctx=2048 B=16 QKV proj BP-S,0.9143,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 decode ctx=2048 B=16 QKV proj CNSB (Booth spatial, E2)",0.9309,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 decode ctx=2048 B=16 QKV proj WO-ring (+collector),0.4853,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 decode ctx=2048 B=16 QKV proj Reduction-outer rot.,0.4613,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 decode ctx=2048 B=16 QKV proj SC T=128 (ref),0.4954,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 decode ctx=2048 B=16 O proj BP HW-ring,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 decode ctx=2048 B=16 O proj BP best-mode,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 decode ctx=2048 B=16 O proj BP HW-self,1.701,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 decode ctx=2048 B=16 O proj BP-S,0.9143,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 decode ctx=2048 B=16 O proj CNSB (Booth spatial, E2)",0.9309,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 decode ctx=2048 B=16 O proj WO-ring (+collector),0.4853,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 decode ctx=2048 B=16 O proj Reduction-outer rot.,0.4613,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 decode ctx=2048 B=16 O proj SC T=128 (ref),0.4954,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 decode ctx=2048 B=16 FFN gate+up BP HW-ring,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 decode ctx=2048 B=16 FFN gate+up BP best-mode,1.4629,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 decode ctx=2048 B=16 FFN gate+up BP HW-self,1.701,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 decode ctx=2048 B=16 FFN gate+up BP-S,0.9143,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 decode ctx=2048 B=16 FFN gate+up CNSB (Booth spatial, E2)",0.9309,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 decode ctx=2048 B=16 FFN gate+up WO-ring (+collector),0.4853,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 decode ctx=2048 B=16 FFN gate+up Reduction-outer rot.,0.4613,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 decode ctx=2048 B=16 FFN gate+up SC T=128 (ref),0.4954,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 decode ctx=2048 B=16 FFN down BP HW-ring,1.7596,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 decode ctx=2048 B=16 FFN down BP best-mode,1.7596,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 decode ctx=2048 B=16 FFN down BP HW-self,1.8772,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 decode ctx=2048 B=16 FFN down BP-S,1.3871,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 decode ctx=2048 B=16 FFN down CNSB (Booth spatial, E2)",0.9731,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 decode ctx=2048 B=16 FFN down WO-ring (+collector),0.489,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 decode ctx=2048 B=16 FFN down Reduction-outer rot.,0.4631,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 decode ctx=2048 B=16 FFN down SC T=128 (ref),0.4983,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 decode ctx=2048 B=16 QK^T (L=hd=128) BP HW-ring,0.1569,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 decode ctx=2048 B=16 QK^T (L=hd=128) BP best-mode,0.2991,MAC/cycle/tile; mode BP HB-ring; blocks 32x32
+llm,4x4 decode ctx=2048 B=16 QK^T (L=hd=128) BP HW-self,0.3019,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 decode ctx=2048 B=16 QK^T (L=hd=128) BP-S,0.0513,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 decode ctx=2048 B=16 QK^T (L=hd=128) CNSB (Booth spatial, E2)",0.2963,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 decode ctx=2048 B=16 QK^T (L=hd=128) WO-ring (+collector),0.3107,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x4 decode ctx=2048 B=16 QK^T (L=hd=128) Reduction-outer rot.,0.381,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 decode ctx=2048 B=16 QK^T (L=hd=128) SC T=128 (ref),0.3855,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm,4x4 decode ctx=2048 B=16 SV (L=S=2048) BP HW-ring,1.1532,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 decode ctx=2048 B=16 SV (L=S=2048) BP best-mode,1.1532,MAC/cycle/tile; mode BP HW-ring; blocks 4x32
+llm,4x4 decode ctx=2048 B=16 SV (L=S=2048) BP HW-self,1.4798,MAC/cycle/tile; mode BP HW-self; blocks 4x32
+llm,4x4 decode ctx=2048 B=16 SV (L=S=2048) BP-S,0.5926,MAC/cycle/tile; mode BP-S; blocks 4x4
+llm,"4x4 decode ctx=2048 B=16 SV (L=S=2048) CNSB (Booth spatial, E2)",0.8707,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 8x16"
+llm,4x4 decode ctx=2048 B=16 SV (L=S=2048) WO-ring (+collector),0.4715,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x16
+llm,4x4 decode ctx=2048 B=16 SV (L=S=2048) Reduction-outer rot.,0.4571,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x32
+llm,4x4 decode ctx=2048 B=16 SV (L=S=2048) SC T=128 (ref),0.4909,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x32
+llm_total,4x4 decode ctx=2048 B=16 BP HW-ring,872.3,GMAC/s/mm2 all-in excl. memory; util 1.1303
+llm_total,4x4 decode ctx=2048 B=16 BP best-mode,1003.9,GMAC/s/mm2 all-in excl. memory; util 1.3009
+llm_total,4x4 decode ctx=2048 B=16 BP HW-self,1111.5,GMAC/s/mm2 all-in excl. memory; util 1.4616
+llm_total,4x4 decode ctx=2048 B=16 BP-S,444.6,GMAC/s/mm2 all-in excl. memory; util 0.5733
+llm_total,"4x4 decode ctx=2048 B=16 CNSB (Booth spatial, E2)",667.1,GMAC/s/mm2 all-in excl. memory; util 0.8654
+llm_total,4x4 decode ctx=2048 B=16 WO-ring (+collector),369.5,GMAC/s/mm2 all-in excl. memory; util 0.4753
+llm_total,4x4 decode ctx=2048 B=16 Reduction-outer rot.,339.4,GMAC/s/mm2 all-in excl. memory; util 0.4578
+llm_total,4x4 decode ctx=2048 B=16 SC T=128 (ref),384.9,GMAC/s/mm2 all-in excl. memory; util 0.4905
+llm,4x8 prefill S=512 QKV proj BP HW-ring,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=512 QKV proj BP best-mode,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=512 QKV proj BP HW-self,1.5193,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 prefill S=512 QKV proj BP-S,0.6038,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 prefill S=512 QKV proj CNSB (Booth spatial, E2)",0.8737,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 prefill S=512 QKV proj WO-ring (+collector),0.9543,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 prefill S=512 QKV proj Reduction-outer rot.,0.8598,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 prefill S=512 QKV proj SC T=128 (ref),0.9823,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 prefill S=512 O proj BP HW-ring,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=512 O proj BP best-mode,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=512 O proj BP HW-self,1.5193,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 prefill S=512 O proj BP-S,0.6038,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 prefill S=512 O proj CNSB (Booth spatial, E2)",0.8737,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 prefill S=512 O proj WO-ring (+collector),0.9543,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 prefill S=512 O proj Reduction-outer rot.,0.8598,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 prefill S=512 O proj SC T=128 (ref),0.9823,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 prefill S=512 FFN gate+up BP HW-ring,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=512 FFN gate+up BP best-mode,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=512 FFN gate+up BP HW-self,1.5193,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 prefill S=512 FFN gate+up BP-S,0.6038,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 prefill S=512 FFN gate+up CNSB (Booth spatial, E2)",0.8737,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 prefill S=512 FFN gate+up WO-ring (+collector),0.9543,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 prefill S=512 FFN gate+up Reduction-outer rot.,0.8598,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 prefill S=512 FFN gate+up SC T=128 (ref),0.9823,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 prefill S=512 FFN down BP HW-ring,1.6822,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=512 FFN down BP best-mode,1.6822,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=512 FFN down BP HW-self,1.7893,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 prefill S=512 FFN down BP-S,1.075,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 prefill S=512 FFN down CNSB (Booth spatial, E2)",0.949,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 prefill S=512 FFN down WO-ring (+collector),0.9656,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 prefill S=512 FFN down Reduction-outer rot.,0.866,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 prefill S=512 FFN down SC T=128 (ref),0.9933,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 prefill S=512 QK^T (L=hd=128) BP HW-ring,0.1159,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=512 QK^T (L=hd=128) BP best-mode,0.512,MAC/cycle/tile; mode BP HB-ring; blocks 32x64
+llm,4x8 prefill S=512 QK^T (L=hd=128) BP HW-self,0.1798,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 prefill S=512 QK^T (L=hd=128) BP-S,0.0267,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 prefill S=512 QK^T (L=hd=128) CNSB (Booth spatial, E2)",0.1778,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 prefill S=512 QK^T (L=hd=128) WO-ring (+collector),0.5289,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x64
+llm,4x8 prefill S=512 QK^T (L=hd=128) Reduction-outer rot.,0.6275,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 prefill S=512 QK^T (L=hd=128) SC T=128 (ref),0.6337,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 prefill S=512 SV (L=S=512) BP HW-ring,0.3951,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=512 SV (L=S=512) BP best-mode,0.3951,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=512 SV (L=S=512) BP HW-self,0.5664,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 prefill S=512 SV (L=S=512) BP-S,0.1026,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 prefill S=512 SV (L=S=512) CNSB (Booth spatial, E2)",0.4638,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 prefill S=512 SV (L=S=512) WO-ring (+collector),0.7232,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 prefill S=512 SV (L=S=512) Reduction-outer rot.,0.7734,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 prefill S=512 SV (L=S=512) SC T=128 (ref),0.8737,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm_total,4x8 prefill S=512 BP HW-ring,973.8,GMAC/s/mm2 all-in excl. memory; util 1.2239
+llm_total,4x8 prefill S=512 BP best-mode,1061.9,GMAC/s/mm2 all-in excl. memory; util 1.3345
+llm_total,4x8 prefill S=512 BP HW-self,1123.5,GMAC/s/mm2 all-in excl. memory; util 1.4336
+llm_total,4x8 prefill S=512 BP-S,411.4,GMAC/s/mm2 all-in excl. memory; util 0.5144
+llm_total,"4x8 prefill S=512 CNSB (Booth spatial, E2)",675.2,GMAC/s/mm2 all-in excl. memory; util 0.8471
+llm_total,4x8 prefill S=512 WO-ring (+collector),757.2,GMAC/s/mm2 all-in excl. memory; util 0.9460
+llm_total,4x8 prefill S=512 Reduction-outer rot.,654.2,GMAC/s/mm2 all-in excl. memory; util 0.8569
+llm_total,4x8 prefill S=512 SC T=128 (ref),788.5,GMAC/s/mm2 all-in excl. memory; util 0.9779
+llm,4x8 prefill S=2048 QKV proj BP HW-ring,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=2048 QKV proj BP best-mode,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=2048 QKV proj BP HW-self,1.5193,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 prefill S=2048 QKV proj BP-S,0.6038,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 prefill S=2048 QKV proj CNSB (Booth spatial, E2)",0.8737,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 prefill S=2048 QKV proj WO-ring (+collector),0.9543,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 prefill S=2048 QKV proj Reduction-outer rot.,0.8598,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 prefill S=2048 QKV proj SC T=128 (ref),0.9823,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 prefill S=2048 O proj BP HW-ring,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=2048 O proj BP best-mode,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=2048 O proj BP HW-self,1.5193,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 prefill S=2048 O proj BP-S,0.6038,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 prefill S=2048 O proj CNSB (Booth spatial, E2)",0.8737,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 prefill S=2048 O proj WO-ring (+collector),0.9543,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 prefill S=2048 O proj Reduction-outer rot.,0.8598,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 prefill S=2048 O proj SC T=128 (ref),0.9823,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 prefill S=2048 FFN gate+up BP HW-ring,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=2048 FFN gate+up BP best-mode,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=2048 FFN gate+up BP HW-self,1.5193,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 prefill S=2048 FFN gate+up BP-S,0.6038,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 prefill S=2048 FFN gate+up CNSB (Booth spatial, E2)",0.8737,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 prefill S=2048 FFN gate+up WO-ring (+collector),0.9543,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 prefill S=2048 FFN gate+up Reduction-outer rot.,0.8598,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 prefill S=2048 FFN gate+up SC T=128 (ref),0.9823,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 prefill S=2048 FFN down BP HW-ring,1.6822,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=2048 FFN down BP best-mode,1.6822,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=2048 FFN down BP HW-self,1.7893,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 prefill S=2048 FFN down BP-S,1.075,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 prefill S=2048 FFN down CNSB (Booth spatial, E2)",0.949,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 prefill S=2048 FFN down WO-ring (+collector),0.9656,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 prefill S=2048 FFN down Reduction-outer rot.,0.866,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 prefill S=2048 FFN down SC T=128 (ref),0.9933,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 prefill S=2048 QK^T (L=hd=128) BP HW-ring,0.1159,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=2048 QK^T (L=hd=128) BP best-mode,0.512,MAC/cycle/tile; mode BP HB-ring; blocks 32x64
+llm,4x8 prefill S=2048 QK^T (L=hd=128) BP HW-self,0.1798,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 prefill S=2048 QK^T (L=hd=128) BP-S,0.0267,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 prefill S=2048 QK^T (L=hd=128) CNSB (Booth spatial, E2)",0.1778,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 prefill S=2048 QK^T (L=hd=128) WO-ring (+collector),0.5289,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x64
+llm,4x8 prefill S=2048 QK^T (L=hd=128) Reduction-outer rot.,0.6275,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 prefill S=2048 QK^T (L=hd=128) SC T=128 (ref),0.6337,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 prefill S=2048 SV (L=S=2048) BP HW-ring,0.9922,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=2048 SV (L=S=2048) BP best-mode,0.9922,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=2048 SV (L=S=2048) BP HW-self,1.2249,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 prefill S=2048 SV (L=S=2048) BP-S,0.3556,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 prefill S=2048 SV (L=S=2048) CNSB (Booth spatial, E2)",0.7758,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 prefill S=2048 SV (L=S=2048) WO-ring (+collector),0.9127,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 prefill S=2048 SV (L=S=2048) Reduction-outer rot.,0.8463,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 prefill S=2048 SV (L=S=2048) SC T=128 (ref),0.9651,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm_total,4x8 prefill S=2048 BP HW-ring,770.9,GMAC/s/mm2 all-in excl. memory; util 0.9689
+llm_total,4x8 prefill S=2048 BP best-mode,1024.4,GMAC/s/mm2 all-in excl. memory; util 1.2875
+llm_total,4x8 prefill S=2048 BP HW-self,942.5,GMAC/s/mm2 all-in excl. memory; util 1.2026
+llm_total,4x8 prefill S=2048 BP-S,273.6,GMAC/s/mm2 all-in excl. memory; util 0.3421
+llm_total,"4x8 prefill S=2048 CNSB (Booth spatial, E2)",611.8,GMAC/s/mm2 all-in excl. memory; util 0.7675
+llm_total,4x8 prefill S=2048 WO-ring (+collector),741.6,GMAC/s/mm2 all-in excl. memory; util 0.9264
+llm_total,4x8 prefill S=2048 Reduction-outer rot.,647.7,GMAC/s/mm2 all-in excl. memory; util 0.8485
+llm_total,4x8 prefill S=2048 SC T=128 (ref),776.9,GMAC/s/mm2 all-in excl. memory; util 0.9635
+llm,4x8 prefill S=4096 QKV proj BP HW-ring,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=4096 QKV proj BP best-mode,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=4096 QKV proj BP HW-self,1.5193,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 prefill S=4096 QKV proj BP-S,0.6038,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 prefill S=4096 QKV proj CNSB (Booth spatial, E2)",0.8737,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 prefill S=4096 QKV proj WO-ring (+collector),0.9543,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 prefill S=4096 QKV proj Reduction-outer rot.,0.8598,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 prefill S=4096 QKV proj SC T=128 (ref),0.9823,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 prefill S=4096 O proj BP HW-ring,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=4096 O proj BP best-mode,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=4096 O proj BP HW-self,1.5193,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 prefill S=4096 O proj BP-S,0.6038,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 prefill S=4096 O proj CNSB (Booth spatial, E2)",0.8737,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 prefill S=4096 O proj WO-ring (+collector),0.9543,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 prefill S=4096 O proj Reduction-outer rot.,0.8598,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 prefill S=4096 O proj SC T=128 (ref),0.9823,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 prefill S=4096 FFN gate+up BP HW-ring,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=4096 FFN gate+up BP best-mode,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=4096 FFN gate+up BP HW-self,1.5193,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 prefill S=4096 FFN gate+up BP-S,0.6038,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 prefill S=4096 FFN gate+up CNSB (Booth spatial, E2)",0.8737,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 prefill S=4096 FFN gate+up WO-ring (+collector),0.9543,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 prefill S=4096 FFN gate+up Reduction-outer rot.,0.8598,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 prefill S=4096 FFN gate+up SC T=128 (ref),0.9823,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 prefill S=4096 FFN down BP HW-ring,1.6822,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=4096 FFN down BP best-mode,1.6822,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=4096 FFN down BP HW-self,1.7893,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 prefill S=4096 FFN down BP-S,1.075,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 prefill S=4096 FFN down CNSB (Booth spatial, E2)",0.949,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 prefill S=4096 FFN down WO-ring (+collector),0.9656,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 prefill S=4096 FFN down Reduction-outer rot.,0.866,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 prefill S=4096 FFN down SC T=128 (ref),0.9933,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 prefill S=4096 QK^T (L=hd=128) BP HW-ring,0.1159,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=4096 QK^T (L=hd=128) BP best-mode,0.512,MAC/cycle/tile; mode BP HB-ring; blocks 32x64
+llm,4x8 prefill S=4096 QK^T (L=hd=128) BP HW-self,0.1798,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 prefill S=4096 QK^T (L=hd=128) BP-S,0.0267,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 prefill S=4096 QK^T (L=hd=128) CNSB (Booth spatial, E2)",0.1778,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 prefill S=4096 QK^T (L=hd=128) WO-ring (+collector),0.5289,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x64
+llm,4x8 prefill S=4096 QK^T (L=hd=128) Reduction-outer rot.,0.6275,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 prefill S=4096 QK^T (L=hd=128) SC T=128 (ref),0.6337,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 prefill S=4096 SV (L=S=4096) BP HW-ring,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=4096 SV (L=S=4096) BP best-mode,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=4096 SV (L=S=4096) BP HW-self,1.5193,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 prefill S=4096 SV (L=S=4096) BP-S,0.6038,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 prefill S=4096 SV (L=S=4096) CNSB (Booth spatial, E2)",0.8737,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 prefill S=4096 SV (L=S=4096) WO-ring (+collector),0.9543,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 prefill S=4096 SV (L=S=4096) Reduction-outer rot.,0.8598,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 prefill S=4096 SV (L=S=4096) SC T=128 (ref),0.9823,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm_total,4x8 prefill S=4096 BP HW-ring,620.1,GMAC/s/mm2 all-in excl. memory; util 0.7793
+llm_total,4x8 prefill S=4096 BP best-mode,983.9,GMAC/s/mm2 all-in excl. memory; util 1.2365
+llm_total,4x8 prefill S=4096 BP HW-self,793.3,GMAC/s/mm2 all-in excl. memory; util 1.0122
+llm_total,4x8 prefill S=4096 BP-S,196.7,GMAC/s/mm2 all-in excl. memory; util 0.2459
+llm_total,"4x8 prefill S=4096 CNSB (Booth spatial, E2)",551.3,GMAC/s/mm2 all-in excl. memory; util 0.6917
+llm_total,4x8 prefill S=4096 WO-ring (+collector),724.1,GMAC/s/mm2 all-in excl. memory; util 0.9046
+llm_total,4x8 prefill S=4096 Reduction-outer rot.,640.4,GMAC/s/mm2 all-in excl. memory; util 0.8388
+llm_total,4x8 prefill S=4096 SC T=128 (ref),763.7,GMAC/s/mm2 all-in excl. memory; util 0.9472
+llm,4x8 prefill S=2048 hd=64 QKV proj BP HW-ring,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=2048 hd=64 QKV proj BP best-mode,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=2048 hd=64 QKV proj BP HW-self,1.5193,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 prefill S=2048 hd=64 QKV proj BP-S,0.6038,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 prefill S=2048 hd=64 QKV proj CNSB (Booth spatial, E2)",0.8737,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 prefill S=2048 hd=64 QKV proj WO-ring (+collector),0.9543,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 prefill S=2048 hd=64 QKV proj Reduction-outer rot.,0.8598,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 prefill S=2048 hd=64 QKV proj SC T=128 (ref),0.9823,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 prefill S=2048 hd=64 O proj BP HW-ring,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=2048 hd=64 O proj BP best-mode,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=2048 hd=64 O proj BP HW-self,1.5193,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 prefill S=2048 hd=64 O proj BP-S,0.6038,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 prefill S=2048 hd=64 O proj CNSB (Booth spatial, E2)",0.8737,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 prefill S=2048 hd=64 O proj WO-ring (+collector),0.9543,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 prefill S=2048 hd=64 O proj Reduction-outer rot.,0.8598,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 prefill S=2048 hd=64 O proj SC T=128 (ref),0.9823,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 prefill S=2048 hd=64 FFN gate+up BP HW-ring,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=2048 hd=64 FFN gate+up BP best-mode,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=2048 hd=64 FFN gate+up BP HW-self,1.5193,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 prefill S=2048 hd=64 FFN gate+up BP-S,0.6038,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 prefill S=2048 hd=64 FFN gate+up CNSB (Booth spatial, E2)",0.8737,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 prefill S=2048 hd=64 FFN gate+up WO-ring (+collector),0.9543,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 prefill S=2048 hd=64 FFN gate+up Reduction-outer rot.,0.8598,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 prefill S=2048 hd=64 FFN gate+up SC T=128 (ref),0.9823,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 prefill S=2048 hd=64 FFN down BP HW-ring,1.6822,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=2048 hd=64 FFN down BP best-mode,1.6822,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=2048 hd=64 FFN down BP HW-self,1.7893,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 prefill S=2048 hd=64 FFN down BP-S,1.075,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 prefill S=2048 hd=64 FFN down CNSB (Booth spatial, E2)",0.949,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 prefill S=2048 hd=64 FFN down WO-ring (+collector),0.9656,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 prefill S=2048 hd=64 FFN down Reduction-outer rot.,0.866,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 prefill S=2048 hd=64 FFN down SC T=128 (ref),0.9933,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 prefill S=2048 hd=64 QK^T (L=hd=64) BP HW-ring,0.058,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=2048 hd=64 QK^T (L=hd=64) BP best-mode,0.256,MAC/cycle/tile; mode BP HB-ring; blocks 32x64
+llm,4x8 prefill S=2048 hd=64 QK^T (L=hd=64) BP HW-self,0.0899,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 prefill S=2048 hd=64 QK^T (L=hd=64) BP-S,0.0133,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 prefill S=2048 hd=64 QK^T (L=hd=64) CNSB (Booth spatial, E2)",0.0976,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 prefill S=2048 hd=64 QK^T (L=hd=64) WO-ring (+collector),0.3596,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x64
+llm,4x8 prefill S=2048 hd=64 QK^T (L=hd=64) Reduction-outer rot.,0.4571,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 prefill S=2048 hd=64 QK^T (L=hd=64) SC T=128 (ref),0.4638,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 prefill S=2048 hd=64 SV (L=S=2048) BP HW-ring,0.9922,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=2048 hd=64 SV (L=S=2048) BP best-mode,0.9922,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 prefill S=2048 hd=64 SV (L=S=2048) BP HW-self,1.2249,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 prefill S=2048 hd=64 SV (L=S=2048) BP-S,0.3556,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 prefill S=2048 hd=64 SV (L=S=2048) CNSB (Booth spatial, E2)",0.7758,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 prefill S=2048 hd=64 SV (L=S=2048) WO-ring (+collector),0.9127,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 prefill S=2048 hd=64 SV (L=S=2048) Reduction-outer rot.,0.8463,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 prefill S=2048 hd=64 SV (L=S=2048) SC T=128 (ref),0.9651,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm_total,4x8 prefill S=2048 hd=64 BP HW-ring,755.5,GMAC/s/mm2 all-in excl. memory; util 0.9495
+llm_total,4x8 prefill S=2048 hd=64 BP best-mode,1010.3,GMAC/s/mm2 all-in excl. memory; util 1.2697
+llm_total,4x8 prefill S=2048 hd=64 BP HW-self,923.8,GMAC/s/mm2 all-in excl. memory; util 1.1787
+llm_total,4x8 prefill S=2048 hd=64 BP-S,268.0,GMAC/s/mm2 all-in excl. memory; util 0.3352
+llm_total,"4x8 prefill S=2048 hd=64 CNSB (Booth spatial, E2)",608.8,GMAC/s/mm2 all-in excl. memory; util 0.7638
+llm_total,4x8 prefill S=2048 hd=64 WO-ring (+collector),740.7,GMAC/s/mm2 all-in excl. memory; util 0.9253
+llm_total,4x8 prefill S=2048 hd=64 Reduction-outer rot.,645.8,GMAC/s/mm2 all-in excl. memory; util 0.8460
+llm_total,4x8 prefill S=2048 hd=64 SC T=128 (ref),776.3,GMAC/s/mm2 all-in excl. memory; util 0.9628
+llm,4x8 decode ctx=2048 B=1 QKV proj BP HW-ring,0.3316,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 decode ctx=2048 B=1 QKV proj BP best-mode,0.3316,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 decode ctx=2048 B=1 QKV proj BP HW-self,0.3798,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 decode ctx=2048 B=1 QKV proj BP-S,0.1509,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 decode ctx=2048 B=1 QKV proj CNSB (Booth spatial, E2)",0.0546,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 decode ctx=2048 B=1 QKV proj WO-ring (+collector),0.0298,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 decode ctx=2048 B=1 QKV proj Reduction-outer rot.,0.0269,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 decode ctx=2048 B=1 QKV proj SC T=128 (ref),0.0307,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 decode ctx=2048 B=1 O proj BP HW-ring,0.3316,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 decode ctx=2048 B=1 O proj BP best-mode,0.3316,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 decode ctx=2048 B=1 O proj BP HW-self,0.3798,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 decode ctx=2048 B=1 O proj BP-S,0.1509,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 decode ctx=2048 B=1 O proj CNSB (Booth spatial, E2)",0.0546,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 decode ctx=2048 B=1 O proj WO-ring (+collector),0.0298,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 decode ctx=2048 B=1 O proj Reduction-outer rot.,0.0269,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 decode ctx=2048 B=1 O proj SC T=128 (ref),0.0307,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 decode ctx=2048 B=1 FFN gate+up BP HW-ring,0.3316,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 decode ctx=2048 B=1 FFN gate+up BP best-mode,0.3316,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 decode ctx=2048 B=1 FFN gate+up BP HW-self,0.3798,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 decode ctx=2048 B=1 FFN gate+up BP-S,0.1509,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 decode ctx=2048 B=1 FFN gate+up CNSB (Booth spatial, E2)",0.0546,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 decode ctx=2048 B=1 FFN gate+up WO-ring (+collector),0.0298,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 decode ctx=2048 B=1 FFN gate+up Reduction-outer rot.,0.0269,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 decode ctx=2048 B=1 FFN gate+up SC T=128 (ref),0.0307,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 decode ctx=2048 B=1 FFN down BP HW-ring,0.4205,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 decode ctx=2048 B=1 FFN down BP best-mode,0.4205,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 decode ctx=2048 B=1 FFN down BP HW-self,0.4473,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 decode ctx=2048 B=1 FFN down BP-S,0.2687,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 decode ctx=2048 B=1 FFN down CNSB (Booth spatial, E2)",0.0593,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 decode ctx=2048 B=1 FFN down WO-ring (+collector),0.0302,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 decode ctx=2048 B=1 FFN down Reduction-outer rot.,0.0271,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 decode ctx=2048 B=1 FFN down SC T=128 (ref),0.031,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 decode ctx=2048 B=1 QK^T (L=hd=128) BP HW-ring,0.029,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 decode ctx=2048 B=1 QK^T (L=hd=128) BP best-mode,0.029,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 decode ctx=2048 B=1 QK^T (L=hd=128) BP HW-self,0.0449,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 decode ctx=2048 B=1 QK^T (L=hd=128) BP-S,0.0067,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 decode ctx=2048 B=1 QK^T (L=hd=128) CNSB (Booth spatial, E2)",0.0111,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 decode ctx=2048 B=1 QK^T (L=hd=128) WO-ring (+collector),0.0165,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x64
+llm,4x8 decode ctx=2048 B=1 QK^T (L=hd=128) Reduction-outer rot.,0.0196,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 decode ctx=2048 B=1 QK^T (L=hd=128) SC T=128 (ref),0.0198,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 decode ctx=2048 B=1 SV (L=S=2048) BP HW-ring,0.2481,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 decode ctx=2048 B=1 SV (L=S=2048) BP best-mode,0.2481,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 decode ctx=2048 B=1 SV (L=S=2048) BP HW-self,0.3062,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 decode ctx=2048 B=1 SV (L=S=2048) BP-S,0.0889,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 decode ctx=2048 B=1 SV (L=S=2048) CNSB (Booth spatial, E2)",0.0485,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 decode ctx=2048 B=1 SV (L=S=2048) WO-ring (+collector),0.0285,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 decode ctx=2048 B=1 SV (L=S=2048) Reduction-outer rot.,0.0264,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 decode ctx=2048 B=1 SV (L=S=2048) SC T=128 (ref),0.0302,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm_total,4x8 decode ctx=2048 B=1 BP HW-ring,192.7,GMAC/s/mm2 all-in excl. memory; util 0.2422
+llm_total,4x8 decode ctx=2048 B=1 BP best-mode,192.7,GMAC/s/mm2 all-in excl. memory; util 0.2422
+llm_total,4x8 decode ctx=2048 B=1 BP HW-self,235.6,GMAC/s/mm2 all-in excl. memory; util 0.3006
+llm_total,4x8 decode ctx=2048 B=1 BP-S,68.4,GMAC/s/mm2 all-in excl. memory; util 0.0855
+llm_total,"4x8 decode ctx=2048 B=1 CNSB (Booth spatial, E2)",38.2,GMAC/s/mm2 all-in excl. memory; util 0.0480
+llm_total,4x8 decode ctx=2048 B=1 WO-ring (+collector),23.2,GMAC/s/mm2 all-in excl. memory; util 0.0290
+llm_total,4x8 decode ctx=2048 B=1 Reduction-outer rot.,20.2,GMAC/s/mm2 all-in excl. memory; util 0.0265
+llm_total,4x8 decode ctx=2048 B=1 SC T=128 (ref),24.3,GMAC/s/mm2 all-in excl. memory; util 0.0301
+llm,4x8 decode ctx=2048 B=16 QKV proj BP HW-ring,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 decode ctx=2048 B=16 QKV proj BP best-mode,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 decode ctx=2048 B=16 QKV proj BP HW-self,1.5193,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 decode ctx=2048 B=16 QKV proj BP-S,0.6038,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 decode ctx=2048 B=16 QKV proj CNSB (Booth spatial, E2)",0.8737,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 decode ctx=2048 B=16 QKV proj WO-ring (+collector),0.4772,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 decode ctx=2048 B=16 QKV proj Reduction-outer rot.,0.4299,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 decode ctx=2048 B=16 QKV proj SC T=128 (ref),0.4911,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 decode ctx=2048 B=16 O proj BP HW-ring,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 decode ctx=2048 B=16 O proj BP best-mode,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 decode ctx=2048 B=16 O proj BP HW-self,1.5193,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 decode ctx=2048 B=16 O proj BP-S,0.6038,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 decode ctx=2048 B=16 O proj CNSB (Booth spatial, E2)",0.8737,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 decode ctx=2048 B=16 O proj WO-ring (+collector),0.4772,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 decode ctx=2048 B=16 O proj Reduction-outer rot.,0.4299,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 decode ctx=2048 B=16 O proj SC T=128 (ref),0.4911,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 decode ctx=2048 B=16 FFN gate+up BP HW-ring,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 decode ctx=2048 B=16 FFN gate+up BP best-mode,1.3264,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 decode ctx=2048 B=16 FFN gate+up BP HW-self,1.5193,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 decode ctx=2048 B=16 FFN gate+up BP-S,0.6038,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 decode ctx=2048 B=16 FFN gate+up CNSB (Booth spatial, E2)",0.8737,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 decode ctx=2048 B=16 FFN gate+up WO-ring (+collector),0.4772,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 decode ctx=2048 B=16 FFN gate+up Reduction-outer rot.,0.4299,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 decode ctx=2048 B=16 FFN gate+up SC T=128 (ref),0.4911,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 decode ctx=2048 B=16 FFN down BP HW-ring,1.6822,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 decode ctx=2048 B=16 FFN down BP best-mode,1.6822,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 decode ctx=2048 B=16 FFN down BP HW-self,1.7893,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 decode ctx=2048 B=16 FFN down BP-S,1.075,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 decode ctx=2048 B=16 FFN down CNSB (Booth spatial, E2)",0.949,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 decode ctx=2048 B=16 FFN down WO-ring (+collector),0.4828,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 decode ctx=2048 B=16 FFN down Reduction-outer rot.,0.433,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 decode ctx=2048 B=16 FFN down SC T=128 (ref),0.4967,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 decode ctx=2048 B=16 QK^T (L=hd=128) BP HW-ring,0.1159,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 decode ctx=2048 B=16 QK^T (L=hd=128) BP best-mode,0.256,MAC/cycle/tile; mode BP HB-ring; blocks 32x64
+llm,4x8 decode ctx=2048 B=16 QK^T (L=hd=128) BP HW-self,0.1798,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 decode ctx=2048 B=16 QK^T (L=hd=128) BP-S,0.0267,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 decode ctx=2048 B=16 QK^T (L=hd=128) CNSB (Booth spatial, E2)",0.1778,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 decode ctx=2048 B=16 QK^T (L=hd=128) WO-ring (+collector),0.2645,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x64
+llm,4x8 decode ctx=2048 B=16 QK^T (L=hd=128) Reduction-outer rot.,0.3137,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 decode ctx=2048 B=16 QK^T (L=hd=128) SC T=128 (ref),0.3168,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm,4x8 decode ctx=2048 B=16 SV (L=S=2048) BP HW-ring,0.9922,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 decode ctx=2048 B=16 SV (L=S=2048) BP best-mode,0.9922,MAC/cycle/tile; mode BP HW-ring; blocks 4x64
+llm,4x8 decode ctx=2048 B=16 SV (L=S=2048) BP HW-self,1.2249,MAC/cycle/tile; mode BP HW-self; blocks 4x64
+llm,4x8 decode ctx=2048 B=16 SV (L=S=2048) BP-S,0.3556,MAC/cycle/tile; mode BP-S; blocks 4x8
+llm,"4x8 decode ctx=2048 B=16 SV (L=S=2048) CNSB (Booth spatial, E2)",0.7758,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 16x16"
+llm,4x8 decode ctx=2048 B=16 SV (L=S=2048) WO-ring (+collector),0.4563,MAC/cycle/tile; mode WO-ring (+collector); blocks 32x32
+llm,4x8 decode ctx=2048 B=16 SV (L=S=2048) Reduction-outer rot.,0.4231,MAC/cycle/tile; mode Reduction-outer rot.; blocks 32x64
+llm,4x8 decode ctx=2048 B=16 SV (L=S=2048) SC T=128 (ref),0.4826,MAC/cycle/tile; mode SC T=128 (ref); blocks 32x64
+llm_total,4x8 decode ctx=2048 B=16 BP HW-ring,770.9,GMAC/s/mm2 all-in excl. memory; util 0.9689
+llm_total,4x8 decode ctx=2048 B=16 BP best-mode,934.5,GMAC/s/mm2 all-in excl. memory; util 1.1744
+llm_total,4x8 decode ctx=2048 B=16 BP HW-self,942.5,GMAC/s/mm2 all-in excl. memory; util 1.2026
+llm_total,4x8 decode ctx=2048 B=16 BP-S,273.6,GMAC/s/mm2 all-in excl. memory; util 0.3421
+llm_total,"4x8 decode ctx=2048 B=16 CNSB (Booth spatial, E2)",611.8,GMAC/s/mm2 all-in excl. memory; util 0.7675
+llm_total,4x8 decode ctx=2048 B=16 WO-ring (+collector),370.8,GMAC/s/mm2 all-in excl. memory; util 0.4632
+llm_total,4x8 decode ctx=2048 B=16 Reduction-outer rot.,323.9,GMAC/s/mm2 all-in excl. memory; util 0.4242
+llm_total,4x8 decode ctx=2048 B=16 SC T=128 (ref),388.4,GMAC/s/mm2 all-in excl. memory; util 0.4818
+llm,1x1 prefill S=512 QKV proj BP HW-ring,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=512 QKV proj BP best-mode,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=512 QKV proj BP HW-self,1.8893,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 prefill S=512 QKV proj BP-S,1.6,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 prefill S=512 QKV proj CNSB (Booth spatial, E2)",0.9846,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 prefill S=512 QKV proj WO-ring (+collector),0.9846,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 prefill S=512 QKV proj Reduction-outer rot.,0.9823,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 prefill S=512 QKV proj SC T=128 (ref),0.9981,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 prefill S=512 O proj BP HW-ring,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=512 O proj BP best-mode,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=512 O proj BP HW-self,1.8893,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 prefill S=512 O proj BP-S,1.6,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 prefill S=512 O proj CNSB (Booth spatial, E2)",0.9846,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 prefill S=512 O proj WO-ring (+collector),0.9846,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 prefill S=512 O proj Reduction-outer rot.,0.9823,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 prefill S=512 O proj SC T=128 (ref),0.9981,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 prefill S=512 FFN gate+up BP HW-ring,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=512 FFN gate+up BP best-mode,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=512 FFN gate+up BP HW-self,1.8893,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 prefill S=512 FFN gate+up BP-S,1.6,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 prefill S=512 FFN gate+up CNSB (Booth spatial, E2)",0.9846,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 prefill S=512 FFN gate+up WO-ring (+collector),0.9846,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 prefill S=512 FFN gate+up Reduction-outer rot.,0.9823,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 prefill S=512 FFN gate+up SC T=128 (ref),0.9981,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 prefill S=512 FFN down BP HW-ring,1.8298,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=512 FFN down BP best-mode,1.8298,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=512 FFN down BP HW-self,1.9573,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 prefill S=512 FFN down BP-S,1.8298,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 prefill S=512 FFN down CNSB (Booth spatial, E2)",0.9942,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 prefill S=512 FFN down WO-ring (+collector),0.9885,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 prefill S=512 FFN down Reduction-outer rot.,0.9834,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 prefill S=512 FFN down SC T=128 (ref),0.9993,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 prefill S=512 QK^T (L=hd=128) BP HW-ring,0.2222,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=512 QK^T (L=hd=128) BP best-mode,0.6957,MAC/cycle/tile; mode BP HB-ring; blocks 8x8
+llm,1x1 prefill S=512 QK^T (L=hd=128) BP HW-self,0.6957,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 prefill S=512 QK^T (L=hd=128) BP-S,0.2222,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 prefill S=512 QK^T (L=hd=128) CNSB (Booth spatial, E2)",0.6667,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 prefill S=512 QK^T (L=hd=128) WO-ring (+collector),0.7273,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x8
+llm,1x1 prefill S=512 QK^T (L=hd=128) Reduction-outer rot.,0.9275,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 prefill S=512 QK^T (L=hd=128) SC T=128 (ref),0.9412,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 prefill S=512 SV (L=S=512) BP HW-ring,0.6667,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=512 SV (L=S=512) BP best-mode,0.6667,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=512 SV (L=S=512) BP HW-self,1.3617,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 prefill S=512 SV (L=S=512) BP-S,0.6667,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 prefill S=512 SV (L=S=512) CNSB (Booth spatial, E2)",0.8889,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 prefill S=512 SV (L=S=512) WO-ring (+collector),0.8889,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 prefill S=512 SV (L=S=512) Reduction-outer rot.,0.966,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 prefill S=512 SV (L=S=512) SC T=128 (ref),0.9846,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm_total,1x1 prefill S=512 BP HW-ring,851.6,GMAC/s/mm2 all-in excl. memory; util 1.5242
+llm_total,1x1 prefill S=512 BP best-mode,893.9,GMAC/s/mm2 all-in excl. memory; util 1.6000
+llm_total,1x1 prefill S=512 BP HW-self,1030.2,GMAC/s/mm2 all-in excl. memory; util 1.8636
+llm_total,1x1 prefill S=512 BP-S,854.6,GMAC/s/mm2 all-in excl. memory; util 1.5242
+llm_total,"1x1 prefill S=512 CNSB (Booth spatial, E2)",540.5,GMAC/s/mm2 all-in excl. memory; util 0.9809
+llm_total,1x1 prefill S=512 WO-ring (+collector),559.2,GMAC/s/mm2 all-in excl. memory; util 0.9809
+llm_total,1x1 prefill S=512 Reduction-outer rot.,524.5,GMAC/s/mm2 all-in excl. memory; util 0.9817
+llm_total,1x1 prefill S=512 SC T=128 (ref),580.2,GMAC/s/mm2 all-in excl. memory; util 0.9976
+llm,1x1 prefill S=2048 QKV proj BP HW-ring,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=2048 QKV proj BP best-mode,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=2048 QKV proj BP HW-self,1.8893,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 prefill S=2048 QKV proj BP-S,1.6,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 prefill S=2048 QKV proj CNSB (Booth spatial, E2)",0.9846,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 prefill S=2048 QKV proj WO-ring (+collector),0.9846,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 prefill S=2048 QKV proj Reduction-outer rot.,0.9823,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 prefill S=2048 QKV proj SC T=128 (ref),0.9981,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 prefill S=2048 O proj BP HW-ring,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=2048 O proj BP best-mode,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=2048 O proj BP HW-self,1.8893,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 prefill S=2048 O proj BP-S,1.6,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 prefill S=2048 O proj CNSB (Booth spatial, E2)",0.9846,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 prefill S=2048 O proj WO-ring (+collector),0.9846,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 prefill S=2048 O proj Reduction-outer rot.,0.9823,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 prefill S=2048 O proj SC T=128 (ref),0.9981,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 prefill S=2048 FFN gate+up BP HW-ring,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=2048 FFN gate+up BP best-mode,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=2048 FFN gate+up BP HW-self,1.8893,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 prefill S=2048 FFN gate+up BP-S,1.6,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 prefill S=2048 FFN gate+up CNSB (Booth spatial, E2)",0.9846,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 prefill S=2048 FFN gate+up WO-ring (+collector),0.9846,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 prefill S=2048 FFN gate+up Reduction-outer rot.,0.9823,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 prefill S=2048 FFN gate+up SC T=128 (ref),0.9981,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 prefill S=2048 FFN down BP HW-ring,1.8298,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=2048 FFN down BP best-mode,1.8298,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=2048 FFN down BP HW-self,1.9573,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 prefill S=2048 FFN down BP-S,1.8298,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 prefill S=2048 FFN down CNSB (Booth spatial, E2)",0.9942,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 prefill S=2048 FFN down WO-ring (+collector),0.9885,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 prefill S=2048 FFN down Reduction-outer rot.,0.9834,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 prefill S=2048 FFN down SC T=128 (ref),0.9993,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 prefill S=2048 QK^T (L=hd=128) BP HW-ring,0.2222,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=2048 QK^T (L=hd=128) BP best-mode,0.6957,MAC/cycle/tile; mode BP HB-ring; blocks 8x8
+llm,1x1 prefill S=2048 QK^T (L=hd=128) BP HW-self,0.6957,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 prefill S=2048 QK^T (L=hd=128) BP-S,0.2222,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 prefill S=2048 QK^T (L=hd=128) CNSB (Booth spatial, E2)",0.6667,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 prefill S=2048 QK^T (L=hd=128) WO-ring (+collector),0.7273,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x8
+llm,1x1 prefill S=2048 QK^T (L=hd=128) Reduction-outer rot.,0.9275,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 prefill S=2048 QK^T (L=hd=128) SC T=128 (ref),0.9412,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 prefill S=2048 SV (L=S=2048) BP HW-ring,1.3333,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=2048 SV (L=S=2048) BP best-mode,1.3333,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=2048 SV (L=S=2048) BP HW-self,1.7902,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 prefill S=2048 SV (L=S=2048) BP-S,1.3333,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 prefill S=2048 SV (L=S=2048) CNSB (Booth spatial, E2)",0.9697,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 prefill S=2048 SV (L=S=2048) WO-ring (+collector),0.9697,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 prefill S=2048 SV (L=S=2048) Reduction-outer rot.,0.9799,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 prefill S=2048 SV (L=S=2048) SC T=128 (ref),0.9961,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm_total,1x1 prefill S=2048 BP HW-ring,733.3,GMAC/s/mm2 all-in excl. memory; util 1.3124
+llm_total,1x1 prefill S=2048 BP best-mode,866.6,GMAC/s/mm2 all-in excl. memory; util 1.5510
+llm_total,1x1 prefill S=2048 BP HW-self,984.7,GMAC/s/mm2 all-in excl. memory; util 1.7813
+llm_total,1x1 prefill S=2048 BP-S,735.9,GMAC/s/mm2 all-in excl. memory; util 1.3124
+llm_total,"1x1 prefill S=2048 CNSB (Booth spatial, E2)",533.6,GMAC/s/mm2 all-in excl. memory; util 0.9683
+llm_total,1x1 prefill S=2048 WO-ring (+collector),554.0,GMAC/s/mm2 all-in excl. memory; util 0.9717
+llm_total,1x1 prefill S=2048 Reduction-outer rot.,523.7,GMAC/s/mm2 all-in excl. memory; util 0.9802
+llm_total,1x1 prefill S=2048 SC T=128 (ref),579.2,GMAC/s/mm2 all-in excl. memory; util 0.9959
+llm,1x1 prefill S=4096 QKV proj BP HW-ring,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=4096 QKV proj BP best-mode,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=4096 QKV proj BP HW-self,1.8893,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 prefill S=4096 QKV proj BP-S,1.6,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 prefill S=4096 QKV proj CNSB (Booth spatial, E2)",0.9846,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 prefill S=4096 QKV proj WO-ring (+collector),0.9846,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 prefill S=4096 QKV proj Reduction-outer rot.,0.9823,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 prefill S=4096 QKV proj SC T=128 (ref),0.9981,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 prefill S=4096 O proj BP HW-ring,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=4096 O proj BP best-mode,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=4096 O proj BP HW-self,1.8893,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 prefill S=4096 O proj BP-S,1.6,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 prefill S=4096 O proj CNSB (Booth spatial, E2)",0.9846,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 prefill S=4096 O proj WO-ring (+collector),0.9846,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 prefill S=4096 O proj Reduction-outer rot.,0.9823,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 prefill S=4096 O proj SC T=128 (ref),0.9981,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 prefill S=4096 FFN gate+up BP HW-ring,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=4096 FFN gate+up BP best-mode,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=4096 FFN gate+up BP HW-self,1.8893,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 prefill S=4096 FFN gate+up BP-S,1.6,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 prefill S=4096 FFN gate+up CNSB (Booth spatial, E2)",0.9846,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 prefill S=4096 FFN gate+up WO-ring (+collector),0.9846,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 prefill S=4096 FFN gate+up Reduction-outer rot.,0.9823,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 prefill S=4096 FFN gate+up SC T=128 (ref),0.9981,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 prefill S=4096 FFN down BP HW-ring,1.8298,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=4096 FFN down BP best-mode,1.8298,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=4096 FFN down BP HW-self,1.9573,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 prefill S=4096 FFN down BP-S,1.8298,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 prefill S=4096 FFN down CNSB (Booth spatial, E2)",0.9942,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 prefill S=4096 FFN down WO-ring (+collector),0.9885,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 prefill S=4096 FFN down Reduction-outer rot.,0.9834,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 prefill S=4096 FFN down SC T=128 (ref),0.9993,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 prefill S=4096 QK^T (L=hd=128) BP HW-ring,0.2222,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=4096 QK^T (L=hd=128) BP best-mode,0.6957,MAC/cycle/tile; mode BP HB-ring; blocks 8x8
+llm,1x1 prefill S=4096 QK^T (L=hd=128) BP HW-self,0.6957,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 prefill S=4096 QK^T (L=hd=128) BP-S,0.2222,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 prefill S=4096 QK^T (L=hd=128) CNSB (Booth spatial, E2)",0.6667,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 prefill S=4096 QK^T (L=hd=128) WO-ring (+collector),0.7273,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x8
+llm,1x1 prefill S=4096 QK^T (L=hd=128) Reduction-outer rot.,0.9275,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 prefill S=4096 QK^T (L=hd=128) SC T=128 (ref),0.9412,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 prefill S=4096 SV (L=S=4096) BP HW-ring,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=4096 SV (L=S=4096) BP best-mode,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=4096 SV (L=S=4096) BP HW-self,1.8893,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 prefill S=4096 SV (L=S=4096) BP-S,1.6,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 prefill S=4096 SV (L=S=4096) CNSB (Booth spatial, E2)",0.9846,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 prefill S=4096 SV (L=S=4096) WO-ring (+collector),0.9846,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 prefill S=4096 SV (L=S=4096) Reduction-outer rot.,0.9823,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 prefill S=4096 SV (L=S=4096) SC T=128 (ref),0.9981,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm_total,1x1 prefill S=4096 BP HW-ring,630.9,GMAC/s/mm2 all-in excl. memory; util 1.1292
+llm_total,1x1 prefill S=4096 BP best-mode,836.7,GMAC/s/mm2 all-in excl. memory; util 1.4975
+llm_total,1x1 prefill S=4096 BP HW-self,936.3,GMAC/s/mm2 all-in excl. memory; util 1.6939
+llm_total,1x1 prefill S=4096 BP-S,633.2,GMAC/s/mm2 all-in excl. memory; util 1.1292
+llm_total,"1x1 prefill S=4096 CNSB (Booth spatial, E2)",525.8,GMAC/s/mm2 all-in excl. memory; util 0.9540
+llm_total,1x1 prefill S=4096 WO-ring (+collector),548.0,GMAC/s/mm2 all-in excl. memory; util 0.9612
+llm_total,1x1 prefill S=4096 Reduction-outer rot.,522.7,GMAC/s/mm2 all-in excl. memory; util 0.9784
+llm_total,1x1 prefill S=4096 SC T=128 (ref),578.1,GMAC/s/mm2 all-in excl. memory; util 0.9940
+llm,1x1 prefill S=2048 hd=64 QKV proj BP HW-ring,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=2048 hd=64 QKV proj BP best-mode,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=2048 hd=64 QKV proj BP HW-self,1.8893,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 prefill S=2048 hd=64 QKV proj BP-S,1.6,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 prefill S=2048 hd=64 QKV proj CNSB (Booth spatial, E2)",0.9846,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 prefill S=2048 hd=64 QKV proj WO-ring (+collector),0.9846,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 prefill S=2048 hd=64 QKV proj Reduction-outer rot.,0.9823,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 prefill S=2048 hd=64 QKV proj SC T=128 (ref),0.9981,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 prefill S=2048 hd=64 O proj BP HW-ring,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=2048 hd=64 O proj BP best-mode,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=2048 hd=64 O proj BP HW-self,1.8893,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 prefill S=2048 hd=64 O proj BP-S,1.6,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 prefill S=2048 hd=64 O proj CNSB (Booth spatial, E2)",0.9846,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 prefill S=2048 hd=64 O proj WO-ring (+collector),0.9846,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 prefill S=2048 hd=64 O proj Reduction-outer rot.,0.9823,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 prefill S=2048 hd=64 O proj SC T=128 (ref),0.9981,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 prefill S=2048 hd=64 FFN gate+up BP HW-ring,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=2048 hd=64 FFN gate+up BP best-mode,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=2048 hd=64 FFN gate+up BP HW-self,1.8893,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 prefill S=2048 hd=64 FFN gate+up BP-S,1.6,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 prefill S=2048 hd=64 FFN gate+up CNSB (Booth spatial, E2)",0.9846,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 prefill S=2048 hd=64 FFN gate+up WO-ring (+collector),0.9846,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 prefill S=2048 hd=64 FFN gate+up Reduction-outer rot.,0.9823,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 prefill S=2048 hd=64 FFN gate+up SC T=128 (ref),0.9981,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 prefill S=2048 hd=64 FFN down BP HW-ring,1.8298,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=2048 hd=64 FFN down BP best-mode,1.8298,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=2048 hd=64 FFN down BP HW-self,1.9573,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 prefill S=2048 hd=64 FFN down BP-S,1.8298,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 prefill S=2048 hd=64 FFN down CNSB (Booth spatial, E2)",0.9942,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 prefill S=2048 hd=64 FFN down WO-ring (+collector),0.9885,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 prefill S=2048 hd=64 FFN down Reduction-outer rot.,0.9834,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 prefill S=2048 hd=64 FFN down SC T=128 (ref),0.9993,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 prefill S=2048 hd=64 QK^T (L=hd=64) BP HW-ring,0.1111,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=2048 hd=64 QK^T (L=hd=64) BP best-mode,0.3478,MAC/cycle/tile; mode BP HB-ring; blocks 8x8
+llm,1x1 prefill S=2048 hd=64 QK^T (L=hd=64) BP HW-self,0.3478,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 prefill S=2048 hd=64 QK^T (L=hd=64) BP-S,0.1111,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 prefill S=2048 hd=64 QK^T (L=hd=64) CNSB (Booth spatial, E2)",0.5,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 prefill S=2048 hd=64 QK^T (L=hd=64) WO-ring (+collector),0.5714,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x8
+llm,1x1 prefill S=2048 hd=64 QK^T (L=hd=64) Reduction-outer rot.,0.8649,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 prefill S=2048 hd=64 QK^T (L=hd=64) SC T=128 (ref),0.8889,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 prefill S=2048 hd=64 SV (L=S=2048) BP HW-ring,1.3333,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=2048 hd=64 SV (L=S=2048) BP best-mode,1.3333,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 prefill S=2048 hd=64 SV (L=S=2048) BP HW-self,1.7902,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 prefill S=2048 hd=64 SV (L=S=2048) BP-S,1.3333,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 prefill S=2048 hd=64 SV (L=S=2048) CNSB (Booth spatial, E2)",0.9697,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 prefill S=2048 hd=64 SV (L=S=2048) WO-ring (+collector),0.9697,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 prefill S=2048 hd=64 SV (L=S=2048) Reduction-outer rot.,0.9799,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 prefill S=2048 hd=64 SV (L=S=2048) SC T=128 (ref),0.9961,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm_total,1x1 prefill S=2048 hd=64 BP HW-ring,718.7,GMAC/s/mm2 all-in excl. memory; util 1.2864
+llm_total,1x1 prefill S=2048 hd=64 BP best-mode,852.4,GMAC/s/mm2 all-in excl. memory; util 1.5256
+llm_total,1x1 prefill S=2048 hd=64 BP HW-self,965.4,GMAC/s/mm2 all-in excl. memory; util 1.7463
+llm_total,1x1 prefill S=2048 hd=64 BP-S,721.3,GMAC/s/mm2 all-in excl. memory; util 1.2864
+llm_total,"1x1 prefill S=2048 hd=64 CNSB (Booth spatial, E2)",533.3,GMAC/s/mm2 all-in excl. memory; util 0.9677
+llm_total,1x1 prefill S=2048 hd=64 WO-ring (+collector),553.7,GMAC/s/mm2 all-in excl. memory; util 0.9712
+llm_total,1x1 prefill S=2048 hd=64 Reduction-outer rot.,523.5,GMAC/s/mm2 all-in excl. memory; util 0.9798
+llm_total,1x1 prefill S=2048 hd=64 SC T=128 (ref),579.2,GMAC/s/mm2 all-in excl. memory; util 0.9958
+llm,1x1 decode ctx=2048 B=1 QKV proj BP HW-ring,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 decode ctx=2048 B=1 QKV proj BP best-mode,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 decode ctx=2048 B=1 QKV proj BP HW-self,1.8893,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 decode ctx=2048 B=1 QKV proj BP-S,1.6,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 decode ctx=2048 B=1 QKV proj CNSB (Booth spatial, E2)",0.4923,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 decode ctx=2048 B=1 QKV proj WO-ring (+collector),0.1231,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 decode ctx=2048 B=1 QKV proj Reduction-outer rot.,0.1228,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 decode ctx=2048 B=1 QKV proj SC T=128 (ref),0.1248,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 decode ctx=2048 B=1 O proj BP HW-ring,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 decode ctx=2048 B=1 O proj BP best-mode,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 decode ctx=2048 B=1 O proj BP HW-self,1.8893,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 decode ctx=2048 B=1 O proj BP-S,1.6,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 decode ctx=2048 B=1 O proj CNSB (Booth spatial, E2)",0.4923,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 decode ctx=2048 B=1 O proj WO-ring (+collector),0.1231,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 decode ctx=2048 B=1 O proj Reduction-outer rot.,0.1228,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 decode ctx=2048 B=1 O proj SC T=128 (ref),0.1248,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 decode ctx=2048 B=1 FFN gate+up BP HW-ring,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 decode ctx=2048 B=1 FFN gate+up BP best-mode,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 decode ctx=2048 B=1 FFN gate+up BP HW-self,1.8893,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 decode ctx=2048 B=1 FFN gate+up BP-S,1.6,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 decode ctx=2048 B=1 FFN gate+up CNSB (Booth spatial, E2)",0.4923,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 decode ctx=2048 B=1 FFN gate+up WO-ring (+collector),0.1231,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 decode ctx=2048 B=1 FFN gate+up Reduction-outer rot.,0.1228,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 decode ctx=2048 B=1 FFN gate+up SC T=128 (ref),0.1248,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 decode ctx=2048 B=1 FFN down BP HW-ring,1.8298,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 decode ctx=2048 B=1 FFN down BP best-mode,1.8298,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 decode ctx=2048 B=1 FFN down BP HW-self,1.9573,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 decode ctx=2048 B=1 FFN down BP-S,1.8298,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 decode ctx=2048 B=1 FFN down CNSB (Booth spatial, E2)",0.4971,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 decode ctx=2048 B=1 FFN down WO-ring (+collector),0.1236,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 decode ctx=2048 B=1 FFN down Reduction-outer rot.,0.1229,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 decode ctx=2048 B=1 FFN down SC T=128 (ref),0.1249,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 decode ctx=2048 B=1 QK^T (L=hd=128) BP HW-ring,0.2222,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 decode ctx=2048 B=1 QK^T (L=hd=128) BP best-mode,0.2222,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 decode ctx=2048 B=1 QK^T (L=hd=128) BP HW-self,0.6957,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 decode ctx=2048 B=1 QK^T (L=hd=128) BP-S,0.2222,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 decode ctx=2048 B=1 QK^T (L=hd=128) CNSB (Booth spatial, E2)",0.3333,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 decode ctx=2048 B=1 QK^T (L=hd=128) WO-ring (+collector),0.0909,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x8
+llm,1x1 decode ctx=2048 B=1 QK^T (L=hd=128) Reduction-outer rot.,0.1159,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 decode ctx=2048 B=1 QK^T (L=hd=128) SC T=128 (ref),0.1176,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 decode ctx=2048 B=1 SV (L=S=2048) BP HW-ring,1.3333,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 decode ctx=2048 B=1 SV (L=S=2048) BP best-mode,1.3333,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 decode ctx=2048 B=1 SV (L=S=2048) BP HW-self,1.7902,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 decode ctx=2048 B=1 SV (L=S=2048) BP-S,1.3333,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 decode ctx=2048 B=1 SV (L=S=2048) CNSB (Booth spatial, E2)",0.4848,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 decode ctx=2048 B=1 SV (L=S=2048) WO-ring (+collector),0.1212,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 decode ctx=2048 B=1 SV (L=S=2048) Reduction-outer rot.,0.1225,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 decode ctx=2048 B=1 SV (L=S=2048) SC T=128 (ref),0.1245,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm_total,1x1 decode ctx=2048 B=1 BP HW-ring,733.3,GMAC/s/mm2 all-in excl. memory; util 1.3124
+llm_total,1x1 decode ctx=2048 B=1 BP best-mode,733.3,GMAC/s/mm2 all-in excl. memory; util 1.3124
+llm_total,1x1 decode ctx=2048 B=1 BP HW-self,984.7,GMAC/s/mm2 all-in excl. memory; util 1.7813
+llm_total,1x1 decode ctx=2048 B=1 BP-S,735.9,GMAC/s/mm2 all-in excl. memory; util 1.3124
+llm_total,"1x1 decode ctx=2048 B=1 CNSB (Booth spatial, E2)",266.8,GMAC/s/mm2 all-in excl. memory; util 0.4841
+llm_total,1x1 decode ctx=2048 B=1 WO-ring (+collector),69.2,GMAC/s/mm2 all-in excl. memory; util 0.1215
+llm_total,1x1 decode ctx=2048 B=1 Reduction-outer rot.,65.5,GMAC/s/mm2 all-in excl. memory; util 0.1225
+llm_total,1x1 decode ctx=2048 B=1 SC T=128 (ref),72.4,GMAC/s/mm2 all-in excl. memory; util 0.1245
+llm,1x1 decode ctx=2048 B=16 QKV proj BP HW-ring,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 decode ctx=2048 B=16 QKV proj BP best-mode,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 decode ctx=2048 B=16 QKV proj BP HW-self,1.8893,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 decode ctx=2048 B=16 QKV proj BP-S,1.6,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 decode ctx=2048 B=16 QKV proj CNSB (Booth spatial, E2)",0.9846,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 decode ctx=2048 B=16 QKV proj WO-ring (+collector),0.9846,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 decode ctx=2048 B=16 QKV proj Reduction-outer rot.,0.9823,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 decode ctx=2048 B=16 QKV proj SC T=128 (ref),0.9981,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 decode ctx=2048 B=16 O proj BP HW-ring,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 decode ctx=2048 B=16 O proj BP best-mode,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 decode ctx=2048 B=16 O proj BP HW-self,1.8893,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 decode ctx=2048 B=16 O proj BP-S,1.6,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 decode ctx=2048 B=16 O proj CNSB (Booth spatial, E2)",0.9846,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 decode ctx=2048 B=16 O proj WO-ring (+collector),0.9846,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 decode ctx=2048 B=16 O proj Reduction-outer rot.,0.9823,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 decode ctx=2048 B=16 O proj SC T=128 (ref),0.9981,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 decode ctx=2048 B=16 FFN gate+up BP HW-ring,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 decode ctx=2048 B=16 FFN gate+up BP best-mode,1.6,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 decode ctx=2048 B=16 FFN gate+up BP HW-self,1.8893,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 decode ctx=2048 B=16 FFN gate+up BP-S,1.6,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 decode ctx=2048 B=16 FFN gate+up CNSB (Booth spatial, E2)",0.9846,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 decode ctx=2048 B=16 FFN gate+up WO-ring (+collector),0.9846,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 decode ctx=2048 B=16 FFN gate+up Reduction-outer rot.,0.9823,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 decode ctx=2048 B=16 FFN gate+up SC T=128 (ref),0.9981,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 decode ctx=2048 B=16 FFN down BP HW-ring,1.8298,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 decode ctx=2048 B=16 FFN down BP best-mode,1.8298,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 decode ctx=2048 B=16 FFN down BP HW-self,1.9573,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 decode ctx=2048 B=16 FFN down BP-S,1.8298,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 decode ctx=2048 B=16 FFN down CNSB (Booth spatial, E2)",0.9942,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 decode ctx=2048 B=16 FFN down WO-ring (+collector),0.9885,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 decode ctx=2048 B=16 FFN down Reduction-outer rot.,0.9834,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 decode ctx=2048 B=16 FFN down SC T=128 (ref),0.9993,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 decode ctx=2048 B=16 QK^T (L=hd=128) BP HW-ring,0.2222,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 decode ctx=2048 B=16 QK^T (L=hd=128) BP best-mode,0.6957,MAC/cycle/tile; mode BP HB-ring; blocks 8x8
+llm,1x1 decode ctx=2048 B=16 QK^T (L=hd=128) BP HW-self,0.6957,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 decode ctx=2048 B=16 QK^T (L=hd=128) BP-S,0.2222,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 decode ctx=2048 B=16 QK^T (L=hd=128) CNSB (Booth spatial, E2)",0.6667,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 decode ctx=2048 B=16 QK^T (L=hd=128) WO-ring (+collector),0.7273,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x8
+llm,1x1 decode ctx=2048 B=16 QK^T (L=hd=128) Reduction-outer rot.,0.9275,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 decode ctx=2048 B=16 QK^T (L=hd=128) SC T=128 (ref),0.9412,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm,1x1 decode ctx=2048 B=16 SV (L=S=2048) BP HW-ring,1.3333,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 decode ctx=2048 B=16 SV (L=S=2048) BP best-mode,1.3333,MAC/cycle/tile; mode BP HW-ring; blocks 1x8
+llm,1x1 decode ctx=2048 B=16 SV (L=S=2048) BP HW-self,1.7902,MAC/cycle/tile; mode BP HW-self; blocks 1x8
+llm,1x1 decode ctx=2048 B=16 SV (L=S=2048) BP-S,1.3333,MAC/cycle/tile; mode BP-S; blocks 1x1
+llm,"1x1 decode ctx=2048 B=16 SV (L=S=2048) CNSB (Booth spatial, E2)",0.9697,"MAC/cycle/tile; mode CNSB (Booth spatial, E2); blocks 2x4"
+llm,1x1 decode ctx=2048 B=16 SV (L=S=2048) WO-ring (+collector),0.9697,MAC/cycle/tile; mode WO-ring (+collector); blocks 8x4
+llm,1x1 decode ctx=2048 B=16 SV (L=S=2048) Reduction-outer rot.,0.9799,MAC/cycle/tile; mode Reduction-outer rot.; blocks 8x8
+llm,1x1 decode ctx=2048 B=16 SV (L=S=2048) SC T=128 (ref),0.9961,MAC/cycle/tile; mode SC T=128 (ref); blocks 8x8
+llm_total,1x1 decode ctx=2048 B=16 BP HW-ring,733.3,GMAC/s/mm2 all-in excl. memory; util 1.3124
+llm_total,1x1 decode ctx=2048 B=16 BP best-mode,866.6,GMAC/s/mm2 all-in excl. memory; util 1.5510
+llm_total,1x1 decode ctx=2048 B=16 BP HW-self,984.7,GMAC/s/mm2 all-in excl. memory; util 1.7813
+llm_total,1x1 decode ctx=2048 B=16 BP-S,735.9,GMAC/s/mm2 all-in excl. memory; util 1.3124
+llm_total,"1x1 decode ctx=2048 B=16 CNSB (Booth spatial, E2)",533.6,GMAC/s/mm2 all-in excl. memory; util 0.9683
+llm_total,1x1 decode ctx=2048 B=16 WO-ring (+collector),554.0,GMAC/s/mm2 all-in excl. memory; util 0.9717
+llm_total,1x1 decode ctx=2048 B=16 Reduction-outer rot.,523.7,GMAC/s/mm2 all-in excl. memory; util 0.9802
+llm_total,1x1 decode ctx=2048 B=16 SC T=128 (ref),579.2,GMAC/s/mm2 all-in excl. memory; util 0.9959
+traffic,4x4 FFN down S=2048 BP HW-ring,4.0,bits/MAC; avg 7207 b/cyc
+traffic,"4x4 FFN down S=2048 CNSB (Booth spatial, E2)",1.5,bits/MAC; avg 1495 b/cyc
+traffic,4x4 FFN down S=2048 WO-ring (+collector),4.5,bits/MAC; avg 4506 b/cyc
+traffic,4x4 FFN down S=2048 SC T=128 (ref),0.562,bits/MAC; avg 574 b/cyc
+traffic,4x4 QKV S=2048 BP HW-ring,4.0,bits/MAC; avg 5992 b/cyc
+traffic,"4x4 QKV S=2048 CNSB (Booth spatial, E2)",1.5,bits/MAC; avg 1430 b/cyc
+traffic,4x4 QKV S=2048 WO-ring (+collector),4.5,bits/MAC; avg 4473 b/cyc
+traffic,4x4 QKV S=2048 SC T=128 (ref),0.562,bits/MAC; avg 571 b/cyc
+traffic,4x4 QK^T S=2048 hd128 BP HW-ring,4.0,bits/MAC; avg 643 b/cyc
+traffic,"4x4 QK^T S=2048 hd128 CNSB (Booth spatial, E2)",1.5,bits/MAC; avg 455 b/cyc
+traffic,4x4 QK^T S=2048 hd128 WO-ring (+collector),4.5,bits/MAC; avg 2863 b/cyc
+traffic,4x4 QK^T S=2048 hd128 SC T=128 (ref),0.562,bits/MAC; avg 444 b/cyc
+traffic,4x4 SV S=2048 hd128 BP HW-ring,4.0,bits/MAC; avg 4723 b/cyc
+traffic,"4x4 SV S=2048 hd128 CNSB (Booth spatial, E2)",1.5,bits/MAC; avg 1337 b/cyc
+traffic,4x4 SV S=2048 hd128 WO-ring (+collector),4.5,bits/MAC; avg 4345 b/cyc
+traffic,4x4 SV S=2048 hd128 SC T=128 (ref),0.562,bits/MAC; avg 566 b/cyc
+bw_cap,4x4 L4096 cap576 BP HW-ring,105.8,util 0.137
+bw_cap,"4x4 L4096 cap576 CNSB (Booth spatial, E2)",281.3,util 0.365
+bw_cap,4x4 L4096 cap576 WO-ring (+collector),96.8,util 0.125
+bw_cap,4x4 L4096 cap1536 BP HW-ring,270.8,util 0.351
+bw_cap,"4x4 L4096 cap1536 CNSB (Booth spatial, E2)",717.6,util 0.931
+bw_cap,4x4 L4096 cap1536 WO-ring (+collector),256.5,util 0.330
+bw_cap,4x4 L4096 cap4608 BP HW-ring,719.6,util 0.932
+bw_cap,"4x4 L4096 cap4608 CNSB (Booth spatial, E2)",717.6,util 0.931
+bw_cap,4x4 L4096 cap4608 WO-ring (+collector),754.5,util 0.971
+bw_cap,4x4 L4096 cap8192 BP HW-ring,1128.9,util 1.463
+bw_cap,"4x4 L4096 cap8192 CNSB (Booth spatial, E2)",717.6,util 0.931
+bw_cap,4x4 L4096 cap8192 WO-ring (+collector),754.5,util 0.971

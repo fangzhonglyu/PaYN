@@ -1,0 +1,124 @@
+#!/usr/bin/env python3
+"""Operand files for the bit-plane INT RTL bench (designs/payn/tb/test_payn_array_bp.sv).
+
+Writes, into OUT_DIR:
+  bpt_a.hex       A[i, x]  row-major, MROWS x L, one two's-complement byte per line
+  bpt_w.hex       W[x, j]  column-major (entry j*L + x), NCOLS x L bytes
+  bpt_meta.json   shape, precision, distribution, seed, operand ranges
+
+Values are BA-bit (activations) / BW-bit (weights) two's-complement integers
+stored sign-extended to 8 bits, so bit p of the byte is bit p of the BA-bit
+encoding for p < BA.
+
+Distributions (lo/hi = the signed range ends, e.g. -128/127 or -8/7):
+  uniform      every value of the signed range equiprobable (drawn by
+               gen_bitplane_workload.draw), with lo and hi forced into a few
+               reduction positions of every row and column so min x min,
+               min x max and max x max products always occur
+  allmin       A = lo, W = lo        (largest positive product; INT8 L=1024 -> 2^24)
+  allmax       A = hi, W = hi
+  minxmax      A = lo, W = hi        (largest negative product)
+  maxxmin      A = hi, W = lo
+  neg1xmin     A = -1, W = lo        (every activation plane is 1: every tile row
+               near full scale, rows below the top negative, the top row positive)
+  alternating  A[i, x] = lo/hi alternating along x (phase i), W[x, j] = hi/lo
+               alternating along x (phase j): every plane toggles every element
+  gauss, relu  as gen_bitplane_workload.py
+
+Usage:
+  gen_bp_workload.py --ba 8 --bw 8 --L 1024 --mrows 2 --ncols 16 --dist uniform --seed 1 --out-dir DIR
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from gen_bitplane_workload import draw  # noqa: E402
+
+DISTS = ("uniform", "allmin", "allmax", "minxmax", "maxxmin", "neg1xmin", "alternating",
+         "gauss", "relu")
+
+
+def operands(dist: str, ba: int, bw: int, mrows: int, ncols: int, L: int,
+             rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray]:
+    alo, ahi = -(1 << (ba - 1)), (1 << (ba - 1)) - 1
+    wlo, whi = -(1 << (bw - 1)), (1 << (bw - 1)) - 1
+    if dist == "uniform":
+        A = draw(rng, ba, "uniform", (mrows, L))
+        W = draw(rng, bw, "uniform", (L, ncols))
+        # Extremes at fixed and random reduction positions.
+        A[:, 0], W[0, :] = alo, wlo          # min x min
+        A[:, 1], W[1, :] = alo, whi          # min x max
+        A[:, 2], W[2, :] = ahi, whi          # max x max
+        A[:, -1], W[-1, :] = ahi, wlo        # max x min (last element of the last block)
+        for row in A:
+            row[rng.choice(L, size=max(1, L // 32), replace=False)] = alo
+        for col in W.T:
+            col[rng.choice(L, size=max(1, L // 32), replace=False)] = wlo
+        return A, W
+    if dist in ("gauss", "relu"):
+        return (draw(rng, ba, dist, (mrows, L)),
+                draw(rng, bw, "gauss", (L, ncols)))
+    x = np.arange(L)
+    if dist == "allmin":
+        return np.full((mrows, L), alo, np.int64), np.full((L, ncols), wlo, np.int64)
+    if dist == "allmax":
+        return np.full((mrows, L), ahi, np.int64), np.full((L, ncols), whi, np.int64)
+    if dist == "minxmax":
+        return np.full((mrows, L), alo, np.int64), np.full((L, ncols), whi, np.int64)
+    if dist == "maxxmin":
+        return np.full((mrows, L), ahi, np.int64), np.full((L, ncols), wlo, np.int64)
+    if dist == "neg1xmin":
+        return np.full((mrows, L), -1, np.int64), np.full((L, ncols), wlo, np.int64)
+    if dist == "alternating":
+        A = np.where((x[None, :] + np.arange(mrows)[:, None]) % 2 == 0, alo, ahi).astype(np.int64)
+        W = np.where((x[:, None] + np.arange(ncols)[None, :]) % 2 == 0, whi, wlo).astype(np.int64)
+        return A, W
+    raise SystemExit(f"unknown distribution {dist}")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--ba", type=int, required=True, choices=(4, 8))
+    ap.add_argument("--bw", type=int, required=True, choices=(4, 8))
+    ap.add_argument("--L", type=int, required=True)
+    ap.add_argument("--mrows", type=int, required=True)
+    ap.add_argument("--ncols", type=int, required=True)
+    ap.add_argument("--dist", required=True, choices=DISTS)
+    ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--out-dir", type=Path, required=True)
+    args = ap.parse_args()
+
+    if args.L < 128 or args.L % 128:
+        raise SystemExit("L must be a positive multiple of 128")
+    rows_pe = 8 // args.ba
+    if args.mrows < rows_pe or args.mrows % rows_pe or args.ncols < 8 or args.ncols % 8:
+        raise SystemExit(f"MROWS must be a multiple of {rows_pe} and NCOLS of 8")
+
+    rng = np.random.default_rng(args.seed)
+    A, W = operands(args.dist, args.ba, args.bw, args.mrows, args.ncols, args.L, rng)
+    assert A.shape == (args.mrows, args.L) and W.shape == (args.L, args.ncols)
+
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    (args.out_dir / "bpt_a.hex").write_text(
+        "\n".join(f"{v & 0xFF:02x}" for v in A.reshape(-1)) + "\n")
+    (args.out_dir / "bpt_w.hex").write_text(
+        "\n".join(f"{v & 0xFF:02x}" for v in W.T.reshape(-1)) + "\n")
+    gemm = A @ W
+    meta = dict(ba=args.ba, bw=args.bw, L=args.L, mrows=args.mrows, ncols=args.ncols,
+                dist=args.dist, seed=args.seed,
+                a_min=int(A.min()), a_max=int(A.max()), w_min=int(W.min()), w_max=int(W.max()),
+                gemm_min=int(gemm.min()), gemm_max=int(gemm.max()))
+    (args.out_dir / "bpt_meta.json").write_text(json.dumps(meta, indent=2) + "\n")
+    print(json.dumps(meta))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -36,6 +36,28 @@ module PaynPopcount16Csa (
     assign s3 = fc[10];
 endmodule
 
+// M = 8 counterpart: four full adders leave the count in four redundant bits,
+//
+//     count = s0a + s0b + 2*s1 + 4*s2,
+//
+// whose weights sum to exactly M = 8, so inverting all four gives 8 - count.
+module PaynPopcount8Csa (
+    input  logic [7:0] bits_in,
+    output logic s0a, s0b, s1, s2
+);
+    logic [3:0] fs, fc;
+
+    PaynPopcountFA u_fa0 (.a(bits_in[0]), .b(bits_in[1]), .ci(bits_in[2]), .s(fs[0]), .co(fc[0]));
+    PaynPopcountFA u_fa1 (.a(bits_in[3]), .b(bits_in[4]), .ci(bits_in[5]), .s(fs[1]), .co(fc[1]));
+    PaynPopcountFA u_fa2 (.a(fs[0]), .b(fs[1]), .ci(bits_in[6]), .s(fs[2]), .co(fc[2]));
+    PaynPopcountFA u_fa3 (.a(fc[0]), .b(fc[1]), .ci(fc[2]), .s(fs[3]), .co(fc[3]));
+
+    assign s0a = fs[2];
+    assign s0b = bits_in[7];
+    assign s1 = fs[3];
+    assign s2 = fc[3];
+endmodule
+
 // Exact signed segmented accumulator, carry-save lane interface.
 //
 // Difference from `signed_segmented_popcount`: each lane hands its count to the
@@ -70,12 +92,14 @@ module InnerTileSignedSegmentedCsa #(
     localparam int HIGH_W = OWIDTH - LOW_W;
     localparam int RADIX = 1 << LOW_W;
     localparam int NEG_W = $clog2(K + 1);
-    // Per lane: one 4-bit row {s3,s2,s1,s0a} and one 1-bit row {s0b}.
+    localparam int M_LOG2 = $clog2(M);
+    // Per lane: one multi-bit row ({s3,s2,s1,s0a} for M=16, {s2,s1,s0a} for
+    // M=8) and one 1-bit row {s0b}.
     localparam int N_HEAP = 2*K + 2;
 
     initial begin
-        assert (M == 16)
-            else $fatal(1, "the carry-save lane interface is built for M=16 (got %0d)", M);
+        assert (M == 16 || M == 8)
+            else $fatal(1, "the carry-save lane interface is built for M=16 or M=8 (got %0d)", M);
         assert (K > 0 && LOW_W > 0)
             else $fatal(1, "K and LOW_W must be positive");
         assert (OWIDTH > LOW_W)
@@ -91,26 +115,37 @@ module InnerTileSignedSegmentedCsa #(
 
     for (genvar i = 0; i < K; i++) begin : g_lanes
         logic [M-1:0] products;
-        logic s0a, s0b, s1, s2, s3;
         logic negate;
 
         assign products = a_bits[i] & w_bits[i];
-        PaynPopcount16Csa u_popcount (
-            .bits_in(products), .s0a, .s0b, .s1, .s2, .s3
-        );
         assign negate = a_signs[i] ^ w_signs[i];
         assign negative_lanes[i] = negate;
-        assign heap_inputs[(2*i)*SUM_W +: SUM_W] =
-            SUM_W'({s3, s2, s1, s0a} ^ {4{negate}});
-        assign heap_inputs[(2*i+1)*SUM_W +: SUM_W] =
-            SUM_W'(s0b ^ negate);
+        if (M == 16) begin : g_m16
+            logic s0a, s0b, s1, s2, s3;
+            PaynPopcount16Csa u_popcount (
+                .bits_in(products), .s0a, .s0b, .s1, .s2, .s3
+            );
+            assign heap_inputs[(2*i)*SUM_W +: SUM_W] =
+                SUM_W'({s3, s2, s1, s0a} ^ {4{negate}});
+            assign heap_inputs[(2*i+1)*SUM_W +: SUM_W] =
+                SUM_W'(s0b ^ negate);
+        end else begin : g_m8
+            logic s0a, s0b, s1, s2;
+            PaynPopcount8Csa u_popcount (
+                .bits_in(products), .s0a, .s0b, .s1, .s2
+            );
+            assign heap_inputs[(2*i)*SUM_W +: SUM_W] =
+                SUM_W'({s2, s1, s0a} ^ {3{negate}});
+            assign heap_inputs[(2*i+1)*SUM_W +: SUM_W] =
+                SUM_W'(s0b ^ negate);
+        end
     end
 
     // -M per negative lane, applied once.  Stable for a whole block.
     logic [NEG_W-1:0] negative_count;
     assign negative_count = NEG_W'($countones(negative_lanes));
     assign heap_inputs[(2*K)*SUM_W +: SUM_W] =
-        SUM_W'(-$signed({1'b0, negative_count, 4'b0}));
+        SUM_W'(-$signed({1'b0, negative_count, {M_LOG2{1'b0}}}));
 
     logic [LOW_W-1:0]  acc_low;
     logic [HIGH_W-1:0] acc_high;

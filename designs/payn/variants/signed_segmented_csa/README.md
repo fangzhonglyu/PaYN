@@ -80,6 +80,169 @@ Evidence: `build/power_char/popcount_apr_20261002/csa/` (stage logs,
 `gl_bootstrap/`, `gl_final/`, `power_result/`, `result.csv`) and
 `apr/build/TSMC22/PAYN_SC_CSA/csa_20261002_distguide_spp_fixed/`.
 
+## Energy versus stochastic length (2026-10-03)
+
+This sweep reuses the routed layouts with no new synthesis or APR, at every
+multiple of 16 from T=16 to 128. The two comparison arms are the matched
+cleaned baseline and the library-mapped popcount route.
+`bash sweeps/run_csa_t_sweep.sh` gives every point the final-stage
+qualification of the routed campaign:
+- full-library max-SDF GL with `+neg_tchk +sdfverbose`;
+- `validate_routed_gl.py`, with the same 10 ps IOPATH-clamp approval for
+  carry-save only;
+- a bit-exact streaming cosim and SAIF validation;
+- PT-PX with extracted parasitics and full activity/parasitic coverage.
+
+Each point runs through its own APR view directory, so the accepted reports
+are untouched.
+
+Each point runs 3,072 productive clocks. The exceptions are T=80 (614 x 5 =
+3,070) and T=112 (439 x 7 = 3,073). Magnitudes and signs reload every T/16
+clocks. All 24 points pass, with zero post-reset timing violations. The T=128
+reruns reproduce the accepted powers exactly: 15.44682, 17.53869 and
+18.3265 mW. The layouts were power-optimized with T=128 activity and are not
+re-optimized for each T.
+
+| T | MAC/cycle | GMAC/s/mm2 (carry-save) | carry-save mW | pJ/MAC baseline | pJ/MAC popcount | **pJ/MAC carry-save** | power vs baseline | array pJ/MAC (carry-save) | combined vs baseline |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 16 | 512.0 | 4,653 | 23.898 | 0.1348 | 0.1306 | **0.1167** | -13.42% | 0.0850 | 1.258 |
+| 32 | 256.0 | 2,326 | 18.572 | 0.2121 | 0.2041 | **0.1814** | -14.48% | 0.1406 | 1.273 |
+| 48 | 170.7 | 1,551 | 17.609 | 0.3032 | 0.2915 | **0.2579** | -14.93% | 0.2080 | 1.280 |
+| 64 | 128.0 | 1,163 | 16.490 | 0.3799 | 0.3647 | **0.3221** | -15.23% | 0.2637 | 1.285 |
+| 80 | 102.4 | 931 | 16.335 | 0.4712 | 0.4521 | **0.3988** | -15.37% | 0.3320 | 1.287 |
+| 96 | 85.3 | 775 | 15.805 | 0.5481 | 0.5250 | **0.4630** | -15.51% | 0.3867 | 1.289 |
+| 112 | 73.1 | 665 | 15.790 | 0.6395 | 0.6127 | **0.5397** | -15.61% | 0.4546 | 1.290 |
+| 128 | 64.0 | 582 | 15.447 | 0.7159 | 0.6851 | **0.6034** | -15.71% | 0.5078 | 1.292 |
+
+Column definitions:
+- **pJ/MAC** is full-design power x 2.5 ns / (8192/T).
+- **array pJ/MAC** uses the `u_pe` hierarchy power, which has 3 significant
+  figures.
+- **combined** is `(GMAC/s/mm2)/(pJ/MAC)` relative to the baseline at the
+  same T.
+
+Per-arm rows, with the internal/switching/leakage split and the peripheral and
+Sobol powers, are in `build/power_char/csa_t_sweep_20261003/results.csv`.
+
+Reading it:
+- **The carry-save saving holds at every T.** The `u_pe` power saving versus
+  the popcount route is flat at -12.6% to -13.3%. The full-design saving
+  versus the baseline narrows from -15.7% at T=128 to -13.4% at T=16. The
+  peripheral is the same in all three designs and becomes a larger share of
+  power as reloads speed up: 1.62 -> 5.65 mW for carry-save over T=128 -> 16.
+- **Carry-save is the lowest-energy point at every T.** At T=16 the PE array
+  is 0.085 pJ/MAC and the full design 0.117 pJ/MAC.
+- **Non-power-of-two T/16 slows the power decline, identically in all
+  arms.** At T=112, power equals T=96 within 0.1%, and T=80 is only 0.9% below
+  T=64. The GL operand toggle count rises with it, for example 25.92 M at T=96
+  versus 26.01 M at T=112 for carry-save. So it is a property of the
+  stochastic workload at those block lengths, not of any one design.
+  Energy per MAC still falls with T at every step.
+- These are drain-excluded energies. Below T=64 the 8-clock row-serial drain
+  cannot keep up with block completion (see `doc/results.md`, "Routed power
+  versus stochastic length").
+
+## M=8 shapes (2026-10-03)
+
+The tile also supports M=8. `PaynPopcount8Csa` uses four full adders, which
+leave the count in four redundant bits with weights 1, 1, 2 and 4. Those
+weights sum to 8, so a negative lane needs four XORs plus one shared
+`-8 * negatives` heap row. The M=16 path elaborates to identical logic; only
+its counter now sits one generate scope deeper (`g_lanes[i].g_m16.u_popcount`).
+
+RTL checks (`sweeps/run_csa_shape_rtl_checks.sh`), all passing:
+- the M=8 counter, exhaustively over all 256 inputs;
+- K8M8N8, K12M8N8 and K16M8N8 against `sc_kernel.py` and in the streaming
+  power bench;
+- K8M16N8, rechecked.
+
+Each shape was synthesized and routed with the same two-pass recipe as M=16
+(`CAMPAIGN=csa_20261003 bash sweeps/run_popcount_apr.sh csa_k8m8n8 csa_k12m8n8 csa_k16m8n8`),
+at T=128 and 3,072 productive clocks. The matched clean-baseline M=8 routes
+from the K x M x N sweep were re-measured with full-timing GL (`run_csa_t_sweep.sh`
+arms `control_k8m8n8` and `control_k12m8n8`). They reproduce the sweep's
+numbers exactly. The 4x4 composite is 16 x u_pe + 4 peripherals + one Sobol
+pair, with powers taken from each route's hierarchy report.
+
+| design | MAC/cycle | routed um2 | mW | GMAC/s/mm2 | pJ/MAC | 4x4 GMAC/s/mm2 | 4x4 pJ/MAC | combined vs CSA M16 (1 PE / 4x4) |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| **CSA K8M16N8** | 64 | 44,018.0 | 15.447 | **581.6** | **0.6034** | **784.8** | **0.5254** | 1.000 / 1.000 |
+| CSA K16M8N8 | 64 | 47,302.4 | 16.373 | 541.2 | 0.6396 | 723.4 | 0.5811 | 0.878 / 0.833 |
+| CSA K12M8N8 | 48 | 37,267.1 | 12.309 | 515.2 | 0.6411 | 682.8 | 0.5772 | 0.834 / 0.792 |
+| CSA K8M8N8 | 32 | 27,393.5 | 8.890 | 467.3 | 0.6945 | 608.8 | 0.6219 | 0.698 / 0.655 |
+| clean K8M16N8 | 64 | 47,932.3 | 18.327 | 534.1 | 0.7159 | 700.5 | 0.6355 | 0.774 / 0.738 |
+| clean K12M8N8 | 48 | 41,906.7 | 14.875 | 458.2 | 0.7748 | 586.3 | 0.7171 | 0.614 / 0.547 |
+| clean K8M8N8 | 32 | 30,218.5 | 10.130 | 423.6 | 0.7914 | 536.9 | 0.7234 | 0.555 / 0.497 |
+
+Reading it:
+- **M=8 lags M=16 at every shape.** The best M=8 point, K16M8N8, has the
+  same 128 ANDs per tile and the same throughput. It is -6.9% in area
+  efficiency and +6.0% in energy on one PE, and -7.8% / +10.6% on a 4x4 grid.
+  The gap widens on the grid because the edge amortizes and the per-tile gap
+  remains: u_pe area per MAC/cycle is 494.6 versus 457.1 um2 (+8.2%), and u_pe
+  energy is 0.566 versus 0.508 pJ/MAC.
+- **Why.** Halving M halves the bits each lane counter compresses. Lane
+  overhead does not shrink: two heap rows, the sign XORs and sign glue per lane
+  (the heap grows from 18 to 34 rows at K16), and the per-tile accumulator,
+  high adder and drain mux, the same at every M. The four-FA M=8 counter is
+  efficient, but the reduction work moves into the larger heap.
+- **The carry-save gain is larger at M=8.** Against the matched clean routes
+  it is -9.3% area and -12.2% power at K8M8N8, and -11.1% / -17.3% at K12M8N8,
+  versus -8.2% / -15.7% at K8M16N8. CSA K16M8N8 even edges out the clean
+  K8M16N8 baseline: +1.3% area efficiency on one PE and +3.3% on 4x4, with
+  -10.7% energy.
+
+**Iso-T with the ceiling.** M=16 runs ceil(T/16) clocks per block and M=8
+runs ceil(T/8), so M=8 avoids padding when T is an odd multiple of 8.
+K16M8N8 was re-measured on its routed layout at every multiple of 8 from 16
+to 128 (`run_csa_t_sweep.sh` arm `csa_k16m8n8`; all 15 points pass, with
+`--approve-annotated-interconnect`). Padded M=16 is charged the measured power
+of 16*ceil(T/16). The padded-T study found padded power within +-1-3% of that,
+including a ~1% mask tax that is not added here, so M=16 is favored by about
+1%. 4x4 energy uses the composite power (16 x u_pe + 4 peripherals + Sobol).
+
+| T | 16 | 24 | 32 | 40 | 48 | 56 | 64 | 72 | 80 | 88 | 96 | 104 | 112 | 120 | 128 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 4x4 area eff., M8/M16 | 0.92 | **1.23** | 0.92 | **1.11** | 0.92 | **1.05** | 0.92 | **1.02** | 0.92 | 1.01 | 0.92 | 0.99 | 0.92 | 0.98 | 0.92 |
+| 4x4 energy, M8/M16 | 0.97 | 0.86 | 1.07 | 0.91 | 1.06 | 0.97 | 1.09 | 0.98 | 1.08 | 1.02 | 1.10 | 1.02 | 1.09 | 1.05 | 1.11 |
+| 4x4 combined, M8/M16 | 0.95 | **1.43** | 0.86 | **1.21** | 0.87 | **1.08** | 0.85 | **1.04** | 0.86 | 0.99 | 0.84 | 0.98 | 0.85 | 0.94 | 0.83 |
+
+On one PE, M=8's smaller edge helps: half the Sobol lanes and fewer comparator
+updates per MAC. That gives it lower energy at T=16 (0.1056 versus 0.1167
+pJ/MAC). On a grid the edge is shared, and M=8's 9-11% costlier PE array
+dominates. **M=8 pays off only for a model-fixed T of 24, 40, 56 or 72.** At
+T=88-120 the padding saving no longer covers the regression. At any multiple
+of 16, including T=128, M=16 is 13-17% better combined.
+Data: `build/power_char/popcount_apr_csa_20261003/m8_vs_m16_vs_T.csv`.
+
+Qualification, all three routes:
+- APR: geometry, antenna, connectivity and placement zero; setup/hold
+  +0.210/+0.138 (K8), +0.066/+0.167 (K12) and +0.099/+0.168 ns (K16).
+- GL: max-SDF with `+neg_tchk`, bit-exact streaming drain, validated SAIF,
+  zero post-reset timing violations.
+- PT-PX: full activity and parasitic coverage.
+
+Exceptions, each documented beside the run:
+1. **Targeted checkpoint repair**, as on every popcount and CSA route. K8 had
+   5 antenna violations; K12 and K16 had 1 geometry marker and 2 antenna
+   violations each. K8 and K12 closed on the first attempt. K16 needed a
+   second attempt, because its antenna violations moved to two other sinks of
+   the same peripheral net. Records are in each arm's
+   `final_apr_adoption.txt`, and the original layouts are under
+   `before_legalization_*`.
+2. **Two opt-in validator approvals** (`build/power_char/popcount_apr_csa_20261003/gl_validator_args_rationale.txt`):
+   - `--approve-annotated-interconnect`, new, covers SDFCOM_IWSBA: K8 x5 and
+     K16 x12. Innovus wrote `assign` aliases on Sobol output nets, and VCS
+     states that the INTERCONNECT is still annotated.
+   - The existing `--approve-negative-iopath-clamp-ps 10` covers one -1 ps
+     IOPATH on K8.
+
+   K12 needs neither. Default validator behavior is unchanged.
+
+Evidence: `build/power_char/popcount_apr_csa_20261003/` (per-arm stage logs,
+`result.csv`, `m8_vs_m16.csv`, `results_requalified.csv` from
+`report_popcount_apr.py`).
+
 ## Idea
 
 The 11-FA popcount network ends in a four-half-adder ripple (ha0..ha3) that

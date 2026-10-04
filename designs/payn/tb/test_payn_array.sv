@@ -74,6 +74,35 @@ module Top;
     logic [N_W*K-1:0]       w_signs_in = '0;
     logic [N_H*OWIDTH-1:0]  acc_in_west = '0;
     logic [N_H*OWIDTH-1:0]  acc_out_east;
+`ifdef PAYN_INT_PORTS
+    // Opt-in tie-offs for tops that also carry the bit-plane INT ports
+    // (payn_array_signed_segmented_csa_bp): SC mode, INT inputs idle, and the
+    // combiner outputs must stay 0 (not X) from the first reset edge on.
+    // PAYN_INT_RAW_JUNK instead drives random raw planes, int_prec and ring_in
+    // every cycle; in SC mode they must change nothing.
+    logic int_mode = 1'b0, int_prec = 1'b0, ring_in = 1'b0;
+    logic [N_H*K*M-1:0] a_raw_in = '0;
+    logic [N_W*K*M-1:0] w_raw_in = '0;
+    logic [63:0] int_out;
+    logic int_out_valid;
+    bit int_reset_seen = 1'b0;
+
+    always @(posedge clk) begin
+        if (reset === 1'b1)
+            int_reset_seen <= 1'b1;
+        else if (int_reset_seen && (int_out_valid !== 1'b0 || int_out !== '0))
+            $fatal(1, "[INT-FAIL] BP combiner output moved or went X in SC mode (valid=%b out=%h)",
+                   int_out_valid, int_out);
+    end
+`ifdef PAYN_INT_RAW_JUNK
+    always @(negedge clk) begin
+        for (int i = 0; i < N_H*K*M; i++) a_raw_in[i] = $urandom & 1;
+        for (int i = 0; i < N_W*K*M; i++) w_raw_in[i] = $urandom & 1;
+        int_prec = $urandom & 1;
+        ring_in = $urandom & 1;
+    end
+`endif
+`endif
 
     integer signed drain [N_H][N_W];
     integer trace_file;

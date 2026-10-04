@@ -5,6 +5,12 @@
 #   RETRY_FAILED=1 bash sweeps/run_popcount_apr.sh inferred
 #   CAMPAIGN=pc16_20261002 bash sweeps/run_popcount_apr.sh csa
 #       carry-save lane interface; synthesis run CSA_SYNTH_RUN (csa_20261002)
+#   CAMPAIGN=csa_20261003 bash sweeps/run_popcount_apr.sh csa_k8m8n8 csa_k16m8n8
+#   CAMPAIGN=csa_bp_20261003 bash sweeps/run_popcount_apr.sh csa_bp
+#       carry-save + bit-plane INT mode (signed_segmented_csa_bp), routed with the
+#       SC workload; synthesis run BP_SYNTH_RUN, INT ports tied off in the GL bench
+#       carry-save at another K/M/N: synthesized here (run CAMPAIGN_arm), then
+#       routed with the same two-pass recipe at T=128 and 3,072 productive clocks
 # Stages resume only from explicit PASS markers. A failed stage is preserved;
 # RETRY_FAILED=1 moves its unfinished outputs aside before starting a new attempt.
 # The archived clean baseline used neither optPower recovery nor APR multibit
@@ -24,7 +30,7 @@ ARMS=("$@")
 ((${#ARMS[@]})) || ARMS=(inferred techmap)
 declare -A SEEN=()
 for arm in "${ARMS[@]}"; do
-    case "$arm" in control|inferred|techmap|csa) ;; *) echo "Unknown arm: $arm" >&2; exit 2;; esac
+    case "$arm" in control|inferred|techmap|csa|csa_bp|csa_k[0-9]*m[0-9]*n[0-9]*) ;; *) echo "Unknown arm: $arm" >&2; exit 2;; esac
     [[ ! -v SEEN[$arm] ]] || { echo "Repeated arm: $arm" >&2; exit 2; }
     SEEN[$arm]=1
 done
@@ -168,7 +174,7 @@ do_sim() {
     make sim GL=apr TARGET="$target" RUN="$run" TB="$TB" BUILD_DIR="$simdir" \
         SDF_CORNER=max NO_SDF= RTL_PREFLIGHT_CMD=true VCS_ARGS="$glargs" "VCS=$VCS_CMD" \
         NTFY_CHNL= ASTRAEA_FLOW="$ASTRAEA_FLOW" > "$simdir/simulation.log" 2>&1
-    grep -q 'PASS: streaming SC SAIF captured; 384 batches x 8 cycles' "$simdir/simulation.log"
+    grep -Fq "PASS: streaming SC SAIF captured; $batches batches x $mac_cycles cycles" "$simdir/simulation.log"
     grep -q 'sdf corner = max' "$simdir/simulation.log"
     grep -Fq '[INFO] $sdf_annotate(' "$simdir/simulation.log"
     # Full library timing models plus verbose annotation let the validator
@@ -180,10 +186,11 @@ do_sim() {
         printf 'GL_VALIDATOR_ARGS=%s (%s)\n' "$GL_VALIDATOR_ARGS" "$(date -Is)" >> "$work/gl_validator_args.txt"
     # shellcheck disable=SC2086
     python3 sweeps/validate_routed_gl.py "$simdir/simulation.log" ${GL_VALIDATOR_ARGS:-} \
+        --expected-pass "PASS: streaming SC SAIF captured; $batches batches x $mac_cycles cycles" \
         --json "$simdir/timing_qualification.json" > "$simdir/timing_validation.log" 2>&1
     local trace="$simdir/$TB/array_streaming_rtl.txt" saif="$simdir/$TB/dut.saif"
     [[ -s "$trace" && -s "$saif" ]]
-    [[ "$(head -n 1 "$trace")" == 'STREAMCFG 8 16 8 8 8 24 128 384 0' ]]
+    [[ "$(head -n 1 "$trace")" == "STREAMCFG $K $M $N $N 8 24 128 $batches 0" ]]
     python3 designs/payn/cosim/cosim_streaming.py "$trace" > "$simdir/cosim.log" 2>&1
     grep -q '\[PASS\]' "$simdir/cosim.log"
     python3 sweeps/validate_sc_power_saif.py "$saif" --expected-period-ns 2.5 \
@@ -213,10 +220,12 @@ do_power() {
         --power-log "$finaldir/power_apr.log" --json "$finaldir/reports/power_coverage.json"
     cp -p "$finaldir/power_apr.log" "$saved/"
     cp -p "$finaldir"/reports/*.rpt "$saved/"
-    python3 - "$arm" "$target" "$finalrun" "$finaldir" "$top" "$work" <<'PY'
+    python3 - "$arm" "$target" "$finalrun" "$finaldir" "$top" "$work" "$K" "$M" "$N" <<'PY'
 import csv,json,re,sys
 from pathlib import Path
-arm,target,run,dirname,top,work=sys.argv[1:]
+arm,target,run,dirname,top,work,K,M,N=sys.argv[1:]
+K,M,N=int(K),int(M),int(N)
+mac_per_cycle=K*M*N*N/128
 p=Path(dirname); report=(p/'reports'/'power.rpt').read_text()
 m=re.search(r'Total Power\s*=\s*([0-9.eE+-]+)',report)
 assert m, 'Missing PT total power'
@@ -227,12 +236,22 @@ for line in (p/'reports'/'area.rpt').read_text().splitlines():
     if fields and fields[0]==top: area=float(fields[2]); break
 assert area is not None
 q=json.loads((p/'reports'/'popcount_qualification.json').read_text())
-row=dict(arm=arm,target=target,run=run,K=8,M=16,N=8,T=128,area_um2=area,
-         power_mW=power*1000,pJ_MAC=power*1000*2.5/64,**q,status='PASS')
+row=dict(arm=arm,target=target,run=run,K=K,M=M,N=N,T=128,area_um2=area,
+         power_mW=power*1000,pJ_MAC=power*1000*2.5/mac_per_cycle,**q,status='PASS')
 with (Path(work)/'result.csv').open('w') as f:
     w=csv.DictWriter(f,fieldnames=row);w.writeheader();w.writerow(row)
 print(json.dumps(row,indent=2))
 PY
+}
+
+do_synth() {
+    RUN_NAME="$synrun" RTL_PREFLIGHT_CMD=true \
+        SYN_DEFINES="PAYN_K=$K PAYN_M=$M PAYN_NH=$N PAYN_NW=$N PAYN_SEG_LOW_W=9" \
+        make synth TARGET="$target" NTFY_CHNL= ASTRAEA_FLOW="$ASTRAEA_FLOW"
+    [[ -s "$syndir/$top.syn.v" && -s "$syndir/$top.syn.sdc" ]]
+    # The elaborated module name proves which shape was synthesized.
+    grep -q "InnerPESignedSegmentedCsaFlat_K${K}_M${M}_N_H${N}_N_W${N}_OWIDTH24_LOW_W9" "$syndir/$top.syn.v"
+    grep "Total cell area" "$syndir/area.rpt" | head -1
 }
 
 run_arm() (
@@ -241,8 +260,14 @@ run_arm() (
     case "$arm" in
         control) target=TSMC22/PAYN_SC_SIGNED_SEGMENTED_CLEAN; top=payn_array_signed_segmented_clean;;
         inferred|techmap) target=TSMC22/PAYN_SC_POPCOUNT_${arm^^}; top=payn_array_signed_segmented_popcount;;
-        csa) target=TSMC22/PAYN_SC_CSA; top=payn_array_signed_segmented_csa;;
+        csa_bp) target=TSMC22/PAYN_SC_CSA_BP; top=payn_array_signed_segmented_csa_bp;;
+        csa|csa_*) target=TSMC22/PAYN_SC_CSA; top=payn_array_signed_segmented_csa;;
     esac
+    local K=8 M=16 N=8 mac_cycles batches
+    if [[ "$arm" =~ ^csa_k([0-9]+)m([0-9]+)n([0-9]+)$ ]]; then
+        K=${BASH_REMATCH[1]} M=${BASH_REMATCH[2]} N=${BASH_REMATCH[3]}
+    fi
+    mac_cycles=$((128 / M)); batches=$((3072 / mac_cycles))
     mkdir -p "$work"
     exec 9>"$work/worker.lock"
     flock -n 9 || { echo "[$arm] Another worker owns this run" >&2; exit 2; }
@@ -251,6 +276,8 @@ run_arm() (
     # The carry-save arm was synthesized (and RTL-verified) outside the
     # popcount campaign, under the same knobs; route that exact netlist.
     [[ "$arm" != csa ]] || synrun=${CSA_SYNTH_RUN:-csa_20261002}
+    # The bit-plane arm was synthesized after its RTL checks (run_csa_bp_rtl_checks.sh).
+    [[ "$arm" != csa_bp ]] || synrun=${BP_SYNTH_RUN:-csa_bp_20261003}
     bootrun=${synrun}_distguide
     finalrun=${bootrun}_spp_fixed
     syndir="$REPO/syn/build/$target/$synrun"
@@ -258,7 +285,17 @@ run_arm() (
     finaldir="$REPO/apr/build/$target/$finalrun"
     boot_sim="$work/gl_bootstrap"; final_sim="$work/gl_final"
     boot_saif="$bootdir/activity/dut.saif"
-    glargs="+define+PAYN_ARRAY_DUT=$top+define+SC_K=8+define+SC_M=16+define+SC_NH=8+define+SC_NW=8+define+SC_OWIDTH=24+define+SC_T=128+define+SC_BATCHES=384 +neg_tchk +sdfverbose"
+    local intports=""
+    [[ "$arm" != csa_bp ]] || intports="+define+PAYN_INT_PORTS"
+    glargs="+define+PAYN_ARRAY_DUT=$top+define+SC_K=$K+define+SC_M=$M+define+SC_NH=$N+define+SC_NW=$N+define+SC_OWIDTH=24+define+SC_T=128+define+SC_BATCHES=$batches$intports +neg_tchk +sdfverbose"
+    # Carry-save shape arms synthesize their own netlist with the PAYN_SC_CSA
+    # knobs; the RTL preflight is sweeps/run_csa_shape_rtl_checks.sh (array and
+    # streaming cosim per shape), so the synthesis-time preflight is skipped.
+    if [[ "$arm" == csa_k* ]]; then
+        export SC_NH=$N SC_NW=$N
+        current_stage=synthesis
+        stage "$current_stage" "$syndir" do_synth
+    fi
     [[ -s "$syndir/$top.syn.v" && -s "$syndir/$top.syn.sdc" ]]
     python3 - "$syndir/$top.syn.sdc" <<'PY'
 import re,sys
@@ -269,7 +306,7 @@ PY
     # Record a readable contract. Direct comparison avoids accepting stale
     # markers under changed settings; campaign names identify immutable inputs.
     local manifest
-    manifest=$(printf 'target=%s\ntop=%s\nsynthesis=%s\nflow=%s\nK=8 M=16 NH=8 NW=8 OWIDTH=24 LOW_W=9 T=128 batches=384 period=2.5 input_delay=1.25 uncertainty=0.125 core_util=0.70 HPK=1 guides=1 APR_OPT_POWER=0 APR_MULTIBIT_FLOP_OPT=0\n' "$target" "$top" "$syndir" "$ASTRAEA_FLOW")
+    manifest=$(printf 'target=%s\ntop=%s\nsynthesis=%s\nflow=%s\nK=%s M=%s NH=%s NW=%s OWIDTH=24 LOW_W=9 T=128 batches=%s period=2.5 input_delay=1.25 uncertainty=0.125 core_util=0.70 HPK=1 guides=1 APR_OPT_POWER=0 APR_MULTIBIT_FLOP_OPT=0\n' "$target" "$top" "$syndir" "$ASTRAEA_FLOW" "$K" "$M" "$N" "$N" "$batches")
     if [[ -e "$work/inputs.txt" ]]; then
         [[ "$(cat "$work/inputs.txt")" == "$manifest" ]]
     else

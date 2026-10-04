@@ -81,8 +81,14 @@ def main() -> None:
         # Re-audit with exactly the opt-in approvals recorded at qualification.
         recorded = json.loads((final_gl / "timing_qualification.json").read_text())
         timing = audit_routed_gl((final_gl / "simulation.log").read_text(errors="replace"),
+                                 expected_pass=next(line for line in (final_gl / "simulation.log")
+                                                    .read_text(errors="replace").splitlines()
+                                                    if line.startswith("PASS: streaming SC SAIF captured;")
+                                                    ).split(", drain")[0],
                                  approve_negative_iopath_clamp_ps=recorded.get(
-                                     "approve_negative_iopath_clamp_ps"))
+                                     "approve_negative_iopath_clamp_ps"),
+                                 approve_annotated_interconnect=recorded.get(
+                                     "approve_annotated_interconnect", False))
         assert timing["status"] == "PASS", (arm, timing["rejection_reasons"])
         assert "[PASS]" in (final_gl / "cosim.log").read_text(), arm
         assert "validated SC SAIF:" in (final_gl / "saif_validation.log").read_text(), arm

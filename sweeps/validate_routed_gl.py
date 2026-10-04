@@ -56,8 +56,47 @@ def _approve_ndi(text: str, max_ps: float, reasons: list[str]) -> list[dict]:
     return approved
 
 
+def _approve_iwsba(text: str, reasons: list[str]) -> list[dict]:
+    """Opt-in: accept SDFCOM_IWSBA only where VCS still annotates the delay.
+
+    Innovus can write a netlist `assign` alias between a flop output and a
+    port net. VCS then warns that the SDF INTERCONNECT crosses that
+    continuous assignment or instance boundary, and states that the
+    interconnect is still annotated. Each diagnostic must carry that
+    statement, name the source and destination pins, and cite an SDF line that
+    is a non-negative INTERCONNECT entry. Every approval is returned.
+    """
+    approved = []
+    blocks = re.findall(r"Warning-\[SDFCOM_IWSBA\](.*?)(?=\n\s*\n|\Z)", text, re.S)
+    cache: dict[str, list[str]] = {}
+    for block in blocks:
+        where = re.search(r"(\S+\.sdf), (\d+)", block)
+        path_match = re.search(
+            r"INTERCONNECT from\s+(\S+)\s+to\s+(\S+)\s+has (Continuous Assignment|Instance) at\s+(\S+?):(\d+)",
+            block)
+        if "INTERCONNECT will still be annotated" not in block or not where or not path_match:
+            reasons.append("SDFCOM_IWSBA diagnostic lacks the annotated-interconnect statement, SDF line or pins")
+            continue
+        path, line_no = where[1], int(where[2])
+        try:
+            lines = cache.setdefault(path, Path(path).read_text(errors="replace").splitlines())
+            line = lines[line_no - 1]
+        except (OSError, IndexError):
+            reasons.append(f"SDFCOM_IWSBA cites unreadable SDF line {path}:{line_no}")
+            continue
+        if not line.lstrip().startswith("(INTERCONNECT") or re.search(r"\(-|:-", line):
+            reasons.append(f"SDFCOM_IWSBA at {path}:{line_no} is not a non-negative INTERCONNECT entry")
+            continue
+        approved.append({"sdf": path, "line": line_no, "entry": " ".join(line.split()),
+                         "source": path_match[1], "destination": path_match[2],
+                         "netlist_object": path_match[3],
+                         "netlist": f"{path_match[4]}:{path_match[5]}"})
+    return approved
+
+
 def audit(text: str, expected_pass: str = DEFAULT_WORKLOAD_PASS,
-          approve_negative_iopath_clamp_ps: float | None = None) -> dict:
+          approve_negative_iopath_clamp_ps: float | None = None,
+          approve_annotated_interconnect: bool = False) -> dict:
     text = re.sub(r"\x1b\[[0-9;]*m", "", text)
     reasons: list[str] = []
     if "sdf corner = max" not in text or "[INFO] $sdf_annotate(" not in text:
@@ -86,6 +125,11 @@ def audit(text: str, expected_pass: str = DEFAULT_WORKLOAD_PASS,
         approved_clamps = _approve_ndi(text, approve_negative_iopath_clamp_ps, reasons)
         if len(approved_clamps) == sdf_warnings["SDFCOM_NDI"]:
             allowed_sdf.add("SDFCOM_NDI")
+    approved_interconnects: list[dict] = []
+    if approve_annotated_interconnect and "SDFCOM_IWSBA" in sdf_warnings:
+        approved_interconnects = _approve_iwsba(text, reasons)
+        if len(approved_interconnects) == sdf_warnings["SDFCOM_IWSBA"]:
+            allowed_sdf.add("SDFCOM_IWSBA")
     unexpected_sdf = sorted(set(sdf_warnings) - allowed_sdf)
     if unexpected_sdf:
         reasons.append("unapproved SDF warnings: " + ", ".join(unexpected_sdf))
@@ -138,6 +182,8 @@ def audit(text: str, expected_pass: str = DEFAULT_WORKLOAD_PASS,
         "sdf_warning_details_suppressed": suppressed,
         "approve_negative_iopath_clamp_ps": approve_negative_iopath_clamp_ps,
         "approved_negative_iopath_clamps": approved_clamps,
+        "approve_annotated_interconnect": approve_annotated_interconnect,
+        "approved_annotated_interconnects": approved_interconnects,
         "reset_complete_time_ps": reset_ps,
         "timing_violation_reports": len(headers),
         "startup_timing_violations": sum(item["before_reset_complete"] for item in timings),
@@ -154,9 +200,14 @@ def main() -> None:
     parser.add_argument("--approve-negative-iopath-clamp-ps", type=float, metavar="PS",
                         help="opt-in: accept SDFCOM_NDI for IOPATH delays no more negative "
                              "than -PS (each clamp is listed in the JSON)")
+    parser.add_argument("--approve-annotated-interconnect", action="store_true",
+                        help="opt-in: accept SDFCOM_IWSBA where VCS states the INTERCONNECT "
+                             "is still annotated across a netlist assign/instance boundary "
+                             "(each one is listed in the JSON)")
     args = parser.parse_args()
     result = audit(args.log.read_text(errors="replace"), args.expected_pass,
-                   args.approve_negative_iopath_clamp_ps)
+                   args.approve_negative_iopath_clamp_ps,
+                   args.approve_annotated_interconnect)
     formatted = json.dumps(result, indent=2) + "\n"
     if args.json_path:
         args.json_path.write_text(formatted)

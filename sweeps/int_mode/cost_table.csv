@@ -1,0 +1,87 @@
+kind,item,area_um2,note
+cell,"MXT2_X1M (mux2, non-inverting TG)",0.784,X0P5..X1 all 0.784; X1P4M 0.882; seen in BS synth timing.rpt
+cell,"MXIT2_X1M (mux2, inverting TG)",0.686,X0P5..X1 0.686; X1P4M 1.274; DC used 17/PE in BS acc
+cell,"MX2_X1B (mux2, static)",0.882,X0P5B..X1B 0.882
+cell,MXGL2_X1B (mux2 glitch-less),1.274,
+cell,AO22_X1M,0.686,"X0P5M/X0P7M 0.686, X1P4M 0.784; = tile drain mux"
+cell,AOI22_X0P7M,0.490,X0P5M 0.490; X1M/X1A 0.588
+cell,OAI22_X0P7M,0.490,
+cell,AO21_X1M,0.588,
+cell,AOI21_X1A / OAI21_X1A,0.392,
+cell,NAND2_X1A / NOR2_X1A,0.294,
+cell,AND2_X1M / OR2_X1M,0.392,AND2 X0P5..X1 all 0.392 (tile product AND)
+cell,AND3_X1M,0.490,
+cell,INV_X1M,0.196,
+cell,BUFH_X1M,0.294,
+cell,XOR2_X0P7M / XNOR2_X0P7M,0.588,X1M 0.882
+cell,XOR3_X0P7M,1.176,
+cell,ADDF_X1M (full adder),1.666,routed tiles use only X1M
+cell,ADDF_X1P4M,1.862,"34+6 per synth tile, downsized at route"
+cell,ADDH_X1M (half adder),0.980,X1P4M 1.176
+cell,"DFFQA_X1M (1-bit flop, no reset)",1.470,tile acc/pending; DFFQ_X1M 1.862
+cell,DFFQA2W_X1M per bit (2-bit multibit),1.372,"cell 2.744; bit pipes, sign pipes, tile acc"
+cell,DFFRPQA_X1M (1-bit async reset),1.666,"peripheral, Sobol"
+cell,DFFRPQA2W_X1M per bit (async reset),1.617,cell 3.234; peripheral held operands
+cell,SDFFQA_X1M (scan flop = flop+mux2),2.058,not used by default flow; +0.588 over DFFQA
+cell,SDFFQA2W_X1M per bit,1.960,cell 3.92 (double height); +0.588/bit over DFFQA2W
+cell,PREICG_X0P5B (ICG),1.470,X1B 1.47; routed tile ICG X5B 2.156
+cell,LATQ_X1M,0.980,
+cell,CGENI_X1M (comparator carry cell),0.686,"8,691 in peripheral"
+cell,absent,,"No enable flop (EDFF*), no AO222/AOI222, no MX3/MX4 in the library: enable = ICG or flop+MXT2/MXIT2; 3:1 one-hot mux ~ AOI22+NAND2+NAND2 = 1.078/bit; 4:1 one-hot ~ 2xAOI22+NAND2 = 1.274/bit; 4:1 tree = 3xMXT2 = 2.352/bit."
+tile_syn,product AND2 (128),50.176,12.3% of tile
+tile_syn,lane counters (8 x 11 FA),153.272,37.6% of tile
+tile_syn,lane sign XOR/XNOR (40),23.520,5.8% of tile
+tile_syn,"sign glue (8 a^w XOR, countones, -16N row)",18.326,4.5% of tile
+tile_syn,"heap DW02_tree (35 FA, 5 HA, 1 XOR)",64.974,15.9% of tile
+tile_syn,"final CPA (8 FA + 1 HA, 9-bit ripple)",14.308,3.5% of tile
+tile_syn,carry/borrow decode,2.842,0.7% of tile
+tile_syn,high segment +-1 (14 FA + XOR3 + NAND3BB),24.990,6.1% of tile
+tile_syn,drain/reset control glue,1.764,0.4% of tile
+tile_syn,drain mux AO22 (24),16.464,4.0% of tile
+tile_syn,state flops (26 bits),36.064,8.8% of tile
+tile_syn,tile ICG,1.470,0.4% of tile
+tile_apr,routed tile average,403.893,64 tiles
+pe_syn,64 tiles,26198.340,
+pe_syn,"A+W bit pipes (1,024 DFFQA2W = 2,048 bits)",2809.856,
+pe_syn,A+W sign pipes (64 DFFQA2W = 128 bits),175.616,
+pe_syn,sign-pipe sync-reset gating (130 NOR2XB),50.960,
+pe_syn,buffers (33 BUFH),9.702,
+pe_syn,load-wave flops (2 DFFQA),2.940,
+pe_syn,"ICGs (sign pipes x2, shared acc_low x1)",4.410,
+pe_syn,"misc (2 OR2, TIELO)",1.176,
+periph_syn,"held magnitudes 1,024 bits (DFFRPQ[N]A2W) + 2 ICG",1658.846,
+periph_syn,held signs 128 bits (64 DFFRPQA2W),206.976,
+periph_syn,"2,048 comparators incl. scramble/distribution INV/BUF (comb)",10927.098,
+grid,1x1,43965.152,edge 33.46%; 582.28 GMAC/s/mm2
+grid,4x4,521892.140,edge 10.31%; 784.84 GMAC/s/mm2
+grid,4x8,1016043.420,edge 7.86%; 806.26 GMAC/s/mm2
+baseline,"BOS INT8 (8x8 OS, 1 MAC/PE)",15797.404,64 MAC/cyc; 1620.5 GMAC/s/mm2; apr/build/TSMC22/BOS_ARRAY/20260728_143921/reports/area.rpt
+baseline,BOS INT6 native,12403.664,64 MAC/cyc; 2063.9 GMAC/s/mm2; build/bos_precision/bos_precision_20261002/results.csv
+baseline,BOS INT4 native,10276.378,64 MAC/cyc; 2491.2 GMAC/s/mm2; build/bos_precision/bos_precision_20261002/results.csv
+baseline,BP INT8 (8x8 WS),16536.226,"64 MAC/cyc; 1548.1 GMAC/s/mm2; apr/build/TSMC22/BP_ARRAY/20260718_165153 (doc/results.md 16,536)"
+baseline,BS bit-serial 8x8 (8 cyc/MAC),13674.724,8 MAC/cyc; 234.0 GMAC/s/mm2; apr/build/TSMC22/BS_ARRAY/20260718_183112/reports/area.rpt
+baseline,bitmod Simple i8xi8 (16 tiles),357858.000,"1024 MAC/cyc; 1144.6 GMAC/s/mm2; doc/bitmod_results.md (collaborator CSV, not reproduced)"
+baseline,bitmod Simple i6xi8,357858.000,1365.33 MAC/cyc; 1526.1 GMAC/s/mm2; doc/bitmod_results.md
+baseline,bitmod Simple i4xi8,357858.000,2048 MAC/cyc; 2289.2 GMAC/s/mm2; doc/bitmod_results.md
+baseline,bitmod Simple i2xi8,357858.000,4096 MAC/cyc; 4578.4 GMAC/s/mm2; doc/bitmod_results.md
+baseline,bitmod Simple tile only i8,21906.000,64 MAC/cyc; 1168.6 GMAC/s/mm2; doc/bitmod_results.md
+baseline,bitmod BitMoD i8xf16,1129910.000,1024 MAC/cyc; 362.5 GMAC/s/mm2; doc/bitmod_results.md
+baseline,bitmod BitMoD f4xf16,1129910.000,2048 MAC/cyc; 725.0 GMAC/s/mm2; doc/bitmod_results.md
+baseline,"PaYN CSA SC T=128 (1 PE, routed)",44017.974,64 MAC/cyc; 581.6 GMAC/s/mm2; designs/payn/variants/signed_segmented_csa/README.md
+baseline,PaYN CSA SC 4x4 composite,521892.140,"1024 MAC/cyc; 784.8 GMAC/s/mm2; composite, this script"
+baseline,PaYN CSA SC 4x8 composite,1016043.420,"2048 MAC/cyc; 806.3 GMAC/s/mm2; composite, this script"
+rule,1 PE MXT2,50.176,0.1140% of 1 PE
+rule,1 PE AO22/MXIT2,43.904,0.0997% of 1 PE
+rule,1 PE 24 x MXT2,1204.224,2.7358% of 1 PE
+rule,1 PE 24 x AO22,1053.696,2.3938% of 1 PE
+rule,1 PE 1 DFFQA2W bit,87.808,0.1995% of 1 PE
+rule,4x4 MXT2,802.816,0.1538% of 4x4
+rule,4x4 AO22/MXIT2,702.464,0.1346% of 4x4
+rule,4x4 24 x MXT2,19267.584,3.6919% of 4x4
+rule,4x4 24 x AO22,16859.136,3.2304% of 4x4
+rule,4x4 1 DFFQA2W bit,1404.928,0.2692% of 4x4
+rule,4x8 MXT2,1605.632,0.1580% of 4x8
+rule,4x8 AO22/MXIT2,1404.928,0.1383% of 4x8
+rule,4x8 24 x MXT2,38535.168,3.7927% of 4x8
+rule,4x8 24 x AO22,33718.272,3.3186% of 4x8
+rule,4x8 1 DFFQA2W bit,2809.856,0.2765% of 4x8

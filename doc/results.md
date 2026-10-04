@@ -6,6 +6,85 @@ and the comparisons needed to interpret them.  Experiment commands and
 historical design points live in [`experiments.md`](experiments.md) and the
 linked design notes.
 
+## Routed bit-plane INT mode on the carry-save array (2026-10-04)
+
+[`signed_segmented_csa_bp`](../designs/payn/variants/signed_segmented_csa_bp/README.md)
+adds an exact INT mode: one real 1-bit product per AND position, weight bits
+doubled between passes by a lap around the drain chain, and an east-edge
+combiner. The tile is unchanged.
+
+SC-mode cost was measured like for like, with both designs routed using the
+same grid-matched fixed IO pins:
+
+| | CSA | BP | delta |
+|---|---:|---:|---:|
+| routed area, 1 PE (um2) | 43,917 | 46,130 | +5.0% |
+| 4x4 composite area (um2) | 521,100 | 531,415 | +2.0% |
+| SC power at T=128 (mW) | 15.726 | 16.491 | +4.9% |
+
+The INT mode was measured on the routed BP netlist (bit-exact, PT-PX):
+
+| | INT8 | INT4 |
+|---|---:|---:|
+| pJ/MAC at peak | 0.349 | 0.088 |
+| pJ/MAC at a long GEMM (L=4096) | 0.380 | 0.095 |
+| 4x4 GMAC/s/mm2, peak | 1,542 | 6,166 |
+| dedicated binary array, GMAC/s/mm2 / pJ/MAC | 1,621 / 0.412 | 2,491 / 0.155 |
+
+Two process findings:
+- The first floating-pin BP pass 2 fell into a row-collapsed placement basin
+  (20.74 mW). The CSA netlist's own pass 1 did the same (20.80 mW).
+- Single-PE A/B routes should use fixed IO pins and a basin check. Root cause:
+  `build/sc_power_regression/README.md`.
+
+## Carry-save at M=8 (2026-10-03)
+
+The carry-save tile now also supports M=8: a four-FA counter with weights
+1,1,2,4 and a -8*N heap row. Three M=8 shapes were synthesized, routed with
+the standard two-pass recipe and fully qualified at T=128. The matched
+clean-baseline M=8 routes were re-measured with full-timing GL.
+
+| design | MAC/cycle | routed um2 | pJ/MAC | GMAC/s/mm2 (1 PE / 4x4) |
+|---|---:|---:|---:|---:|
+| **CSA K8M16N8** | 64 | 44,018 | **0.6034** | **581.6 / 784.8** |
+| CSA K16M8N8 | 64 | 47,302 | 0.6396 | 541.2 / 723.4 |
+| CSA K12M8N8 | 48 | 37,267 | 0.6411 | 515.2 / 682.8 |
+| CSA K8M8N8 | 32 | 27,394 | 0.6945 | 467.3 / 608.8 |
+| clean K8M16N8 | 64 | 47,932 | 0.7159 | 534.1 / 700.5 |
+
+M=8 lags M=16 at every shape. Even at equal ANDs per tile (K16M8N8) it is
+-6.9% area efficiency and +6.0% energy on one PE, and -7.8% / +10.6% on a 4x4
+grid. The cause is the per-lane and per-tile overhead (heap rows, sign logic,
+accumulator) now spread over half the bits. Two exceptions are documented in
+the [variant README](../designs/payn/variants/signed_segmented_csa/README.md#m8-shapes-2026-10-03):
+targeted repair on all three routes, and opt-in SDF-warning approvals on two
+of them. Data: `build/power_char/popcount_apr_csa_20261003/m8_vs_m16.csv`.
+
+## Carry-save energy versus T (2026-10-03)
+
+The carry-save route, the library-mapped popcount route and the matched
+cleaned baseline were re-measured at every multiple of 16 from T=16 to 128.
+The layouts are unchanged. Each point gets full qualification: max-SDF GL
+timing audit, bit-exact cosim, SAIF and PT-PX coverage. All 24 points pass,
+and the T=128 reruns reproduce the accepted powers exactly. Full-design pJ/MAC:
+
+| T | 16 | 32 | 48 | 64 | 80 | 96 | 112 | 128 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| cleaned baseline | 0.1348 | 0.2121 | 0.3032 | 0.3799 | 0.4712 | 0.5481 | 0.6395 | 0.7159 |
+| popcount, library-mapped | 0.1306 | 0.2041 | 0.2915 | 0.3647 | 0.4521 | 0.5250 | 0.6127 | 0.6851 |
+| **carry-save** | **0.1167** | **0.1814** | **0.2579** | **0.3221** | **0.3988** | **0.4630** | **0.5397** | **0.6034** |
+| carry-save vs baseline | -13.4% | -14.5% | -14.9% | -15.2% | -15.4% | -15.5% | -15.6% | -15.7% |
+
+The saving inside `u_pe` stays at about -13% against the popcount route at
+every T. The full-design saving narrows at low T because the unchanged
+peripheral's reload power grows. At T=112 power equals T=96 in all three arms,
+together with higher operand toggling: a workload property of non-power-of-two
+T/16, not a design effect. These points supersede the older pending-bit T
+sweep below as the current energy-versus-T reference. Details, the array-only
+energies and the command are in the
+[variant README](../designs/payn/variants/signed_segmented_csa/README.md#energy-versus-stochastic-length-2026-10-03).
+Data: `build/power_char/csa_t_sweep_20261003/results.csv`.
+
 ## Carry-save lane interface (2026-10-02)
 
 The [`signed_segmented_csa`](../designs/payn/variants/signed_segmented_csa/README.md)
