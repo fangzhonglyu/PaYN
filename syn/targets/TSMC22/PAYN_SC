@@ -1,13 +1,17 @@
 #!/bin/bash
-# PaYN SC accelerator (integrated Sobol banks + peripheral + InnerPE tile grid).
-# Default shape K6/M16/9x9/OW24; DesignWare DW02_tree maps from dw_foundation.
+# PaYN SC array (C-BSG): A Sobol bank + A peripheral + gated-W InnerPE grid.
+# Default shape K8/M16/8x8/OW24; DesignWare DW02_tree maps from dw_foundation.
+# Override the shape with SYN_DEFINES="PAYN_K=.. PAYN_M=.. PAYN_NH=.. PAYN_NW=..".
 export TOP=payn_array
 export TECH=TSMC22
 export SRC_SV="payn/payn_array.sv"
 export PERIOD=2.5
+# The physically compatible HPK adds two-bit flop cells.  MULTIBIT_INFER alone
+# cannot bank registers when only the base library is loaded.
 export TSMC22_HPK=1
 export MULTIBIT_INFER=1
 export CLOCK_GATE=1
-# Use the same standard-cell library as the baselines (flow defaults:
-# sc7mcpp140z / svt_c30) so the SC-vs-binary power comparison is apples-to-apples.
-export RTL_PREFLIGHT_CMD="bash designs/payn/cosim/run_array.sh"
+# Same standard-cell library as the baselines (flow defaults: sc7mcpp140z /
+# svt_c30) so the SC-vs-binary power comparison is apples-to-apples.
+# Bit-exact RTL check against the emulator's C-BSG vectors before synthesis.
+export RTL_PREFLIGHT_CMD="bash designs/payn/cosim/run_matmul.sh"

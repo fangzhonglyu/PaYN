@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Generate int8 matmul operand cases for the UT RTL-vs-emulator sweep.
+"""Generate int8 matmul operand cases for the RTL-vs-emulator (C-BSG) sweep.
 
 Each case is a directory holding a.mem (N x D), b.mem (M x D) in the
 t9_sc_matmul $readmemh format, plus shape.txt ("N M D"). Shapes deliberately
 include sizes that are not multiples of the array (partial tiles / K-blocks),
 D past the 64-column mask period, and degenerate 1x1 cases.
 
-    python gen_ut_cases.py --out sweep_cases
+    python gen_cases.py --out sweep_cases
 """
 from __future__ import annotations
 

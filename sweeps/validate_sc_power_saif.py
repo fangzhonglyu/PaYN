@@ -3,7 +3,7 @@
 
 Methodology (what we actually care about): the circuit must *execute correctly*.
 That is established by the array cosim / output-checking bench (drained accumulator
-matrix compared bit-for-bit against sc_kernel.py) plus X-freeness of the
+matrix compared bit-for-bit against the emulator C-BSG model) plus X-freeness of the
 architectural accumulator output during the SAIF window. This validator gates only
 on what would invalidate the *measurement itself*:
 

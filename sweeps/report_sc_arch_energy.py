@@ -4,9 +4,11 @@
 This is deliberately separate from the established full-array pJ/MAC metric.
 It reports:
 
-* peripheral energy per binary-to-unary comparator evaluation;
-* Sobol-bank energy per generated threshold word; and
-* InnerPE-array energy per equivalent MAC.
+* peripheral energy per binary-to-unary comparator evaluation (A only);
+* A Sobol-bank energy per generated threshold word; and
+* InnerPE-array energy per equivalent MAC. With C-BSG the W generators and
+  W comparators sit inside the InnerPE (gated per A element), so W
+  generation is accounted there.
 
 PrimeTime's top-level hierarchical rows include the power of all descendants
 and the switching power of nets driven by those descendants.  Power left at
@@ -100,7 +102,6 @@ def main() -> None:
     parser.add_argument("--core-name", default="u_pe")
     parser.add_argument("--peripheral-name", default="u_peripheral")
     parser.add_argument("--a-rng-name", default="u_a_rng")
-    parser.add_argument("--w-rng-name", default="u_w_rng")
     args = parser.parse_args()
 
     positive_args = {
@@ -119,24 +120,21 @@ def main() -> None:
         args.core_name,
         args.peripheral_name,
         args.a_rng_name,
-        args.w_rng_name,
     )
     total, blocks = parse_report(args.cell_power_report, names)
 
     core_mw = blocks[args.core_name].total_mw
     peripheral_mw = blocks[args.peripheral_name].total_mw
-    sobol_mw = (
-        blocks[args.a_rng_name].total_mw + blocks[args.w_rng_name].total_mw
-    )
+    sobol_mw = blocks[args.a_rng_name].total_mw
     shared_mw = total.total_mw - core_mw - peripheral_mw - sobol_mw
 
     macs_per_cycle = args.k * args.m * args.nh * args.nw / args.t
-    # One comparator evaluation emits one unary/stochastic output bit.
-    conversions_per_cycle = (args.nh + args.nw) * args.k * args.m
+    # One comparator evaluation emits one unary/stochastic output bit (A edge).
+    conversions_per_cycle = args.nh * args.k * args.m
     # One vector conversion emits M parallel unary bits for one binary operand.
-    vectors_per_cycle = (args.nh + args.nw) * args.k
-    # There are independent A and W banks, each containing M generators.
-    sobol_words_per_cycle = 2 * args.m
+    vectors_per_cycle = args.nh * args.k
+    # The A bank emits M Sobol words per cycle; W is generated inside the PE.
+    sobol_words_per_cycle = args.m
 
     print(
         f"Source: {args.cell_power_report}\n"
@@ -162,7 +160,7 @@ def main() -> None:
         f"{energy_pj(peripheral_mw, args.period_ns, macs_per_cycle):.9f} |"
     )
     print(
-        f"| Sobol banks (`{args.a_rng_name}` + `{args.w_rng_name}`) | "
+        f"| A Sobol bank (`{args.a_rng_name}`) | "
         f"{sobol_mw:.6f} | {sobol_words_per_cycle:g} words | "
         f"{energy_pj(sobol_mw, args.period_ns, sobol_words_per_cycle):.9f} "
         f"pJ/Sobol | "

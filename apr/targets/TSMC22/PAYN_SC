@@ -1,5 +1,5 @@
 #!/bin/bash
-# PaYN SC accelerator (payn_array K6/M16/9x9) APR.
+# PaYN SC array (payn_array, C-BSG, default K8/M16/8x8) APR.
 # Stock recipe (no PRESERVE_MODULE_PORTS): preserving the peripheral->InnerPE
 # module boundary blocked APR from optimizing the a_bits/w_bits pipe paths across
 # it, leaving them unclosed (-0.868 ns setup). The feedthrough-X hazard preserve

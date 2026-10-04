@@ -69,8 +69,8 @@ TABLE=(
   "BOS_ARRAY_ASYM|TSMC22/BOS_ARRAY_ASYM|binary_os_array_asym|designs/baselines/binary_os/power/power_binary_os_array_asym.sv|validate_power_saif.py|STIM_CYCLES_N|4096"
   "UR_ARRAY|TSMC22/UR_ARRAY|array_8|designs/baselines/unary_rate/power/power_array_8.sv|validate_power_saif.py|RATE_LEN_N|64,128,256"
   "UT_ARRAY|TSMC22/UT_ARRAY|array_8|designs/baselines/unary_temporal/power/power_array_8.sv|validate_power_saif.py|RATE_LEN_N|64,128,256"
-  "PAYN_SC|TSMC22/PAYN_SC|payn_array|designs/payn/power/power_payn_array.sv|validate_sc_power_saif.py|SC_T|64,128,256"
-  "SC_INNER_PE|TSMC22/SC_INNER_PE|sc_inner_pe_manual_k6m16n9_ow24|designs/payn/power/power_inner_pe.sv|validate_sc_power_saif.py|SC_T|64,128,256"
+  # PaYN C-BSG: stream length L <= 128 (7-bit RNG grid).
+  "PAYN_SC|TSMC22/PAYN_SC|payn_array|designs/payn/power/power_payn_array.sv|validate_sc_power_saif.py|SC_T|64,128"
   # bitmod migrated baselines.  BITMOD_TILE is the 64 MAC/cycle throughput match;
   # BITMOD_ARRAY is the whole design at 1024 MAC/cycle (16x the cells, so its APR
   # is correspondingly longer).  See designs/baselines/bitmod/README.md.
@@ -162,7 +162,7 @@ for row in "${TABLE[@]}"; do
       grep -iE "FUNC-FAIL|X-FAIL|Error-|^Error|fatal" "$wlog/sim.log" | head -3
       echo "$name,$target,$T,,,,,SIM_FAIL,$saif" >> "$CSV"; overall=1; continue
     fi
-    if [ "$name" = PAYN_SC ] || [ "$name" = SC_INNER_PE ]; then
+    if [ "$name" = PAYN_SC ]; then
       trace="$REPO/build/$bench/array_streaming_rtl.txt"
       if [ ! -f "$trace" ] || \
          ! python3 "$REPO/designs/payn/cosim/cosim_streaming.py" "$trace" \
