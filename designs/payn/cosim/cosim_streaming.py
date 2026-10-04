@@ -5,6 +5,12 @@ Each binary magnitude/sign batch is held for T/M clocks.  On every clock, the
 two Sobol banks advance and the peripheral produces a fresh M-bit stochastic
 slice.  The checker accumulates every issued batch and compares the final
 row-serial drain bit-for-bit.
+
+GATED=1 in STREAMCFG selects traditional C-BSG (payn_array_gated_cbsg): A is
+the same original stream, while each A element's W generator advances only on
+that element's A ones.  The i-th A one of a batch (sample order) pairs with
+sample i of PaYN's original W stream -- lane i % M of productive cycle i // M,
+replayed from a freshly reset W bank -- and W restarts at every batch.
 """
 
 from __future__ import annotations
@@ -19,6 +25,7 @@ from sc_kernel import (
     ArrayCfg,
     edge_operand_bits,
     inner_tile_2bit_contribution,
+    owen_mask,
 )
 
 
@@ -31,6 +38,7 @@ class StreamingTrace:
     w_mag: list[np.ndarray]
     w_sign: list[np.ndarray]
     drain: np.ndarray
+    gated: bool = False
 
 
 def _read_vector(
@@ -47,14 +55,15 @@ def _read_vector(
 
 def parse_streaming_trace(path: Path) -> StreamingTrace:
     lines = [line.split() for line in path.read_text().splitlines() if line.split()]
-    if not lines or lines[0][0] != "STREAMCFG" or len(lines[0]) not in (9, 10):
+    if not lines or lines[0][0] != "STREAMCFG" or len(lines[0]) not in (9, 10, 11):
         raise ValueError(
-            "missing STREAMCFG K M NH NW WIDTH OWIDTH T NBATCHES [RNG_WRAP]"
+            "missing STREAMCFG K M NH NW WIDTH OWIDTH T NBATCHES [RNG_WRAP [GATED]]"
         )
 
     values = [int(value) for value in lines[0][1:]]
     k, m, nh, nw, width, owidth, t, n_batches = values[:8]
-    rng_wrap = bool(values[8]) if len(values) == 9 else False
+    rng_wrap = bool(values[8]) if len(values) >= 9 else False
+    gated = bool(values[9]) if len(values) >= 10 else False
     # T need not be a multiple of M: the padded-T bench executes ceil(T/M)
     # slices per block and zeroes the top M - T%M lanes of the final slice
     # (power_payn_array_tpad.sv).  The reference masks identically below.
@@ -117,10 +126,66 @@ def parse_streaming_trace(path: Path) -> StreamingTrace:
         w_mag=w_mag,
         w_sign=w_sign,
         drain=values.reshape(nh, nw),
+        gated=gated,
     )
 
 
+def original_w_samples(cfg: ArrayCfg, n_samples: int) -> np.ndarray:
+    """(K, n_samples) thresholds of PaYN's original W stream in sample order.
+
+    Sample i is lane i % M of productive cycle i // M from a freshly reset W
+    bank (productive cycle c = the bank value after c + 1 steps), XOR'd with the
+    peripheral's W mask for that depth and lane.
+    """
+    n_cycles = -(-n_samples // cfg.M)
+    bank = cfg.make_rng_w()
+    words = np.array([bank.step() for _ in range(n_cycles)])     # (cycles, M)
+    salt = 1 << (cfg.WIDTH - 1)
+    out = np.zeros((cfg.K, n_samples), dtype=np.int64)
+    for k in range(cfg.K):
+        for i in range(n_samples):
+            lane, cyc = i % cfg.M, i // cfg.M
+            out[k, i] = int(words[cyc, lane]) ^ owen_mask(k, lane, salt, cfg.WIDTH)
+    return out
+
+
+def gated_reference(trace: StreamingTrace) -> np.ndarray:
+    """Traditional C-BSG: original A stream, W gated by A per (row, depth)."""
+    cfg = trace.cfg
+    cycles_per_batch = -(-cfg.T // cfg.M)
+    w_thr = original_w_samples(cfg, cycles_per_batch * cfg.M)    # (K, samples)
+    rng_a = cfg.make_rng_in()
+    acc = np.zeros((cfg.N_H, cfg.N_W), dtype=np.int64)
+
+    for batch in range(trace.n_batches):
+        j = np.zeros((cfg.N_H, cfg.K), dtype=np.int64)            # W index per A elt
+        w_mag = trace.w_mag[batch]
+        for cyc in range(cycles_per_batch):
+            a_bits = edge_operand_bits(
+                trace.a_mag[batch], rng_a.step(), cfg.K, cfg.M, cfg.WIDTH, 0)
+            for m in range(cfg.M):                                 # samples >= T dropped
+                if cyc * cfg.M + m >= cfg.T:
+                    a_bits[:, :, m] = 0
+            for h in range(cfg.N_H):
+                for k in range(cfg.K):
+                    lanes = np.flatnonzero(a_bits[h, k])
+                    if lanes.size == 0:
+                        continue
+                    idx = j[h, k] + np.arange(lanes.size)
+                    j[h, k] += lanes.size
+                    hits = (w_mag[:, k][:, None] > w_thr[k, idx][None, :]).sum(axis=1)
+                    neg = trace.a_sign[batch][h, k] ^ trace.w_sign[batch][:, k]
+                    acc[h] += np.where(neg == 1, -hits, hits)
+
+    mask = (1 << cfg.OWIDTH) - 1
+    sign_bit = 1 << (cfg.OWIDTH - 1)
+    wrapped = acc & mask
+    return np.where(wrapped & sign_bit, wrapped - (1 << cfg.OWIDTH), wrapped)
+
+
 def streaming_reference(trace: StreamingTrace) -> np.ndarray:
+    if trace.gated:
+        return gated_reference(trace)
     cfg = trace.cfg
     cycles_per_batch = -(-cfg.T // cfg.M)  # ceil: partial final slice
     pad_lanes = cycles_per_batch * cfg.M - cfg.T
@@ -182,6 +247,7 @@ def main() -> int:
     shape = (
         f"K={cfg.K} M={cfg.M} N={cfg.N_H}x{cfg.N_W} "
         f"T={cfg.T} batches={trace.n_batches}"
+        + (" gated-C-BSG" if trace.gated else "")
     )
 
     if np.array_equal(expected, trace.drain):

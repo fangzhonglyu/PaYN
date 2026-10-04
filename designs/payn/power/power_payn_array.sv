@@ -88,13 +88,25 @@ module Top;
     localparam int TOTAL_MAC_CYCLES = N_BATCHES * MAC_CYCLES;
     localparam bit RNG_FULL_PERIOD_WRAP = `SC_RNG_FULL_PERIOD_WRAP;
     localparam real PERIOD = `ASTRAEA_CLK_PERIOD_NS;
+`ifdef PAYN_GATED_CBSG
+    localparam bit GATED_CBSG = 1'b1;
+`else
+    localparam bit GATED_CBSG = 1'b0;
+`endif
 
     logic clk, reset, timeout;
     logic rng_en = 1'b0, mac_en = 1'b0, shift_in = 1'b0;
-    logic rng_restart = 1'b0;       // STREAM_MODE=1 only; tied off for .*
     logic [15:0] d_base = '0;       // STREAM_MODE=1 only; tied off for .*
-    logic [7:0] stream_len = 8'd128;  // A_ENCODER=1 only; tied off for .*
     logic load_a = 1'b0, load_w = 1'b0, load_a_sign = 1'b0, load_w_sign = 1'b0;
+`ifdef PAYN_GATED_CBSG
+    // payn_array_gated_cbsg: every batch load starts a K-block, which resets
+    // the gated W generators.
+    logic rng_restart;
+    assign rng_restart = load_a;
+`else
+    logic rng_restart = 1'b0;       // STREAM_MODE=1 only; tied off for .*
+`endif
+    logic [7:0] stream_len = 8'(T);   // A_ENCODER / gated C-BSG only; tied off for .*
 `ifdef PAYN_BLOCK_FINALIZE
     logic block_finalize = 1'b0;
 `endif
@@ -213,9 +225,9 @@ module Top;
         assert (trace_file != 0)
             else $fatal(1, "cannot open array_streaming_rtl.txt");
         $fwrite(trace_file,
-                "STREAMCFG %0d %0d %0d %0d %0d %0d %0d %0d %0d\n",
+                "STREAMCFG %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d\n",
                 K, M, N_H, N_W, WIDTH, OWIDTH, T, N_BATCHES,
-                RNG_FULL_PERIOD_WRAP);
+                RNG_FULL_PERIOD_WRAP, GATED_CBSG);
 
         // Launch batch zero and fill the peripheral/InnerPE input pipeline.
         // With nonblocking clocked stages, its first generated slice reaches

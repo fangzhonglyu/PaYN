@@ -1,0 +1,13 @@
+#!/bin/bash
+# Traditional (gated) C-BSG PaYN array: PaYN's original A/W bitstream
+# generation, W's generator gated by A per (row, depth); see
+# designs/payn/variants/gated_cbsg/README.md. Shape via SYN_DEFINES, e.g.
+# SYN_DEFINES="PAYN_K=8 PAYN_M=16 PAYN_NH=8 PAYN_NW=8". Same library/knobs as
+# PAYN_SC_SWEEP (svt_c30 / sc7mcpp140z).
+export TOP=payn_array_gated_cbsg
+export TECH=TSMC22
+export SRC_SV="payn/variants/gated_cbsg/payn_array_gated_cbsg.sv"
+export PERIOD=2.5
+export TSMC22_HPK=1
+export MULTIBIT_INFER=1
+export CLOCK_GATE=1
