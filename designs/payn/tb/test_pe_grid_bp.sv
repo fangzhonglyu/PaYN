@@ -37,10 +37,18 @@
 // pass pi starts at B + pi*(NB+GAP); NB data slices, then GAP bubble slices.
 // PE (0,0) laps on B + pi*(NB+GAP) + NB + LO + 1 .. + 8 for pi < BW-1 (the
 // last lap edge is the next pass's first capture).  Drain (real edges, global):
-// D0 = B + (BW-1)*(NB+GAP) + NB + 1 + S, S = P_R + P_C - 2, for 8*P_C edges;
-// the last drain edge is the next block's first capture, so
+// D0 = B + (BW-1)*(NB+GAP) + NB + 1 + DS, DS = S = P_R + P_C - 2, for 8*P_C
+// edges; the last drain edge is the next block's first capture, so
 //     BLK_LEN = BW*NB + GAP*(BW-1) + S + 8*P_C.
 // Per-PE laps: GAP = 8, LO = 0 (BLK_LEN = BW*NB + 8*(BW-1) + S + 8*P_C).
+// This BLK_LEN is the bench's schedule; the RTL run shows it is feasible (bit
+// exact) and the three tightness controls below show that no term can shrink
+// by one edge.
+//
+// Reset: the operand bit pipes are not reset, so the first MAC must come at
+// least min(P_R,P_C) zero-plane edges after the reset starts (grid header).
+// Here every edge up to PE (0,0)'s first data capture drives zero planes:
+// 1 pre-reset + 2 reset + 2 settle + (E0+1) = 10 edges before the first MAC.
 //
 // Lap modes (+plusargs; the default is the per-PE lap enable):
 //   +GLOBAL_LAP_WAIT  positive control, the as-built csa_bp_20261003b grid
@@ -56,9 +64,33 @@
 //   +NEG_GLOBAL_LAP   negative control: laps issued globally (one forced ring
 //                     signal + shift_in) on PE (0,0)'s schedule, without
 //                     waiting for the skew (GAP = 8, LO = 0).
+//   +OLDC_UNFORCED    the csa_bp_20261003b single-PE contract applied to the
+//                     grid as is, with nothing forced: one global ring signal
+//                     on every row's west ring_in, shift_in on every global lap
+//                     edge, each lap waiting S edges (GAP = 8 + S).  The ring
+//                     wave reaches PE column c c edges late, so this PASSES
+//                     only for P_C = 1 and must FAIL for P_C > 1.
+//   +NEG_GAP_SHORT    tightness control (lap term): GAP = 7, LO = -1, so each
+//                     lap starts on the edge of PE (r,c)'s last MAC of the
+//                     pass (8 lap edges, one edge less per pass).  Must FAIL.
+//   +NEG_DRAIN_EARLY  tightness control (skew term): the drain starts one edge
+//                     early (DS = S - 1), on the far PE's last MAC; the block
+//                     is one edge shorter.  Must FAIL.
+//   +NEG_BLOCK_OVERLAP tightness control (drain/next-block term): BLK_LEN one
+//                     edge short with the drain in place, so the next block's
+//                     first MAC lands on the last drain edge (multi-block
+//                     runs).  Must FAIL.
 //   +JUNK             random acc_in_west on every non-drain edge (lap edges
 //                     included: the ring mux must hide it), random sign words
 //                     on every edge where no PE latches them.
+//   +RING_GATE_JUNK   (per-PE laps only) int_mode is high only on edges where
+//                     some row injects a lap (west ring_in high), random
+//                     ring_in on every edge with int_mode low.  Checks the
+//                     west-edge gate and that a wave already in a row finishes
+//                     after int_mode falls (PE (r,c) laps up to c edges later).
+//   +NEG_GATE_BYPASS  negative control for RING_GATE_JUNK: PE (r,0)'s ring_in
+//                     is forced to the raw west ring_in[r] (the int_mode gate
+//                     bypassed), so the junk starts stray laps.  Must FAIL.
 //
 // Trace (bpg_trace.txt): header BPGCFG, every drained column
 //   "D blk r t e tile_h0..tile_h7"   (PE column P_C-1-t/8, tile column 7-t%8)
@@ -102,13 +134,18 @@ module Top;
     localparam int AB = N_H*K*M, AS = N_H*K, WB = N_W*K*M, WS = N_W*K, AW = N_H*OWIDTH;
 
     localparam int MODE_PE = 0, MODE_GLOBAL_WAIT = 1, MODE_NEG_ROW = 2,
-                   MODE_NEG_COL = 3, MODE_NEG_GLOBAL = 4;
+                   MODE_NEG_COL = 3, MODE_NEG_GLOBAL = 4, MODE_NEG_GAP_SHORT = 5,
+                   MODE_NEG_DRAIN_EARLY = 6, MODE_NEG_BLOCK_OVERLAP = 7,
+                   MODE_OLDC_UNFORCED = 8;
+    localparam int ZERO_EDGES_BEFORE_MAC = 10;  // see "Reset" above
 
     int BA = 8, BW = 8, L = 128, MROWS = 0, NCOLS = 0;
     int mode = MODE_PE;
     bit junk = 1'b0;
+    bit gate_junk = 1'b0;
+    bit gate_bypass = 1'b0;
     bit cfg_done = 1'b0;
-    int NB, ROWS_PE, NIG, NJG, NBLK, GAP, LO, BLK_LEN, E_END, N_EDGES;
+    int NB, ROWS_PE, NIG, NJG, NBLK, GAP, LO, DS, BLK_LEN, E_END, N_EDGES;
     int cur_e = -1000;
     logic [AS-1:0] a_sign_word;
 
@@ -158,6 +195,8 @@ module Top;
                     force dut.g_pe_row[r].g_pe_col[c].u_pe.ring_in = ring_in[r] & int_mode;
                 else if (mode == MODE_GLOBAL_WAIT || mode == MODE_NEG_GLOBAL)
                     force dut.g_pe_row[r].g_pe_col[c].u_pe.ring_in = ring_global & int_mode;
+                else if (gate_bypass && c == 0)
+                    force dut.g_pe_row[r].g_pe_col[c].u_pe.ring_in = ring_in[r];
             end
 
             // Lap-run monitor: ring_q as used on each edge (pre-edge value).
@@ -221,15 +260,23 @@ module Top;
         return (pi < BW) ? pi : BW - 1;
     endfunction
 
-    // Global drain edge (real time): block and step.
+    // Global drain edge (real time): block and step.  Checks the block the
+    // edge decodes to and the one before (NEG_BLOCK_OVERLAP: the last drain
+    // edge of block k is the second edge of block k+1).
     function automatic bit drain_at(input int e, output int blk, output int t);
-        int d0;
+        int d0, b0;
         if (e <= E0) return 1'b0;
-        blk = (e - E0 - 1) / BLK_LEN;
-        if (blk >= NBLK) return 1'b0;
-        d0 = E0 + blk*BLK_LEN + (BW-1)*(NB + GAP) + NB + 1 + S;
-        t = e - d0;
-        return t >= 0 && t < 8*P_C;
+        b0 = (e - E0 - 1) / BLK_LEN;
+        for (int b = b0; b >= b0 - 1 && b >= 0; b--) begin
+            if (b >= NBLK) continue;
+            d0 = E0 + b*BLK_LEN + (BW-1)*(NB + GAP) + NB + 1 + DS;
+            if (e - d0 >= 0 && e - d0 < 8*P_C) begin
+                blk = b;
+                t = e - d0;
+                return 1'b1;
+            end
+        end
+        return 1'b0;
     endfunction
 
     // ----------------------------------------------------------- drivers --
@@ -282,11 +329,18 @@ module Top;
         end
         // Ring and shift.
         for (int r = 0; r < P_R; r++)
-            ring_in[r] = (mode == MODE_PE || mode == MODE_NEG_COL) ? lap_at(e + 1 - r) :
-                         (mode == MODE_NEG_ROW) ? lap_at(e + 1) : 1'b0;
+            ring_in[r] = (mode == MODE_NEG_ROW || mode == MODE_OLDC_UNFORCED) ? lap_at(e + 1) :
+                         (mode == MODE_GLOBAL_WAIT || mode == MODE_NEG_GLOBAL) ? 1'b0 :
+                         lap_at(e + 1 - r);
+        if (gate_junk) begin
+            int_mode = 1'b0;
+            for (int r = 0; r < P_R; r++) int_mode |= lap_at(e + 1 - r);
+            if (!int_mode) ring_in = P_R'($urandom);
+        end
         ring_global = (mode == MODE_GLOBAL_WAIT || mode == MODE_NEG_GLOBAL) && lap_at(e + 1);
         drain = drain_at(e, dblk, t);
-        shift_in = drain || ((mode == MODE_GLOBAL_WAIT || mode == MODE_NEG_GLOBAL) && lap_at(e));
+        shift_in = drain || ((mode == MODE_GLOBAL_WAIT || mode == MODE_NEG_GLOBAL ||
+                              mode == MODE_OLDC_UNFORCED) && lap_at(e));
         if (drain)
             acc_in_west = '0;
         else if (junk)
@@ -333,10 +387,21 @@ module Top;
         void'($value$plusargs("MROWS=%d", MROWS));
         void'($value$plusargs("NCOLS=%d", NCOLS));
         junk = $test$plusargs("JUNK");
+        gate_junk = $test$plusargs("RING_GATE_JUNK");
+        gate_bypass = $test$plusargs("NEG_GATE_BYPASS");
+        if (gate_bypass && !gate_junk) $fatal(1, "NEG_GATE_BYPASS needs RING_GATE_JUNK");
         if ($test$plusargs("GLOBAL_LAP_WAIT")) mode = MODE_GLOBAL_WAIT;
         if ($test$plusargs("NEG_RING_NO_ROW_SKEW")) mode = MODE_NEG_ROW;
         if ($test$plusargs("NEG_RING_NO_COL_SKEW")) mode = MODE_NEG_COL;
         if ($test$plusargs("NEG_GLOBAL_LAP")) mode = MODE_NEG_GLOBAL;
+        if ($test$plusargs("NEG_GAP_SHORT")) mode = MODE_NEG_GAP_SHORT;
+        if ($test$plusargs("NEG_DRAIN_EARLY")) mode = MODE_NEG_DRAIN_EARLY;
+        if ($test$plusargs("NEG_BLOCK_OVERLAP")) mode = MODE_NEG_BLOCK_OVERLAP;
+        if ($test$plusargs("OLDC_UNFORCED")) mode = MODE_OLDC_UNFORCED;
+        if (gate_junk && mode != MODE_PE) $fatal(1, "RING_GATE_JUNK needs the per-PE lap mode");
+        if (ZERO_EDGES_BEFORE_MAC < ((P_R < P_C) ? P_R : P_C))
+            $fatal(1, "grid %0dx%0d needs %0d zero-plane edges before the first MAC (operand pipes are not reset)",
+                   P_R, P_C, (P_R < P_C) ? P_R : P_C);
 
         if (!(BA == 8 || BA == 4)) $fatal(1, "BA must be 4 or 8 (got %0d)", BA);
         if (!(BW == 8 || BW == 4)) $fatal(1, "BW must be 4 or 8 (got %0d)", BW);
@@ -352,9 +417,11 @@ module Top;
         NIG = MROWS / (P_R*ROWS_PE);
         NJG = NCOLS / (P_C*N_W);
         NBLK = NIG * NJG;
-        LO = (mode == MODE_GLOBAL_WAIT) ? S : 0;
+        LO = (mode == MODE_GLOBAL_WAIT || mode == MODE_OLDC_UNFORCED) ? S :
+             (mode == MODE_NEG_GAP_SHORT) ? -1 : 0;
         GAP = 8 + LO;
-        BLK_LEN = BW*NB + GAP*(BW-1) + S + 8*P_C;
+        DS = (mode == MODE_NEG_DRAIN_EARLY) ? S - 1 : S;
+        BLK_LEN = BW*NB + GAP*(BW-1) + DS + 8*P_C - ((mode == MODE_NEG_BLOCK_OVERLAP) ? 1 : 0);
         E_END = E0 + NBLK*BLK_LEN;               // last drain edge
         N_EDGES = E_END + 2;
         if (N_EDGES + 16 > `BPG_MAX_EDGES) $fatal(1, "schedule exceeds BPG_MAX_EDGES");
@@ -372,7 +439,8 @@ module Top;
         trace_file = $fopen("bpg_trace.txt", "w");
         if (trace_file == 0) $fatal(1, "cannot open bpg_trace.txt");
         $fwrite(trace_file, "BPGCFG %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d\n",
-                P_R, P_C, BA, BW, L, MROWS, NCOLS, NBLK, NB, GAP, LO, S, BLK_LEN, E0, mode, junk);
+                P_R, P_C, BA, BW, L, MROWS, NCOLS, NBLK, NB, GAP, LO, S, BLK_LEN, E0, mode,
+                int'(junk) | (int'(gate_junk) << 1));
         cfg_done = 1'b1;
 
         for (int e = 0; e < N_EDGES; e++) begin
@@ -394,8 +462,8 @@ module Top;
             $fatal(1, "drained %0d columns, expected %0d", n_drain, NBLK*P_R*8*P_C);
         $fclose(trace_file);
         trace_file = 0;
-        $display("PASS: BP grid bench P=%0dx%0d BA=%0d BW=%0d L=%0d MROWS=%0d NCOLS=%0d blocks=%0d block_len=%0d edges=%0d mode=%0d junk=%0d",
-                 P_R, P_C, BA, BW, L, MROWS, NCOLS, NBLK, BLK_LEN, N_EDGES, mode, junk);
+        $display("PASS: BP grid bench P=%0dx%0d BA=%0d BW=%0d L=%0d MROWS=%0d NCOLS=%0d blocks=%0d block_len=%0d edges=%0d mode=%0d junk=%0d gate_junk=%0d",
+                 P_R, P_C, BA, BW, L, MROWS, NCOLS, NBLK, BLK_LEN, N_EDGES, mode, junk, gate_junk);
         $finish;
     end
 endmodule

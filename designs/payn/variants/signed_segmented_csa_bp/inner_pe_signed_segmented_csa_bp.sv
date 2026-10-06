@@ -30,12 +30,24 @@
 // The global shift_in is then needed only for the final drain (and SC drains).
 // Asserting shift_in on lap edges as well (the as-built csa_bp_20261003b
 // contract, where ring_q only steered the west mux and the tiles shifted on
-// shift_in alone) still works: the OR is idempotent.  Timing: ring_q is a flop
-// with a full cycle; shift_in -> tile clock-gate enable gains one OR2 and
-// keeps the shift_in input budget.  A registered shift enable would give that
-// path a full cycle, but the tiles would then shift one edge after shift_in,
-// which changes the SC drain timing the CSA drop-in contract fixes, so it was
-// not taken (README, "Per-PE lap enable").
+// shift_in alone) still works: the OR is idempotent.  (On a PE grid shift_in
+// is global, so there it is legal besides drains only on edges where every PE
+// laps; see the grid header.)
+//
+// Timing: the OR makes shift_in slower, not faster.  shift_in -> tile
+// clock-gate enable and shift-mux select gain one OR2 and keep the shift_in
+// input budget (DC, zero wire load: +30 ps, slack 1.09 -> 1.06 ns); only the
+// lap path (ring_q, a flop) has a full cycle.  Routed (csa_bp_20261004_lap,
+// 400 MHz, Innovus on the final DBs, sweeps/int_mode/bp/report_bp_routed_shift_in.sh):
+// both layouts close timing.  Pinned IO: WNS +0.078 ns, and shift_in is now
+// the critical start point (-> tile pending_carry D; +0.093 to a tile clock
+// gate), against +0.361 before the OR on the csa_bp_20261003b pinned layout:
+// the OR2 itself is 40 ps, the rest is a longer buffer chain on the core
+// shift net.  Floating IO: WNS +0.076 ns on ring_q -> combiner clock gate
+// (ring_q now drives the core shift too), shift_in +0.172.  A registered shift
+// enable would give the shift_in path a full cycle, but the tiles would then
+// shift one edge after shift_in, which changes the SC drain timing the CSA
+// drop-in contract fixes, so it was not taken (README, "Per-PE lap enable").
 //
 // ring_q is reset so a reset never leaves a stray lap.  Because ring_q now
 // shifts the tiles by itself, ring_in must be low except one edge ahead of

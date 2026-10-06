@@ -32,6 +32,19 @@ bp_path "ring return (east tile -> <<1 -> ring mux -> west tile)" \
     [data_pins [seq_cells "${core}/g_row_*__g_col_0__u_inner/*"]]
 bp_path "ring_q -> ring mux / combiner capture" [clk_pins [seq_cells "u_pe/ring_q_reg*"]] ""
 bp_path "shift_in port -> anywhere (CSA route worst path: tile clock-gate enable)" [get_ports shift_in] ""
+# Per-PE lap enable (csa_bp_20261004_lap): tile shift = shift_in | ring_q, so
+# both now reach the tiles' acc_high clock gates.  Through the gates' EN pins
+# (the DC clock-gate wrappers), ending at the integrated clock gate's check.
+set tile_cg_en [get_pins -hier * -filter "full_name=~${core}/*clk_gate_acc_high_reg*/EN"]
+puts "BP_INFO tile acc_high clock-gate EN pins: [sizeof_collection $tile_cg_en]"
+proc bp_path_thru {label from thru} {
+    puts "BP_PATH $label"
+    report_timing -nosplit -from $from -through $thru -max_paths 1
+}
+bp_path_thru "shift_in port -> tile acc_high clock-gate enable" [get_ports shift_in] $tile_cg_en
+bp_path_thru "ring_q -> tile acc_high clock-gate enable" [clk_pins [seq_cells "u_pe/ring_q_reg*"]] $tile_cg_en
+bp_path "ring_q -> tile acc_low register (shift mux select)" [clk_pins [seq_cells "u_pe/ring_q_reg*"]] \
+    [data_pins [seq_cells "${core}/g_row_*__g_col_*__u_inner/acc_low_reg*"]]
 bp_path "mac_en port -> anywhere (through the mode guard)" [get_ports mac_en] ""
 bp_path "int_mode port -> anywhere (guard XNOR, ring gate, capture, mode register)" [get_ports int_mode] ""
 bp_path "int_mode_q -> select tree -> bit pipes" [clk_pins [seq_cells "int_mode_q_reg*"]] ""

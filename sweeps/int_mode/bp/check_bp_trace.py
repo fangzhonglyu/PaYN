@@ -55,10 +55,15 @@ def main() -> int:
     if not lines or not lines[0].startswith("BPTCFG"):
         raise SystemExit("missing BPTCFG header")
     cfg = [int(x) for x in lines[0].split()[1:]]
-    if len(cfg) != 14:
-        raise SystemExit(f"BPTCFG has {len(cfg)} fields, expected 14")
+    # 14 fields (power bench, pre-lap-enable INT bench) or 15 (+ neg_ring_stray).
+    # Field 12 is lap_ring_only (shift_in on drain edges only); it was named
+    # neg_no_lap_shift while the laps needed shift_in, and keeps that alias.
+    if len(cfg) not in (14, 15):
+        raise SystemExit(f"BPTCFG has {len(cfg)} fields, expected 14 or 15")
+    if len(cfg) == 14:
+        cfg.append(0)
     (ba, bw, L, mrows, ncols, nblk, nb, int_prec, junk, neg_no_ring, neg_prec,
-     neg_no_lap_shift, neg_mag, mode_at) = cfg
+     lap_ring_only, neg_mag, mode_at, neg_ring_stray) = cfg
     rows_pe = 8 // ba
     njg = ncols // 8
     if nblk != (mrows // rows_pe) * njg or nb != L // 128:
@@ -145,7 +150,8 @@ def main() -> int:
         status="PASS" if not mismatches and coverage_ok else "FAIL",
         precision=prec, ba=ba, bw=bw, L=L, mrows=mrows, ncols=ncols, blocks=nblk, nb=nb,
         int_prec=int_prec, junk=junk, neg_no_ring=neg_no_ring, neg_prec=neg_prec,
-        neg_no_lap_shift=neg_no_lap_shift, neg_mag=neg_mag, mode_at=mode_at,
+        lap_ring_only=lap_ring_only, neg_no_lap_shift=lap_ring_only, neg_ring_stray=neg_ring_stray,
+        neg_mag=neg_mag, mode_at=mode_at,
         coverage_ok=coverage_ok, duplicates=dup[:8],
         tiles_checked=nblk * 64, outputs_checked=nblk * rows_pe * 8, macs=macs,
         max_abs_tile=max_abs_tile, max_abs_output=max_abs_out,

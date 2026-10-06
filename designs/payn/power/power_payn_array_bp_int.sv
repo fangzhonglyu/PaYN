@@ -37,9 +37,14 @@
 //    with load_w + load_w_sign at P_e for a pass whose first raw plane is
 //    captured at P_{e+1}.
 //  * Ring lap: ring_in high one edge ahead of each of the N_W lap edges (the
-//    PE registers it as ring_q), shift_in high on the lap edges.  Drain:
-//    shift_in with ring_q low.  Zero raw planes (bubbles) during laps and
-//    drains.  mac_en = 1 from P_{E0+1}.  int_prec = (BA == 4), static.
+//    PE registers it as ring_q), shift_in high on the lap edges (the
+//    csa_bp_20261003b contract, still legal on the single-PE top because the
+//    tile shift is shift_in | ring_q).  With BPE_LAP_RING_ONLY = 1 (plusarg
+//    +LAP_RING_ONLY=1) shift_in is high on drain edges only and ring_q alone
+//    shifts the tiles on lap edges: the per-PE lap-enable contract of
+//    csa_bp_20261004_lap (on csa_bp_20261003b that mode fails by design).
+//    Drain: shift_in with ring_q low.  Zero raw planes (bubbles) during laps
+//    and drains.  mac_en = 1 from P_{E0+1}.  int_prec = (BA == 4), static.
 //
 // Schedule (edge P_e = e-th posedge after the post-reset settle).  Inside a
 // block, pass pi (q = BW-1-pi) occupies PASS_LEN = NB + 8 edges: u = 0..NB-1
@@ -76,21 +81,69 @@
 // window counts in bpe_saif.txt against the schedule).
 //
 // Configuration: compile-time defines BPE_BA, BPE_BW, BPE_L, BPE_MROWS,
-// BPE_NCOLS, BPE_SAIF_MODE, BPE_MODE_AT (what the routed driver uses, since
-// make sim passes no runtime arguments), each overridable at run time by the
-// plusarg of the same name without the prefix (+BA=4 +SAIF_MODE=2 ...).
+// BPE_NCOLS, BPE_SAIF_MODE, BPE_MODE_AT, BPE_LAP_RING_ONLY (what the routed
+// driver uses, since make sim passes no runtime arguments), each overridable
+// at run time by the plusarg of the same name without the prefix (+BA=4
+// +SAIF_MODE=2 +LAP_RING_ONLY=1 ...).  The trace header carries lap_ring_only
+// in field 12 (the functional bench's position); the PASS line gains
+// " lap_ring_only=1" only in that mode, so default runs print what they always
+// printed.
 // Operands: bpt_a.hex (A row-major, MROWS x L) and bpt_w.hex (W column-major,
 // W[x, j] at j*L + x), one two's-complement byte per line, in the run
 // directory (sweeps/int_mode/gen_bitplane_workload.py writes them as
 // intb_*.hex; the drivers copy them).  RTL needs DesignWare (USE_DW=1) and is
 // instantiated with LOW_W = 9 like the route.
+//
+// Opt-in extensions (sweeps/int_mode/bp/sr/run_int_energy_prelayout_ab.sh);
+// none of them is active by default, and a default run prints, writes and
+// drives exactly what it did before they existed:
+//  * BPE_LAP_LEN (plusarg +LAP_LEN), default 8 = N_W (the BP ring): the
+//    lap length g of the sub-ring / in-place-doubling tops.  A non-final pass
+//    takes PASS_LEN = NB + g edges (ring_in on g consecutive edges, one ahead
+//    of the g lap edges = the last g-1 edges of the pass and u = 0 of the
+//    next), the final pass LAST_LEN = NB + 8 (the drain), so a block is
+//    BLK_LEN = BW*NB + g*(BW-1) + 8 edges (the schedule of
+//    designs/payn/tb/test_payn_array_bp_ipd.sv at +LAP_LEN=g).  With g = 8,
+//    PASS_LEN = LAST_LEN = NB + 8: the default schedule edge for edge.  For
+//    g != 8 the PASS line gains " lap_len=<g>" and bpe_saif.txt a
+//    "BPELAP g PASS_LEN LAST_LEN BLK_LEN" line.
+//  * BPE_DUT_SR (with PAYN_LAP_G=<g>) / BPE_DUT_IPD: RTL against the
+//    sub-ring top payn_array_signed_segmented_csa_bp_sr or the in-place top
+//    payn_array_signed_segmented_csa_bp_ipd (same ports); GL runs name the
+//    netlist top with PAYN_ARRAY_DUT as before.
+//  * BPE_SAIF_MODE 3 / 4: the windows of modes 1 / 0 classed by CAUSE
+//    instead of by interval count.  Interval I_e is a MAC interval if edge
+//    P_e is neither a shift edge nor E0 (the first capture, which has no MAC),
+//    a LAP interval if P_e is a ring-lap shift, a DRAIN interval if it is a
+//    drain shift; e runs over (E0, E_END).  Mode 3 collects MAC intervals,
+//    mode 4 MAC + LAP intervals.  The class counts and the segment counts
+//    equal those of modes 1 / 0 (blocks*BW*NB MAC, blocks*(BW-1)*g LAP; one
+//    MAC interval per pass moves from the pass's first slot u = 0, the lap
+//    or drain shift that closes the previous pass, to its last MAC u = NB),
+//    so every lap edge's response is in the LAP class whatever g is.
+//    Modes 0-2 are unchanged.
 
 `ifndef GL_SIM
+`ifdef BPE_DUT_SR
+`include "payn/variants/signed_segmented_csa_bp_sr/payn_array_signed_segmented_csa_bp_sr.sv"
+`elsif BPE_DUT_IPD
+`include "payn/variants/signed_segmented_csa_bp_ipd/payn_array_signed_segmented_csa_bp_ipd.sv"
+`else
 `include "payn/variants/signed_segmented_csa_bp/payn_array_signed_segmented_csa_bp.sv"
+`endif
 `endif
 
 `ifndef PAYN_ARRAY_DUT
+`ifdef BPE_DUT_SR
+`define PAYN_ARRAY_DUT payn_array_signed_segmented_csa_bp_sr
+`elsif BPE_DUT_IPD
+`define PAYN_ARRAY_DUT payn_array_signed_segmented_csa_bp_ipd
+`else
 `define PAYN_ARRAY_DUT payn_array_signed_segmented_csa_bp
+`endif
+`endif
+`ifndef BPE_LAP_LEN
+`define BPE_LAP_LEN 8
 `endif
 `ifndef BPE_BA
 `define BPE_BA 8
@@ -112,6 +165,9 @@
 `endif
 `ifndef BPE_MODE_AT
 `define BPE_MODE_AT 1
+`endif
+`ifndef BPE_LAP_RING_ONLY
+`define BPE_LAP_RING_ONLY 0
 `endif
 `ifndef BPE_LOW_W
 `define BPE_LOW_W 9
@@ -138,7 +194,9 @@ module Top;
     int BA = `BPE_BA, BW = `BPE_BW, L = `BPE_L;
     int MROWS = `BPE_MROWS, NCOLS = `BPE_NCOLS;
     int SAIF_MODE = `BPE_SAIF_MODE, MODE_AT = `BPE_MODE_AT;
-    int NB, ROWS_PE, NIG, NJG, NBLK, PASS_LEN, BLK_LEN;
+    int LAP_RING_ONLY = `BPE_LAP_RING_ONLY;
+    int LAP_LEN = `BPE_LAP_LEN;
+    int NB, ROWS_PE, NIG, NJG, NBLK, PASS_LEN, LAST_LEN, BLK_LEN;
     int E_DATA_END, E_END, N_EDGES;
     logic [N_H*K-1:0] a_sign_word;
 
@@ -221,15 +279,21 @@ module Top;
         blk = r / BLK_LEN;
         r = r % BLK_LEN;
         pi = r / PASS_LEN;
-        u = r % PASS_LEN;
+        if (pi > BW - 1) pi = BW - 1;           // the final pass is LAST_LEN long
+        u = r - pi*PASS_LEN;                    // (LAP_LEN = 8: r % PASS_LEN)
     endfunction
 
-    // The tile array shifts at P_e (ring lap or drain).
+    // The tile array shifts at P_e (ring lap or drain).  u = 0 closes the
+    // previous pass's lap (pi >= 1) or the previous block's drain (pi = 0); a
+    // non-final pass laps on its last LAP_LEN-1 edges, the final pass drains
+    // on u >= NB+1 (LAP_LEN = 8: every pass shifts on u >= NB+1).
     function automatic bit core_shift_at(input int e);
         int blk, pi, u;
         if (e <= E0 || e > E_END) return 1'b0;
         decode(e, blk, pi, u);
-        return (u == 0) || (u >= NB + 1);
+        if (u == 0) return 1'b1;
+        if (pi < BW - 1) return u >= PASS_LEN - LAP_LEN + 1;
+        return u >= NB + 1;
     endfunction
 
     // The shift at P_e is a ring-lap shift.
@@ -266,8 +330,21 @@ module Top;
         return (pi < BW - 1) ? 1 : 2;
     endfunction
 
+    // Modes 3 / 4: the class of interval I_e by the edge that causes it;
+    // -1 outside (E0, E_END), 0 = MAC (P_e does not shift), 1 = ring-lap
+    // shift, 2 = drain shift.
+    function automatic int cause_class(input int e);
+        if (e <= E0 || e >= E_END) return -1;
+        if (!core_shift_at(e)) return 0;
+        return ring_at(e) ? 1 : 2;
+    endfunction
+
     function automatic bit interval_active(input int e);
         int c;
+        if (SAIF_MODE >= 3) begin
+            c = cause_class(e);
+            return (c == 0) || (SAIF_MODE == 4 && c == 1);
+        end
         if (e < E0 || e >= E_END) return 1'b0;
         c = interval_class(e);
         case (SAIF_MODE)
@@ -396,10 +473,15 @@ module Top;
         void'($value$plusargs("NCOLS=%d", NCOLS));
         void'($value$plusargs("SAIF_MODE=%d", SAIF_MODE));
         void'($value$plusargs("MODE_AT=%d", MODE_AT));
+        void'($value$plusargs("LAP_RING_ONLY=%d", LAP_RING_ONLY));
+        void'($value$plusargs("LAP_LEN=%d", LAP_LEN));
 
         if (!(BA == 8 || BA == 4)) $fatal(1, "BA must be 4 or 8 (got %0d)", BA);
         if (!(BW == 8 || BW == 4)) $fatal(1, "BW must be 4 or 8 (got %0d)", BW);
-        if (!(SAIF_MODE >= 0 && SAIF_MODE <= 2)) $fatal(1, "SAIF_MODE must be 0, 1 or 2 (got %0d)", SAIF_MODE);
+        if (!(SAIF_MODE >= 0 && SAIF_MODE <= 4)) $fatal(1, "SAIF_MODE must be 0, 1, 2, 3 or 4 (got %0d)", SAIF_MODE);
+        if (!(LAP_LEN == 1 || LAP_LEN == 2 || LAP_LEN == 4 || LAP_LEN == N_W))
+            $fatal(1, "LAP_LEN must be 1, 2, 4 or %0d (got %0d)", N_W, LAP_LEN);
+        if (!(LAP_RING_ONLY == 0 || LAP_RING_ONLY == 1)) $fatal(1, "LAP_RING_ONLY must be 0 or 1 (got %0d)", LAP_RING_ONLY);
         if (!(MODE_AT == -1 || (MODE_AT >= 0 && MODE_AT <= E0 - 1)))
             $fatal(1, "MODE_AT must be -1 or 0..%0d (got %0d)", E0 - 1, MODE_AT);
         if (L < K*M || L % (K*M) != 0) $fatal(1, "L=%0d must be a positive multiple of %0d", L, K*M);
@@ -413,8 +495,9 @@ module Top;
         NIG = MROWS / ROWS_PE;
         NJG = NCOLS / N_W;
         NBLK = NIG * NJG;
-        PASS_LEN = NB + N_W;                    // data + one 8-shift lap
-        BLK_LEN = BW * PASS_LEN;
+        PASS_LEN = NB + LAP_LEN;                // data + one LAP_LEN-shift lap
+        LAST_LEN = NB + N_W;                    // data + the 8-shift drain
+        BLK_LEN = (BW - 1) * PASS_LEN + LAST_LEN;   // LAP_LEN = 8: BW * PASS_LEN
         E_DATA_END = E0 + NBLK*BLK_LEN;
         E_END = E_DATA_END;                     // final drain edge
         N_EDGES = E_END + 3;                    // + combiner latency
@@ -434,9 +517,10 @@ module Top;
 
         trace_file = $fopen("bpt_trace.txt", "w");
         if (trace_file == 0) $fatal(1, "cannot open bpt_trace.txt");
-        // check_bp_trace.py's 14-field header: no JUNK / negative controls.
+        // check_bp_trace.py's 14-field header: no JUNK / negative controls;
+        // field 12 is lap_ring_only.
         $fwrite(trace_file, "BPTCFG %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d\n",
-                BA, BW, L, MROWS, NCOLS, NBLK, NB, int_prec, 0, 0, 0, 0, 0, MODE_AT);
+                BA, BW, L, MROWS, NCOLS, NBLK, NB, int_prec, 0, 0, 0, LAP_RING_ONLY, 0, MODE_AT);
 
 `ifdef GL_SIM
         $set_gate_level_monitoring("rtl_on");
@@ -452,7 +536,7 @@ module Top;
             set_raw(e);
             set_signs(e);
             ring_in = ring_at(e + 1);
-            shift_in = core_shift_at(e);
+            shift_in = LAP_RING_ONLY ? drain_at(e) : core_shift_at(e);
             mac_en = (e > E0);                   // first MAC at P_{E0+1}
             @(posedge clk);                      // P_e
             read_drain(e);                       // pre-edge acc_out_east
@@ -465,7 +549,7 @@ module Top;
                     n_segments++;
                 end
                 n_active++;
-                case (interval_class(e))
+                case ((SAIF_MODE >= 3) ? cause_class(e) : interval_class(e))
                     0: n_data++;
                     1: n_ring++;
                     default: n_drain_iv++;
@@ -495,9 +579,13 @@ module Top;
                 BA, BW, L, MROWS, NCOLS, NBLK, NB, SAIF_MODE, MODE_AT, E0, E_END, N_EDGES);
         $fwrite(saif_file, "SAIFWIN %0d %0d %0d %0d %0d\n",
                 n_active, n_data, n_ring, n_drain_iv, n_segments);
+        if (LAP_LEN != N_W)
+            $fwrite(saif_file, "BPELAP %0d %0d %0d %0d\n", LAP_LEN, PASS_LEN, LAST_LEN, BLK_LEN);
         $fclose(saif_file);
-        $display("PASS: BP INT SAIF captured; BA=%0d BW=%0d L=%0d blocks=%0d mode=%0d active=%0d drained=%0d combined=%0d",
-                 BA, BW, L, NBLK, SAIF_MODE, n_active, n_drain, n_comb);
+        $display("PASS: BP INT SAIF captured; BA=%0d BW=%0d L=%0d blocks=%0d mode=%0d active=%0d drained=%0d combined=%0d%s%s",
+                 BA, BW, L, NBLK, SAIF_MODE, n_active, n_drain, n_comb,
+                 LAP_RING_ONLY ? " lap_ring_only=1" : "",
+                 (LAP_LEN != N_W) ? $sformatf(" lap_len=%0d", LAP_LEN) : "");
         $finish;
     end
 endmodule

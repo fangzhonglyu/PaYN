@@ -19,15 +19,27 @@
 #     max x min, -1 x min, alternating; L = 128 .. 4096 plus near-limit
 #     lengths (INT8 65,408; W4A8 / INT4 1,048,448: tiles within 2^14 of 2^23,
 #     outputs up to ~2^30), multi-block, back-to-back output blocks;
-#     adversarial JUNK runs; the latest legal int_mode rise (MODE_AT=3); and
+#     adversarial JUNK runs; the latest legal int_mode rise (MODE_AT=3); the
+#     per-PE lap-enable contract (LAP_RING_ONLY: shift_in on drain edges only,
+#     laps on ring_q alone; csa_bp_20261004_lap) for every precision, JUNK,
+#     MODE_AT=3 and a near-limit length, beside the as-built contract (shift_in
+#     on lap edges too, still legal); and
 #     negative controls, each with the failure mode it must show (CHECK:
 #     checker mismatch, TIMING: the bench's [TIMING-FAIL], CONTRACT: the top's
 #     [BP-CONTRACT] simulation check).  Every drained tile and combiner word is
 #     checked against numpy int64 by sweeps/int_mode/bp/check_bp_trace.py.
 #     One compile serves all cases.
+# (c) Optional (PARTS=asbuilt, not in the default preflight): the same INT
+#     bench compiled against the as-built csa_bp_20261003b RTL snapshot
+#     (ASBUILT_SNAPSHOT, the routed INT-energy campaign's include closure), to
+#     show the lap-enable cases discriminate the two RTLs: the old contract
+#     passes on both, LAP_RING_ONLY must FAIL on the as-built RTL (ring_q did
+#     not shift), and NEG_RING_STRAY must PASS there (a stray ring pulse
+#     without shift_in was harmless).
 #
-#   bash sweeps/run_csa_bp_rtl_checks.sh            # everything
+#   bash sweeps/run_csa_bp_rtl_checks.sh            # (a) and (b)
 #   PARTS=int bash sweeps/run_csa_bp_rtl_checks.sh  # only (b); PARTS=sc only (a)
+#   PARTS=asbuilt bash sweeps/run_csa_bp_rtl_checks.sh   # only (c)
 # Logs: build/rtl_preflight/csa_bp_*.log, per-case dirs build/rtl_preflight/csa_bp_int/.
 set -euo pipefail
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
@@ -142,11 +154,23 @@ int4_minxmax_L1024_m2n8          4 4    1024 2  8 minxmax     0 -               
 int4_alternating_L384_m4n8       4 4     384 4  8 alternating 0 -                pass
 int4_uniform_L256_m2n16_junk     4 4     256 2 16 uniform    23 JUNK             pass
 int4_allmin_L1048448_m2n8        4 4 1048448 2  8 allmin      0 -                pass
+int8_uniform_L256_m1n8_lapring   8 8     256 1  8 uniform    33 LAP_RING_ONLY    pass
+int8_uniform_L1024_m2n16_lapring 8 8    1024 2 16 uniform     3 LAP_RING_ONLY    pass
+int8_alternating_L1024_m2n8_lapring 8 8 1024 2  8 alternating 0 LAP_RING_ONLY    pass
+int8_uniform_L256_m2n16_junk_lapring 8 8 256 2 16 uniform     6 JUNK,LAP_RING_ONLY pass
+int8_uniform_L256_m2n8_modeat3_lapring 8 8 256 2 8 uniform    7 MODE_AT=3,LAP_RING_ONLY pass
+int8_neg1xmin_L65408_m1n8_lapring 8 8  65408 1  8 neg1xmin    0 LAP_RING_ONLY    pass
+w4a8_uniform_L1024_m2n16_lapring 8 4    1024 2 16 uniform    12 LAP_RING_ONLY    pass
+w4a8_uniform_L256_m3n8_junk_lapring 8 4  256 3  8 uniform    13 JUNK,LAP_RING_ONLY pass
+int4_uniform_L1024_m4n16_lapring 4 4    1024 4 16 uniform    22 LAP_RING_ONLY    pass
+int4_uniform_L256_m2n16_junk_lapring 4 4 256 2 16 uniform    23 JUNK,LAP_RING_ONLY pass
 neg_int8_noring_L256_m1n8        8 8     256 1  8 uniform    31 NEG_NO_RING      fail:TIMING
 neg_int4_prec_L256_m2n8          4 4     256 2  8 uniform    32 NEG_PREC         fail:CHECK
-neg_int8_nolapshift_L256_m1n8    8 8     256 1  8 uniform    33 NEG_NO_LAP_SHIFT fail:CHECK
 neg_int8_mag_L256_m1n8           8 8     256 1  8 uniform    34 NEG_MAG          fail:CONTRACT
 neg_int8_modeat4_L256_m1n8       8 8     256 1  8 uniform    35 MODE_AT=4        fail:CHECK
+neg_int8_ringstray_L256_m1n8     8 8     256 1  8 uniform    36 NEG_RING_STRAY   fail:CHECK
+neg_int8_ringstray_L256_m1n8_lapring 8 8 256 1  8 uniform    37 NEG_RING_STRAY,LAP_RING_ONLY fail:CHECK
+neg_int8_noring_L256_m1n8_lapring 8 8    256 1  8 uniform    38 NEG_NO_RING,LAP_RING_ONLY fail:CHECK
 EOF
 )
 
@@ -208,12 +232,45 @@ run_int() {
     return "$status"
 }
 
+#------------------------------------------------ (c) as-built cross-check --
+ASBUILT_SNAPSHOT=${ASBUILT_SNAPSHOT:-build/power_char/int_mode_energy_20261003/bp/csa_bp_20261003b_distguide_spp_pins/rtl_snapshot}
+ASB_DIR=$OUT/csa_bp_int_asbuilt
+# label BA BW L MROWS NCOLS DIST SEED FLAGS EXPECT  (on the as-built RTL)
+ASB_CASES=$(cat <<'EOF'
+int8_uniform_L256_m1n8_lapshift  8 8     256 1  8 uniform    33 -                pass
+int8_uniform_L256_m1n8_lapring   8 8     256 1  8 uniform    33 LAP_RING_ONLY    fail:CHECK
+int4_uniform_L256_m2n16_lapring  4 4     256 2 16 uniform    23 LAP_RING_ONLY    fail:CHECK
+int8_ringstray_L256_m1n8         8 8     256 1  8 uniform    36 NEG_RING_STRAY   pass
+EOF
+)
+run_asbuilt() {
+    local b="$ASB_DIR/build" status=0
+    [[ -d "$ASBUILT_SNAPSHOT/payn/variants/signed_segmented_csa_bp" ]] \
+        || { echo "as-built snapshot missing: $ASBUILT_SNAPSHOT"; return 1; }
+    rm -rf "$ASB_DIR"; mkdir -p "$b"
+    vcs -sverilog +vc -Mupdate -line -full64 -xprop=tmerge -lca -debug_access+pp \
+        +incdir+"$ASBUILT_SNAPSHOT" +incdir+designs -assert svaext -timescale=1ns/1ps \
+        -o "$b/simv" -Mdir="$b/obj" -y "$SYNOPSYS/dw/sim_ver" +libext+.v+ +incdir+"$SYNOPSYS/dw/sim_ver" \
+        "$TB" -top Top > "$ASB_DIR/compile.log" 2>&1 || { echo "as-built compile FAILED"; return 1; }
+    grep -q "$ASBUILT_SNAPSHOT/payn/variants/signed_segmented_csa_bp/inner_pe_signed_segmented_csa_bp.sv" \
+        "$ASB_DIR/compile.log" || { echo "as-built compile did not read the snapshot PE"; return 1; }
+    INT_DIR=$ASB_DIR
+    while read -r label ba bw L mrows ncols dist seed flags expect; do
+        [[ -n "$label" ]] || continue
+        int_case "$REPO/$b/simv" "$label" "$ba" "$bw" "$L" "$mrows" "$ncols" "$dist" "$seed" "$flags" "$expect" || status=1
+    done <<< "$ASB_CASES"
+    echo "as-built cross-check: $(grep -c . <<< "$ASB_CASES") cases, status $([[ $status == 0 ]] && echo PASS || echo FAIL)"
+    return "$status"
+}
+
 status=0
 pids=()
 [[ " $PARTS " == *" sc "* ]] && { run_sc > "$OUT/csa_bp_sc_summary.log" 2>&1 & pids+=("$!"); }
 [[ " $PARTS " == *" int "* ]] && { run_int > "$OUT/csa_bp_int.log" 2>&1 & pids+=("$!"); }
+[[ " $PARTS " == *" asbuilt "* ]] && { run_asbuilt > "$OUT/csa_bp_int_asbuilt.log" 2>&1 & pids+=("$!"); }
 for pid in "${pids[@]}"; do wait "$pid" || status=1; done
 if [[ " $PARTS " == *" sc "* ]]; then echo "== $OUT/csa_bp_sc_summary.log"; cat "$OUT/csa_bp_sc_summary.log"; fi
 if [[ " $PARTS " == *" int "* ]]; then echo "== $OUT/csa_bp_int.log"; sort "$OUT/csa_bp_int.log"; fi
+if [[ " $PARTS " == *" asbuilt "* ]]; then echo "== $OUT/csa_bp_int_asbuilt.log"; cat "$OUT/csa_bp_int_asbuilt.log"; fi
 echo "csa_bp RTL checks: $([[ $status == 0 ]] && echo PASS || echo FAIL)"
 exit "$status"

@@ -7,11 +7,15 @@
 #       (build/rtl_preflight/csa_bp_sc_stream from run_csa_bp_rtl_checks.sh).
 #   (b) INT: designs/payn/tb/test_payn_array_bp.sv on the real ports, a subset
 #       of the RTL matrix (all three precisions, multi-block, extremes, JUNK,
-#       the latest legal int_mode rise, a near-limit INT8 reduction), checked by
-#       sweeps/int_mode/bp/check_bp_trace.py; GL traces must equal the RTL ones.
+#       the latest legal int_mode rise, a near-limit INT8 reduction, and the
+#       per-PE lap-enable contract LAP_RING_ONLY plus its stray-ring negative
+#       control), checked by sweeps/int_mode/bp/check_bp_trace.py; GL traces
+#       must equal the RTL ones.
 # Functional only: timing is signed off by STA; this proves the netlist
 # implements the RTL (clock gating, multibit banking, reset mapping).
-#   bash sweeps/run_csa_bp_syn_gl_checks.sh            # RUN=csa_bp_20261003b
+#   bash sweeps/run_csa_bp_syn_gl_checks.sh            # RUN=csa_bp_20261004_lap
+# (The LAP_RING_ONLY cases need the lap-enable netlist; on csa_bp_20261003b
+# they fail by design.)
 set -euo pipefail
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$REPO"
@@ -26,7 +30,7 @@ export ASTRAEA_FLOW=${ASTRAEA_FLOW:-$(cd "$REPO/../ASTRAEA" && pwd)}
 export NTFY_CHNL=
 unset NETLIST_FILE SDC_FILE SDF_FILE VCS_ARGS
 TARGET=TSMC22/PAYN_SC_CSA_BP
-RUN=${RUN:-csa_bp_20261003b}
+RUN=${RUN:-csa_bp_20261004_lap}
 TOP=payn_array_signed_segmented_csa_bp
 OUT=build/rtl_preflight
 MAX_JOBS=${MAX_JOBS:-8}
@@ -62,11 +66,16 @@ w4a8_minxmax_L1024_m1n8        8 4 1024 1  8 minxmax     0 -           pass
 int4_uniform_L1024_m4n16       4 4 1024 4 16 uniform    22 -           pass
 int4_allmin_L1024_m2n8         4 4 1024 2  8 allmin      0 -           pass
 int4_uniform_L256_m2n16_junk   4 4  256 2 16 uniform    23 JUNK        pass
+int8_uniform_L1024_m2n16_lapring 8 8 1024 2 16 uniform   3 LAP_RING_ONLY pass
+int8_uniform_L256_m2n16_junk_lapring 8 8 256 2 16 uniform 6 JUNK,LAP_RING_ONLY pass
+w4a8_uniform_L1024_m2n16_lapring 8 4 1024 2 16 uniform  12 LAP_RING_ONLY pass
+int4_uniform_L256_m2n16_junk_lapring 4 4 256 2 16 uniform 23 JUNK,LAP_RING_ONLY pass
+neg_int8_ringstray_L256_m1n8   8 8  256 1  8 uniform    36 NEG_RING_STRAY fail:CHECK
 EOF
 )
 
-int_case() {   # simv label BA BW L MROWS NCOLS DIST SEED FLAGS
-    local simv=$1 label=$2 ba=$3 bw=$4 L=$5 mrows=$6 ncols=$7 dist=$8 seed=$9 flags=${10}
+int_case() {   # simv label BA BW L MROWS NCOLS DIST SEED FLAGS EXPECT (pass | fail:CHECK)
+    local simv=$1 label=$2 ba=$3 bw=$4 L=$5 mrows=$6 ncols=$7 dist=$8 seed=$9 flags=${10} expect=${11:-pass}
     local dir="$INT_DIR/$label" plus=() fl x
     if [[ "$flags" != - ]]; then
         IFS=, read -ra fl <<< "$flags"
@@ -78,6 +87,20 @@ int_case() {   # simv label BA BW L MROWS NCOLS DIST SEED FLAGS
     (cd "$dir" && "$simv" +BA="$ba" +BW="$bw" +L="$L" +MROWS="$mrows" +NCOLS="$ncols" "${plus[@]}" \
         > sim.log 2>&1) || { echo "$label: FAIL (simulation error, see $dir/sim.log)"; return 1; }
     grep -q '^PASS: BP INT bench' "$dir/sim.log" || { echo "$label: FAIL (no bench PASS)"; return 1; }
+    if [[ "$expect" == fail:CHECK ]]; then
+        # Negative control: the checker must fail, and the GL trace must still
+        # equal the RTL trace (the netlist fails the same way).
+        if python3 sweeps/int_mode/bp/check_bp_trace.py "$dir" --json "$dir/check.json" > "$dir/check.log" 2>&1; then
+            echo "$label: FAIL (negative control not caught)"; return 1
+        fi
+        grep -q '^\[FAIL\]' "$dir/check.log" || { echo "$label: FAIL (checker error)"; return 1; }
+        if [[ -f "$OUT/csa_bp_int/$label/bpt_trace.txt" ]]; then
+            cmp -s "$dir/bpt_trace.txt" "$OUT/csa_bp_int/$label/bpt_trace.txt" \
+                || { echo "$label: FAIL (GL trace differs from RTL trace)"; return 1; }
+        fi
+        echo "$label: PASS (negative control caught, GL trace identical to RTL: $(tail -n 1 "$dir/check.log" | sed 's/^\[FAIL\] //'))"
+        return 0
+    fi
     python3 sweeps/int_mode/bp/check_bp_trace.py "$dir" --json "$dir/check.json" > "$dir/check.log" 2>&1 \
         || { echo "$label: FAIL $(tail -n 1 "$dir/check.log")"; return 1; }
     # Same operands as the RTL matrix: the drained trace must be identical.
@@ -102,7 +125,7 @@ run_int() {
     simv="$REPO/$build/$TB/simv"
     while read -r label ba bw L mrows ncols dist seed flags expect; do
         [[ -n "$label" ]] || continue
-        int_case "$simv" "$label" "$ba" "$bw" "$L" "$mrows" "$ncols" "$dist" "$seed" "$flags" &
+        int_case "$simv" "$label" "$ba" "$bw" "$L" "$mrows" "$ncols" "$dist" "$seed" "$flags" "$expect" &
         while (( $(jobs -rp | wc -l) >= MAX_JOBS )); do wait -n || status=1; done
     done <<< "$CASES"
     while (( $(jobs -rp | wc -l) > 0 )); do wait -n || status=1; done

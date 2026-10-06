@@ -56,6 +56,9 @@ POINTS=${POINTS:-$BPE_DEFAULT_POINTS}
 SYN_POINTS=${SYN_POINTS:-"int8_uniform_L49152_d int8_uniform_L1024_dr int8_uniform_L1024_all int4_gauss_L1024_dr w4a8_relu_L98304_d"}
 SYN_RUN=${SYN_RUN:-csa_bp_20261003b}
 MAX_JOBS=${MAX_JOBS:-8}
+# BPE_LAP_RING_ONLY=1 (bp_int_energy_lib.sh): laps on ring_q alone, checked as such.
+LAPCHK=()
+[[ "$BPE_LAP_RING_ONLY" == 0 ]] || LAPCHK=(--lap-ring-only)
 TB=$BPE_TB
 OUT=build/rtl_preflight
 EMU=build/power_char/int_mode_energy_20261003/bitplane
@@ -78,7 +81,7 @@ rtl_point() (
         VCS_ARGS="${defs//+define/ +define}" > "$dir/simulation.log" 2>&1 \
         || { echo "$label: FAIL (simulation error, see $dir/simulation.log)"; exit 1; }
     grep -Fq "$pass" "$dir/simulation.log" || { echo "$label: FAIL (no '$pass')"; exit 1; }
-    python3 sweeps/int_mode/bp/check_bp_power_trace.py "$dir/$TB" --json "$dir/check.json" > "$dir/check.log" 2>&1 \
+    python3 sweeps/int_mode/bp/check_bp_power_trace.py "$dir/$TB" --json "$dir/check.json" "${LAPCHK[@]}" > "$dir/check.log" 2>&1 \
         || { echo "$label: FAIL $(tail -n 1 "$dir/check.log")"; exit 1; }
     if [[ -f "$EMU/$label/stim/intb_a.hex" ]]; then
         cmp -s "$dir/stim/intb_a.hex" "$EMU/$label/stim/intb_a.hex" && cmp -s "$dir/stim/intb_w.hex" "$EMU/$label/stim/intb_w.hex" \
@@ -134,7 +137,7 @@ syngl_point() (
     if grep -nE '\[X-FAIL\]|\[TIMING-FAIL\]|TIMEOUT @|Error-\[' "$dir/simulation.log" > "$dir/errors.txt"; then
         echo "$label: FAIL (errors in log, see $dir/errors.txt)"; exit 1
     fi
-    python3 sweeps/int_mode/bp/check_bp_power_trace.py "$dir/$TB" --json "$dir/check.json" > "$dir/check.log" 2>&1 \
+    python3 sweeps/int_mode/bp/check_bp_power_trace.py "$dir/$TB" --json "$dir/check.json" "${LAPCHK[@]}" > "$dir/check.log" 2>&1 \
         || { echo "$label: FAIL $(tail -n 1 "$dir/check.log")"; exit 1; }
     cmp -s "$dir/$TB/bpt_trace.txt" "$rtl/bpt_trace.txt" || { echo "$label: FAIL (GL trace differs from RTL)"; exit 1; }
     cmp -s "$dir/$TB/bpe_saif.txt" "$rtl/bpe_saif.txt" || { echo "$label: FAIL (GL window record differs from RTL)"; exit 1; }

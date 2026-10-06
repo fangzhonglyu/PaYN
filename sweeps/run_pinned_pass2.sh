@@ -3,6 +3,20 @@
 #   bash sweeps/run_pinned_pass2.sh                 # csa_bp and csa
 #   bash sweeps/run_pinned_pass2.sh csa_bp          # one arm
 #   RETRY_FAILED=1 bash sweeps/run_pinned_pass2.sh  # retry failed stages
+#   bash sweeps/run_pinned_pass2.sh csa_bp_lap      # per-PE lap-enable BP netlist
+#
+# Arm csa_bp_lap (2026-10-04): the same recipe on the bit-plane netlist with the
+# per-PE lap enable (synthesis BP_LAP_SYNTH_RUN, default csa_bp_20261004_lap),
+# seeded by its own bootstrap route <synth>_distguide from
+#   BP_SYNTH_RUN=<synth> CAMPAIGN=<synth> bash sweeps/run_popcount_apr.sh csa_bp
+# It runs alone (no mixing with csa / csa_bp) into its own campaign directory,
+# default build/power_char/pinned_pass2_<synth> (an OUT naming the 20261004
+# campaign is refused, so that campaign is never touched), takes the guide line
+# it must reproduce from its bootstrap route's apr.log (same guide script, same
+# target branch; the csa / csa_bp arms keep reading their floating-pin final's),
+# and ends with sweeps/int_mode/bp/compare_pinned_lap.py, which compares it with
+# the csa_bp and csa pinned finals of build/power_char/pinned_pass2_20261004
+# (read only) instead of compare.py.
 #
 # Pass 2 is exactly run_popcount_apr.sh do_apr 'final' (same module versions,
 # exports, PRE_REPORT_SCRIPT, workload power opt from the arm's own bootstrap
@@ -44,16 +58,29 @@ set -Eeuo pipefail
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$REPO"
 export ASTRAEA_FLOW=${ASTRAEA_FLOW:-$(cd "$REPO/../ASTRAEA" && pwd)}
-TAG=pinned_pass2_20261004
-OUT=${OUT:-$REPO/build/power_char/$TAG}
+BASE_TAG=pinned_pass2_20261004
+BP_LAP_SYNTH_RUN=${BP_LAP_SYNTH_RUN:-csa_bp_20261004_lap}
+[[ "$BP_LAP_SYNTH_RUN" =~ ^[A-Za-z0-9_]+$ ]] || { echo 'Invalid BP_LAP_SYNTH_RUN' >&2; exit 2; }
 RETRY_FAILED=${RETRY_FAILED:-0}
 [[ "$RETRY_FAILED" == 0 || "$RETRY_FAILED" == 1 ]] || { echo 'RETRY_FAILED must be 0 or 1' >&2; exit 2; }
 [[ -f "$ASTRAEA_FLOW/Makefile" ]] || { echo 'ASTRAEA Makefile missing' >&2; exit 2; }
 ARMS=("$@")
 ((${#ARMS[@]})) || ARMS=(csa_bp csa)
+LAP_ONLY=0
 for arm in "${ARMS[@]}"; do
-    case "$arm" in csa|csa_bp) ;; *) echo "Unknown arm: $arm" >&2; exit 2;; esac
+    case "$arm" in csa|csa_bp) ;; csa_bp_lap) LAP_ONLY=1;; *) echo "Unknown arm: $arm" >&2; exit 2;; esac
 done
+if [[ "$LAP_ONLY" == 1 ]]; then
+    [[ "${#ARMS[@]}" == 1 ]] || { echo 'csa_bp_lap runs alone (its own campaign directory)' >&2; exit 2; }
+    TAG=pinned_pass2_$BP_LAP_SYNTH_RUN
+else
+    TAG=$BASE_TAG
+fi
+OUT=${OUT:-$REPO/build/power_char/$TAG}
+[[ "$OUT" == /* ]] || OUT="$REPO/$OUT"
+if [[ "$LAP_ONLY" == 1 && "$(realpath -m "$OUT")" == "$(realpath -m "$REPO/build/power_char/$BASE_TAG")" ]]; then
+    echo "csa_bp_lap must not write into the $BASE_TAG campaign; choose another OUT" >&2; exit 2
+fi
 source /etc/profile.d/modules.sh 2>/dev/null || source /usr/share/Modules/init/bash
 module load synopsys-lib-compiler/2022.03-SP3
 module load synopsys-synth/2021.06-SP1
@@ -327,6 +354,13 @@ run_arm() (
                 synrun=csa_20261002
                 # gl_validator_args_rationale.txt of popcount_apr_20261002/csa
                 approval_args="--approve-negative-iopath-clamp-ps 10";;
+        csa_bp_lap)
+                target=TSMC22/PAYN_SC_CSA_BP; top=payn_array_signed_segmented_csa_bp
+                synrun=$BP_LAP_SYNTH_RUN; intports="+define+PAYN_INT_PORTS"
+                # Candidates only (applied after a strict-audit failure): the BP
+                # set, justified for this netlist's routes in
+                # popcount_apr_<synth>/gl_validator_args_rationale.txt.
+                approval_args="--approve-annotated-interconnect --approve-negative-iopath-clamp-ps 12";;
     esac
     mac_cycles=$((128 / M)); batches=$((3072 / mac_cycles))
     bootrun=${synrun}_distguide
@@ -342,7 +376,12 @@ run_arm() (
     trap 'rc=$?; printf "FAILED stage=%s exit=%s time=%s\n" "$current_stage" "$rc" "$(date -Is)" >> "$work/failures.log"; exit "$rc"' ERR
     [[ -s "$syndir/$top.syn.v" && -s "$syndir/$top.syn.sdc" && -s "$boot_saif" ]]
     # The earlier pass-2 final of this arm applied the same guides: same counts.
-    guide_line=$(awk '/^SC_DISTRIBUTION_GUIDES:/{print; exit}' "$REPO/apr/build/$target/${bootrun}_spp_fixed"/before_legalization_*/apr.log)
+    # csa_bp_lap: its bootstrap route (same guide script, target branch on).
+    if [[ "$arm" == csa_bp_lap ]]; then
+        guide_line=$(awk '/^SC_DISTRIBUTION_GUIDES:/{print; exit}' "$bootdir/apr.log")
+    else
+        guide_line=$(awk '/^SC_DISTRIBUTION_GUIDES:/{print; exit}' "$REPO/apr/build/$target/${bootrun}_spp_fixed"/before_legalization_*/apr.log)
+    fi
     [[ -n "$guide_line" ]]
     expected_pins=$(python3 - "$syndir/$top.syn.v" "$top" <<'PY'
 import re,sys
@@ -387,5 +426,9 @@ for i in "${!pids[@]}"; do
         status=1
     fi
 done
-python3 sweeps/pinned_pass2/compare.py "$OUT" || status=1
+if [[ "$LAP_ONLY" == 1 ]]; then
+    python3 sweeps/int_mode/bp/compare_pinned_lap.py "$OUT" || status=1
+else
+    python3 sweeps/pinned_pass2/compare.py "$OUT" || status=1
+fi
 exit "$status"

@@ -47,8 +47,8 @@
 //     the west mux to the doubled east column; shift_in is not needed on lap
 //     edges.  Asserting it there too, as the as-built csa_bp_20261003b
 //     contract required, is still legal (the OR is idempotent), so every
-//     schedule written for that contract still runs unchanged.  Zero raw
-//     planes during a lap.
+//     schedule written for that contract still runs unchanged on this
+//     single-PE top (for grids see below).  Zero raw planes during a lap.
 //   * ring_in is a strict control in INT mode: ring_in high at edge P makes
 //     P+1 a lap (shift) edge whatever shift_in is, so it must be low except
 //     one edge ahead of each lap edge.  A stray pulse drops that edge's MAC
@@ -59,7 +59,16 @@
 //   * In a PE grid (inner_pe_grid_signed_segmented_csa_bp.sv) ring_out
 //     carries ring_q east one PE per edge: inject ring_in per PE row with that
 //     row's A skew, and PE (r,c) laps when its own pass ends, offset r+c.  The
-//     global shift_in is then needed only for the final drain.
+//     global shift_in is then needed only for the final drain.  On a grid,
+//     shift_in reaches every PE at once, so besides drains it is legal only on
+//     edges where every PE laps (none when P_R+P_C-2 >= 8); the old contract
+//     (one global ring signal plus shift_in on every lap edge) needs a
+//     broadcast ring, i.e. P_C = 1 or a forced bench signal as in the grid
+//     bench's GLOBAL_LAP_WAIT control.  The grid gates only the west-edge
+//     ring_in with int_mode, so a wave already in a row still laps PE (r,c)
+//     up to c+1 edges after the row's last ring_in edge.  The grid's operand
+//     bit pipes are not reset: the first MAC after a reset must come at least
+//     min(P_R,P_C) edges after the reset starts (grid header).
 //   * Drain: shift_in with ring_q low and acc_in_west = 0.  The combiner
 //     captures on exactly those edges (int_mode & shift_in & ~ring_q) and
 //     emits int_out / int_out_valid two edges later; lap edges never capture,

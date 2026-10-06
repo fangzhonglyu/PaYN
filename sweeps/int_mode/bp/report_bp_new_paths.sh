@@ -8,7 +8,8 @@
 #     RUN    default csa_bp_20261003b
 #     TARGET default PAYN_SC_CSA_BP; PAYN_SC_CSA probes the accepted baseline
 #            (BP-only probes then report "no paths")
-# Output: build/rtl_preflight/bp_paths/<target>_<run>/bp_new_paths.rpt
+# Output: build/rtl_preflight/bp_paths/<target>_<run>[$BP_PATHS_SUFFIX]/bp_new_paths.rpt
+# (BP_PATHS_SUFFIX keeps an earlier report of the same run, e.g. _lapprobe.)
 set -euo pipefail
 REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 RUN=${1:-csa_bp_20261003b}
@@ -22,7 +23,7 @@ export ASTRAEA_FLOW=${ASTRAEA_FLOW:-$(cd "$REPO/../ASTRAEA" && pwd)}
 export DESIGN_ROOT=$REPO
 set -a; . "$DIR/TARGET_DEF"; set +a
 export BP_RUN_DIR=$DIR
-OUT="$REPO/build/rtl_preflight/bp_paths/${TGT}_${RUN}"
+OUT="$REPO/build/rtl_preflight/bp_paths/${TGT}_${RUN}${BP_PATHS_SUFFIX:-}"
 mkdir -p "$OUT"
 cd "$OUT"
 dc_shell -f "$REPO/sweeps/int_mode/bp/dc_bp_new_paths.tcl" > bp_new_paths.rpt 2>&1

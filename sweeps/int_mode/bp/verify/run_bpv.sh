@@ -18,7 +18,7 @@ module load vcs/2020.12-SP2-1
 module load innovus/21.14.000
 module load genus/21.14.000
 V=sweeps/int_mode/bp/verify
-OUT=${OUT:-build/rtl_preflight/csa_bp_verify}
+OUT=$(realpath -m "${OUT:-build/rtl_preflight/csa_bp_verify}")   # absolute or repo-relative
 LOW_W=${LOW_W:-9}
 MAX_JOBS=${MAX_JOBS:-8}
 mkdir -p "$OUT"
@@ -32,7 +32,7 @@ if [[ -z "${NO_COMPILE:-}" ]]; then
         "$V/tb_bp_vec.sv" -top TbBpVec > "$OUT/compile_loww$LOW_W.log" 2>&1 \
         || { echo "compile FAILED: $OUT/compile_loww$LOW_W.log"; exit 1; }
 fi
-SIMV="$REPO/$BUILD/simv"
+SIMV="$BUILD/simv"
 # Combiner unit test (arbitrary 24-bit tiles, random capture/int_prec/reset).
 if [[ -z "${NO_UNIT:-}" ]]; then
     UB="$OUT/build_combiner_unit"; rm -rf "$UB"; mkdir -p "$UB"
@@ -40,7 +40,7 @@ if [[ -z "${NO_UNIT:-}" ]]; then
         +incdir+designs -assert svaext -timescale=1ns/1ps \
         -o "$UB/simv" -Mdir="$UB/obj" "$V/tb_bp_combiner_unit.sv" -top TbBpCombinerUnit \
         > "$OUT/compile_combiner_unit.log" 2>&1 || { echo "combiner unit compile FAILED"; exit 1; }
-    (cd "$UB" && ./simv +ntb_random_seed=7 > "$REPO/$OUT/combiner_unit.log" 2>&1)
+    (cd "$UB" && ./simv +ntb_random_seed=7 > "$OUT/combiner_unit.log" 2>&1)
     grep -h '^\[PASS\]\|^\[FAIL\]\|^\[ERR\]' "$OUT/combiner_unit.log" | head -12
     grep -q '^\[PASS\]' "$OUT/combiner_unit.log" || UNIT_FAIL=1
 fi

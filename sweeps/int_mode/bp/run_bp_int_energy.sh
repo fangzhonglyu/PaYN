@@ -6,6 +6,10 @@
 #   RETRY_FAILED=1 bash sweeps/int_mode/bp/run_bp_int_energy.sh     # redo failed points
 #   LIST_POINTS=1 ...   print the point table and exit (no route needed)
 #   DRY_RUN=1 ...       every argument and route check, print the plan, create nothing
+#   BPE_LAP_RING_ONLY=1 ...  per-PE lap-enable contract (csa_bp_20261004_lap
+#                       routes): shift_in on drain edges only, laps on ring_q
+#                       alone; default 0 = shift_in on lap edges too (the
+#                       csa_bp_20261003b contract, still legal on one PE)
 #
 # The measured counterpart of sweeps/int_mode/run_bitplane_energy.sh (which
 # emulated BP on the unchanged CSA route with forces): same points, operands,
@@ -75,6 +79,8 @@ DRY_RUN=${DRY_RUN:-0}
 LIST_POINTS=${LIST_POINTS:-0}
 GL_VALIDATOR_ARGS=${GL_VALIDATOR_ARGS:-}
 POINTS=${POINTS:-$BPE_DEFAULT_POINTS}
+LAPCHK=()
+[[ "$BPE_LAP_RING_ONLY" == 0 ]] || LAPCHK=(--lap-ring-only)
 [[ "$OUT" == /* ]] || OUT="$REPO/$OUT"
 [[ "$APR_CAMPAIGN_WORK" == /* ]] || APR_CAMPAIGN_WORK="$REPO/$APR_CAMPAIGN_WORK"
 target=TSMC22/PAYN_SC_CSA_BP
@@ -170,7 +176,7 @@ done
 
 if [[ "$DRY_RUN" == 1 ]]; then
     echo "DRY RUN: route $ROUTE_RUN qualified (final_apr PASS in $APR_CAMPAIGN_WORK)"
-    echo "out=$OUT tag=$TAG max_jobs=$MAX_JOBS retry_failed=$RETRY_FAILED"
+    echo "out=$OUT tag=$TAG max_jobs=$MAX_JOBS retry_failed=$RETRY_FAILED lap_ring_only=$BPE_LAP_RING_ONLY"
     echo "validator args: ${VALIDATOR_ARGS[*]:-(none)}"
     echo "$campaign_note"
     for label in "${LABELS[@]}"; do
@@ -226,10 +232,10 @@ run_point() (
     mkdir -p "$work/stim" "$simdir/$TB" "$rtldir/$TB"
     exec 9>"$work/worker.lock"; flock -n 9
     trap 'rc=$?; printf "FAILED label=%s exit=%s time=%s\n" "$label" "$rc" "$(date -Is)" >> "$work/failures.log"; exit "$rc"' ERR
-    printf 'label=%s\ntarget=%s\nroute=%s\nview=%s\ncampaign=%s (final_apr %s; %s)\nBA=%s BW=%s L=%s MROWS=%s NCOLS=%s blocks=%s NB=%s\ndist=%s seed=%s saif_mode=%s active_intervals=%s\nglargs=%s\nvalidator_args=%s\nrtl_snapshot=%s\nstarted=%s\n' \
+    printf 'label=%s\ntarget=%s\nroute=%s\nview=%s\ncampaign=%s (final_apr %s; %s)\nBA=%s BW=%s L=%s MROWS=%s NCOLS=%s blocks=%s NB=%s\ndist=%s seed=%s saif_mode=%s active_intervals=%s\nlap_ring_only=%s\nglargs=%s\nvalidator_args=%s\nrtl_snapshot=%s\nstarted=%s\n' \
         "$label" "$target" "$route" "$view" "$APR_CAMPAIGN_WORK" "$(cat "$status_file")" "$campaign_note" \
         "$BA" "$BW" "$L" "$MROWS" "$NCOLS" "$NBLK" "$NB" "$DIST" "$SEED" "$MODE" "$ACTIVE" \
-        "$glargs" "${VALIDATOR_ARGS[*]:-}" "$SNAP" "$(date -Is)" > "$work/inputs.txt"
+        "$BPE_LAP_RING_ONLY" "$glargs" "${VALIDATOR_ARGS[*]:-}" "$SNAP" "$(date -Is)" > "$work/inputs.txt"
 
     bpe_gen_stim "$work/stim" "$rtldir/$TB" "$simdir/$TB"
 
@@ -238,7 +244,7 @@ run_point() (
         VCS_ARGS="+incdir+$SNAP ${defs//+define/ +define}" > "$rtldir/simulation.log" 2>&1
     grep -Fq "$pass" "$rtldir/simulation.log"
     python3 sweeps/int_mode/bp/check_bp_power_trace.py "$rtldir/$TB" --json "$rtldir/check.json" \
-        > "$rtldir/check.log" 2>&1
+        "${LAPCHK[@]}" > "$rtldir/check.log" 2>&1
     grep -q '^\[PASS\]' "$rtldir/check.log"
     rm -rf "$rtldir/$TB.obj" "$rtldir/$TB/simv.daidir" "$rtldir/$TB/simv" "$rtldir/$TB/dut.saif"
 
@@ -254,7 +260,7 @@ run_point() (
     local saif="$simdir/$TB/dut.saif"
     [[ -s "$saif" ]]
     python3 sweeps/int_mode/bp/check_bp_power_trace.py "$simdir/$TB" --json "$simdir/check.json" \
-        > "$simdir/check.log" 2>&1
+        "${LAPCHK[@]}" > "$simdir/check.log" 2>&1
     grep -q '^\[PASS\]' "$simdir/check.log"
     cmp -s "$rtldir/$TB/bpt_trace.txt" "$simdir/$TB/bpt_trace.txt"
     cmp -s "$rtldir/$TB/bpe_saif.txt" "$simdir/$TB/bpe_saif.txt"
@@ -285,7 +291,7 @@ run_point() (
     echo "[$label] complete: $(tail -n 1 "$work/row.csv")"
 )
 
-echo "route $ROUTE_RUN qualified; $campaign_note; validator args: ${VALIDATOR_ARGS[*]:-(none)}"
+echo "route $ROUTE_RUN qualified; $campaign_note; validator args: ${VALIDATOR_ARGS[*]:-(none)}; lap_ring_only=$BPE_LAP_RING_ONLY"
 mkdir -p "$OUT"
 bpe_snapshot "$SNAP"
 status=0

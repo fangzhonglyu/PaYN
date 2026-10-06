@@ -13,7 +13,7 @@ cd "$REPO"
 export ASTRAEA_FLOW=${ASTRAEA_FLOW:-$(cd "$REPO/../ASTRAEA" && pwd)}
 TARGET=$1; INPUT_RUN=$2; OUTPUT_RUN=${3:-${INPUT_RUN}_legalized}
 REPAIR_MODE=${REPAIR_MODE:-auto}
-case "$TARGET" in TSMC22/PAYN_SC_POPCOUNT_INFERRED|TSMC22/PAYN_SC_POPCOUNT_TECHMAP|TSMC22/PAYN_SC_CSA|TSMC22/PAYN_SC_CSA_BP) ;; *) echo 'Unsupported repair target' >&2; exit 2;; esac
+case "$TARGET" in TSMC22/PAYN_SC_POPCOUNT_INFERRED|TSMC22/PAYN_SC_POPCOUNT_TECHMAP|TSMC22/PAYN_SC_CSA|TSMC22/PAYN_SC_CSA_BP|TSMC22/PAYN_SC_CSA_CBSG_AF|TSMC22/PAYN_SC_CSA_CBSG_RG|TSMC22/PAYN_SC_CSA_CBSG_AF_IPD) ;; *) echo 'Unsupported repair target' >&2; exit 2;; esac
 case "$REPAIR_MODE" in auto|overlap|targeted) ;; *) echo 'Invalid REPAIR_MODE' >&2; exit 2;; esac
 [[ "$INPUT_RUN" =~ ^[A-Za-z0-9_]+$ && "$OUTPUT_RUN" =~ ^[A-Za-z0-9_]+$ ]] || { echo 'Invalid run name' >&2; exit 2; }
 SOURCE_DIR="$REPO/apr/build/$TARGET/$INPUT_RUN"

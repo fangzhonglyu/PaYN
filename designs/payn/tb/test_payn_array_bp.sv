@@ -26,11 +26,15 @@
 //    a pass whose first raw plane is captured at P_{e+1}.  Every load carries
 //    zero magnitudes (a_binary_in = w_binary_in = 0), so the comparators stay
 //    silent;
-//  * ring_in: the PE registers it (ring_q), so ring_in sampled at P_e makes
-//    P_{e+1} a ring-lap edge.  It is driven one edge ahead of each lap edge;
-//  * shift_in on every tile-shift edge, lap edges included (ring_q only steers
-//    the west mux); acc_in_west = 0 on drain edges.  The combiner captures on
-//    drain edges only (int_mode & shift_in & ~ring_q);
+//  * ring_in: the PE registers it (ring_q, the per-PE lap enable), so ring_in
+//    sampled at P_e makes P_{e+1} a ring-lap edge.  It is driven one edge
+//    ahead of each lap edge;
+//  * shift_in on every tile-shift edge, lap edges included (the as-built
+//    csa_bp_20261003b contract, still legal: tile shift = shift_in | ring_q),
+//    or with +LAP_RING_ONLY on drain edges only (the csa_bp_20261004_lap
+//    contract: ring_q alone shifts on lap edges); acc_in_west = 0 on drain
+//    edges.  The combiner captures on drain edges only
+//    (int_mode & shift_in & ~ring_q);
 //  * zero raw planes (bubbles) while a lap or drain runs; int_prec = (BA == 4)
 //    held for the whole run; mac_en = 1 from P_{E0+1}.
 //
@@ -59,8 +63,15 @@
 //   +NEG_NO_RING  negative control: ring_in never asserted (laps become drains:
 //                 the combiner fires off-schedule, [TIMING-FAIL])
 //   +NEG_PREC     negative control: int_prec inverted (checker must FAIL)
-//   +NEG_NO_LAP_SHIFT  negative control: shift_in only on drain edges, i.e. the
-//                 pre-review contract (laps do nothing, checker must FAIL)
+//   +LAP_RING_ONLY  per-PE lap-enable contract (csa_bp_20261004_lap): shift_in
+//                 only on drain edges, the laps run on ring_q alone.  (Was
+//                 +NEG_NO_LAP_SHIFT, a negative control while ring_q only
+//                 steered the west mux; on that RTL the checker FAILS.)
+//   +NEG_RING_STRAY  negative control for the new contract: one stray ring_in
+//                 pulse (shift_in low) one edge ahead of the first block's
+//                 first MAC edge.  ring_q now shifts by itself, so that edge
+//                 becomes a lap edge (MAC dropped, tiles rotated): checker
+//                 must FAIL.  (On the csa_bp_20261003b RTL it was harmless.)
 //   +NEG_MAG      negative control: Sobol running and every edge loads random
 //                 magnitudes (the pre-contract JUNK): [BP-CONTRACT]
 // Operands: bpt_a.hex (A row-major, MROWS x L) and bpt_w.hex (W column-major,
@@ -98,7 +109,7 @@ module Top;
     // Runtime configuration and derived schedule constants.
     int BA = 8, BW = 8, L = 128, MROWS = 1, NCOLS = 8, MODE_AT = -1;
     bit junk = 1'b0, neg_no_ring = 1'b0, neg_prec = 1'b0;
-    bit neg_no_lap_shift = 1'b0, neg_mag = 1'b0;
+    bit lap_ring_only = 1'b0, neg_ring_stray = 1'b0, neg_mag = 1'b0;
     logic [N_H*K-1:0] a_sign_word;
     int NB, ROWS_PE, NIG, NJG, NBLK, PASS_LEN, BLK_LEN;
     int E_DATA_END, E_END, N_EDGES;
@@ -354,7 +365,8 @@ module Top;
         junk = $test$plusargs("JUNK");
         neg_no_ring = $test$plusargs("NEG_NO_RING");
         neg_prec = $test$plusargs("NEG_PREC");
-        neg_no_lap_shift = $test$plusargs("NEG_NO_LAP_SHIFT");
+        lap_ring_only = $test$plusargs("LAP_RING_ONLY");
+        neg_ring_stray = $test$plusargs("NEG_RING_STRAY");
         neg_mag = $test$plusargs("NEG_MAG");
 
         if (!(BA == 8 || BA == 4)) $fatal(1, "BA must be 4 or 8 (got %0d)", BA);
@@ -393,9 +405,9 @@ module Top;
 
         trace_file = $fopen("bpt_trace.txt", "w");
         if (trace_file == 0) $fatal(1, "cannot open bpt_trace.txt");
-        $fwrite(trace_file, "BPTCFG %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d\n",
+        $fwrite(trace_file, "BPTCFG %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d\n",
                 BA, BW, L, MROWS, NCOLS, NBLK, NB, int_prec, junk, neg_no_ring, neg_prec,
-                neg_no_lap_shift, neg_mag, MODE_AT);
+                lap_ring_only, neg_mag, MODE_AT, neg_ring_stray);
 
         // Each iteration starts at the negedge before P_e, where every input
         // is launched (the route's SDC input delay is half a period).
@@ -405,8 +417,8 @@ module Top;
             set_signs(e);
             set_binary();
             if (junk) set_west_junk(e);
-            ring_in = !neg_no_ring && ring_at(e + 1);
-            shift_in = neg_no_lap_shift ? drain_at(e) : core_shift_at(e);
+            ring_in = (!neg_no_ring && ring_at(e + 1)) || (neg_ring_stray && e + 1 == E0 + 1);
+            shift_in = lap_ring_only ? drain_at(e) : core_shift_at(e);
             mac_en = (e > E0);                   // first MAC at P_{E0+1}
             @(posedge clk);                      // P_e
             read_drain(e);
@@ -421,8 +433,8 @@ module Top;
             $fatal(1, "drained %0d columns and %0d combiner outputs, expected %0d each",
                    n_drain, n_comb, NBLK*N_W);
         $fclose(trace_file);
-        $display("PASS: BP INT bench BA=%0d BW=%0d L=%0d MROWS=%0d NCOLS=%0d blocks=%0d edges=%0d junk=%0d mode_at=%0d",
-                 BA, BW, L, MROWS, NCOLS, NBLK, N_EDGES, junk, MODE_AT);
+        $display("PASS: BP INT bench BA=%0d BW=%0d L=%0d MROWS=%0d NCOLS=%0d blocks=%0d edges=%0d junk=%0d mode_at=%0d lap_ring_only=%0d",
+                 BA, BW, L, MROWS, NCOLS, NBLK, N_EDGES, junk, MODE_AT, lap_ring_only);
         $finish;
     end
 endmodule

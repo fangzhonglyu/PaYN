@@ -9,7 +9,9 @@ reduction length L that need not be a multiple of 128).  The generator
   2. derives every DUT input per edge from the ops and the timing contract
          MAC at P_n    -> raw planes launched for P_{n-1}, mac_en at P_n
          RING at P_n   -> ring_in launched for P_{n-1}   (ring_q latency)
-                          and shift_in at P_n (post-review contract)
+                          and shift_in at P_n (post-review contract; optional
+                          since the per-PE lap enable, csa_bp_20261004_lap,
+                          where ring_q alone shifts: Opts.lap_shift=False)
          DRAIN at P_n  -> shift_in at P_n, acc_in_west = 0
          sign pipe update at P_e -> load_X + load_X_sign + sign word at P_{e-1}
                                     legal window e in [prev MAC edge, next MAC - 1]
@@ -139,6 +141,8 @@ class Opts:
     #   ("wsign", change_idx, d) / ("asign", change_idx, d): shift one sign-pipe update by d edges
     #   ("ring", lap_idx, d): shift the ring_in of one whole lap by d edges
     #   ("ringlen", lap_idx, d): lap with 8+d ring edges instead of 8
+    #   ("ringstray", mac_idx, 0): one extra ring_in pulse one edge ahead of the
+    #                              mac_idx-th MAC edge (lap-enable contract: a lap edge)
     #   ("prec", block_idx, d): switch int_prec to block idx's precision d edges early
     inject: list = field(default_factory=list)
     resets: list = field(default_factory=list)   # (block_idx, op_offset_in_block, n_reset_edges)
@@ -153,7 +157,8 @@ class Opts:
     sc_tail_drain: bool = False  # end the SC suffix with an SC drain (for INT->SC A/B comparisons)
     sc_suffix_clean: bool = False  # SC suffix: mac_en = 1, shift_in = 0, no loads (pure SC accumulation)
     # Post-review contract (implementer, after the design review):
-    lap_shift: bool = True         # shift_in on ring-lap edges (ring_q only steers the west mux)
+    lap_shift: bool = True         # shift_in on ring-lap edges (required before csa_bp_20261004_lap,
+                                   # where ring_q only steered the west mux; optional since)
     int_zero_mag: bool = True      # every INT-mode load carries zero magnitudes
     int_entry_zero_load: bool = True  # load_a + load_w (zero magnitudes) on the first INT edge after SC
 
@@ -249,6 +254,10 @@ def derive(blocks: list[Block], ops: list[tuple], o: Opts):
         if op[0] == "ring":
             d = lap_shift.get(op[4], 0)
             f["ring_in"][n - 1 + d] = 1
+    mac_edges = [n for n, op in enumerate(ops) if op[0] == "mac"]
+    for kind, idx, d in o.inject:
+        if kind == "ringstray":
+            f["ring_in"][mac_edges[idx] - 1] = 1
     # DRAIN (and, post-review, every nominal ring-lap edge).
     for n, op in enumerate(ops):
         if op[0] == "drain" or (op[0] == "ring" and o.lap_shift):
@@ -637,9 +646,33 @@ def scenarios():
                                              sc_suffix_clean=True, last_int_raw_junk=True)),
         note="compare SC drain columns with int_to_sc_A: must be identical if INT leaves nothing behind")
 
-    # Post-review contract negatives (implementer): each must be caught.
-    add("neg_lap_without_shift", lambda r: (base(r), Opts(seed=40, lap_shift=False)), expect="fail",
-        note="pre-review lap contract (ring_in only, no shift_in on lap edges): laps do nothing")
+    # Per-PE lap-enable contract (csa_bp_20261004_lap): ring_q alone shifts the
+    # tiles, shift_in only on drain edges.  Was neg_lap_without_shift (expect
+    # fail) while ring_q only steered the west mux.
+    add("lap_without_shift", lambda r: (base(r), Opts(seed=40, lap_shift=False)),
+        note="lap-enable contract: ring_in only, no shift_in on lap edges (was a negative control "
+             "before csa_bp_20261004_lap)")
+    add("lap_without_shift_junk", lambda r: ([mk("int8", 300, "extreme_mix", r), mk("int4", 200, "extreme_mix", r),
+                                              mk("w4a8", 170, "uniform", r), mk("int8", 129, "neg1", r)],
+                                             Opts(seed=44, lap_shift=False, raw_junk=True, acc_junk=True,
+                                                  bin_junk=True, prec_junk=True, mac_always=True)),
+        note="junk_everything under the lap-enable contract (acc_in_west junk on ring-only lap edges)")
+    add("lap_without_shift_idle_gaps", lambda r: ([mk("int8", 260, "extreme_mix", r), mk("int4", 140, "uniform", r),
+                                                   mk("w4a8", 300, "extreme_mix", r)],
+                                                  Opts(seed=45, lap_shift=False, idle_prob=0.3, mac_always=True,
+                                                       sign_pos="random")),
+        note="random IDLE edges inside ring-only laps: an idle edge with ring_in low must not shift")
+    add("lap_without_shift_reset_mid_lap", lambda r: ([mk("int8", 200, "extreme_mix", r),
+                                                       mk("int8", 260, "extreme_mix", r),
+                                                       mk("int4", 140, "extreme_mix", r)],
+                                                      Opts(seed=46, lap_shift=False, resets=[(1, 3 + 8 + 3 + 4, 2)],
+                                                           reset_dirty=True, mac_always=True)),
+        note="dirty reset 4 edges into a ring-only lap: ring_q must clear, no stray lap after reset")
+    add("neg_ring_stray", lambda r: (base(r), Opts(seed=47, inject=[("ringstray", 5, 0)])), expect="fail",
+        note="one stray ring_in pulse before a MAC edge: since csa_bp_20261004_lap that edge shifts")
+    add("neg_ring_stray_lap_without_shift", lambda r: (base(r), Opts(seed=48, lap_shift=False,
+                                                                    inject=[("ringstray", 9, 0)])),
+        expect="fail", note="same under the ring-only lap contract")
     add("neg_int_entry_no_zero_load", lambda r: (sw(r), Opts(seed=41, sc_prefix=60, mac_always=True,
                                                             int_entry_zero_load=False)),
         expect="fail", note="SC magnitudes still loaded when INT MACs start: [BP-CONTRACT]")
@@ -649,7 +682,7 @@ def scenarios():
                                                                      sc_zero_mag=True, int_entry_zero_load=False)),
         note="SC prefix with zero magnitudes, no entry load needed; mac_en high across the switch")
 
-    def soak(seed):
+    def soak(seed, lap_shift=True):
         def fn(r):
             blocks = []
             for _ in range(int(r.integers(10, 16))):
@@ -663,12 +696,16 @@ def scenarios():
             o = Opts(seed=seed, idle_prob=float(r.choice([0.0, 0.05, 0.2])), mac_always=bool(r.integers(0, 2)),
                      raw_junk=True, acc_junk=True, bin_junk=True, prec_junk=True, reset_dirty=True,
                      sign_pos="random", sc_prefix=int(r.integers(0, 30)), sc_suffix=int(r.integers(0, 30)),
-                     resets=[(rb, int(r.integers(0, 40)), int(r.integers(1, 4)))], first_int_mac=0)
+                     resets=[(rb, int(r.integers(0, 40)), int(r.integers(1, 4)))], first_int_mac=0,
+                     lap_shift=lap_shift)
             return blocks, o
         return fn
     for sd in range(1, 9):
         add(f"soak_{sd}", soak(100 + sd), note="random precisions/L/operands, all junk, random idles, "
             "random sign positions, SC prefix/suffix, one random mid-block reset")
+    for sd in range(1, 5):
+        add(f"soak_lap_without_shift_{sd}", soak(200 + sd, lap_shift=False),
+            note="soak under the lap-enable contract (no shift_in on lap edges)")
     return S
 
 

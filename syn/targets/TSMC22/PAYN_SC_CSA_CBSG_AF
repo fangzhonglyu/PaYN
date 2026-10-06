@@ -1,0 +1,26 @@
+#!/bin/sh
+# C-BSG A-first (AF) carry-save array (signed_segmented_csa_cbsg_af): the
+# accepted PAYN_SC_CSA PE core unchanged, with the edge replaced by the AF
+# C-BSG streams (closed-form kA encoder + thermometer A, sample-ordered "k"
+# Sobol W lane words, 3-bit block phase).  Bit-exact with the scmp_kernels
+# C-BSG integer accumulator.  Knobs are identical to PAYN_SC_CSA (only TOP and
+# SRC_SV change), so the area delta is the edge.
+export TOP=payn_array_signed_segmented_csa_cbsg_af
+export TECH=TSMC22
+export SRC_SV="payn/variants/signed_segmented_csa_cbsg_af/payn_array_signed_segmented_csa_cbsg_af.sv"
+export PERIOD=2.5
+export INPUT_DELAY=1.25
+export OUTPUT_DELAY=0.05
+export TSMC22_CELL_TIER=sc7mcpp140z
+export TSMC22_LIB_FLAVORS=svt_c30
+export TSMC22_HPK_FLAVORS=svt_c30
+export ZERO_PINLESS_NET_ACTIVITY=1
+export TSMC22_HPK=1
+export MULTIBIT_INFER=1
+export CLOCK_GATE=1
+export MINPOWER=0
+export FLATTEN=0
+export MAX_FANOUT=16
+export SYN_DEFINES="${SYN_DEFINES:-PAYN_K=8 PAYN_M=16 PAYN_NH=8 PAYN_NW=8 PAYN_SEG_LOW_W=9}"
+export SYN_AREA_HIGH_EFFORT=0
+unset POST_LOAD_SCRIPT

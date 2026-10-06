@@ -4,9 +4,13 @@
 # K8/M16/N8, LOW_W=9, T=128.  Does not reuse the implementer's build dirs.
 #
 #  hooks   The PAYN_INT_PORTS hooks are the only change to the two SC benches:
-#          strip(`ifdef PAYN_INT_PORTS) of the working-tree bench == HEAD, and
-#          the HEAD bench vs the working-tree bench (no define) give
+#          strip(`ifdef PAYN_INT_PORTS) of the working-tree bench == BASE, and
+#          the BASE bench vs the working-tree bench (no define) give
 #          byte-identical traces (and SAIF bodies) on the accepted CSA top.
+#          BASE (HOOKS_BASE) defaults to the parent of the commit that first
+#          added PAYN_INT_PORTS to either bench (1a797e9 "INT" committed the
+#          hooks, so HEAD itself now carries them), or HEAD while the hooks
+#          are uncommitted.
 #  bench   BP top + PAYN_INT_PORTS through the unchanged SC benches: array
 #          cosim (3 seeds) and 384-batch streaming cosim PASS, traces
 #          byte-identical to the CSA top; same with PAYN_INT_RAW_JUNK.
@@ -40,7 +44,13 @@ CSA_SRC=designs/payn/variants/signed_segmented_csa/payn_array_signed_segmented_c
 SHAPE_DEF="+define+PAYN_ARRAY_EXTERNAL_RTL+define+PAYN_SEG_LOW_W=9+define+SC_K=8+define+SC_M=16+define+SC_NH=8+define+SC_NW=8+define+SC_OWIDTH=24+define+SC_T=128"
 ARRAY_TB=designs/payn/tb/test_payn_array.sv
 STREAM_TB=designs/payn/power/power_payn_array.sv
-HEAD_DIR=$OUT/head_benches        # HEAD copies of the two benches (relative TB paths)
+HEAD_DIR=$OUT/head_benches        # BASE copies of the two benches (relative TB paths)
+if [[ -z "${HOOKS_BASE:-}" ]]; then
+    HOOKS_INTRO=$(git log -S'PAYN_INT_PORTS' --format=%H -- "$ARRAY_TB" "$STREAM_TB" | tail -n 1)
+    HOOKS_BASE=${HOOKS_INTRO:+$HOOKS_INTRO^}
+    HOOKS_BASE=${HOOKS_BASE:-HEAD}
+fi
+HOOKS_BASE_DESC="$HOOKS_BASE ($(git rev-parse --short "$HOOKS_BASE"))"
 
 # sim name tb src defines -> trace path on stdout-free success
 sim() {
@@ -73,11 +83,11 @@ run_hooks() {
     local status=0 f
     mkdir -p "$HEAD_DIR"
     for f in "$ARRAY_TB" "$STREAM_TB"; do
-        git show "HEAD:$f" > "$HEAD_DIR/$(basename "$f")"
+        git show "$HOOKS_BASE:$f" > "$HEAD_DIR/$(basename "$f")"
         if python3 sweeps/int_mode/bp/strip_ifdef_block.py PAYN_INT_PORTS "$f" | cmp -s - "$HEAD_DIR/$(basename "$f")"; then
-            echo "hooks: $f minus the PAYN_INT_PORTS block == HEAD"
+            echo "hooks: $f minus the PAYN_INT_PORTS block == $HOOKS_BASE_DESC"
         else
-            echo "hooks: $f minus the PAYN_INT_PORTS block DIFFERS from HEAD"; status=1
+            echo "hooks: $f minus the PAYN_INT_PORTS block DIFFERS from $HOOKS_BASE_DESC"; status=1
         fi
     done
     local pids=()
@@ -87,17 +97,17 @@ run_hooks() {
     stream_case hook_cur_stream "$STREAM_TB" "$CSA_SRC" "$SHAPE_DEF+define+PAYN_ARRAY_DUT=payn_array_signed_segmented_csa" & pids+=("$!")
     for p in "${pids[@]}"; do wait "$p" || status=1; done
     (( status == 0 )) || return 1
-    same "hooks: array trace HEAD bench vs current bench (CSA top, no define)" \
+    same "hooks: array trace $HOOKS_BASE_DESC bench vs current bench (CSA top, no define)" \
         "$OUT/hook_head_array/$HEAD_DIR/test_payn_array.sv/array_rtl.txt" \
         "$OUT/hook_cur_array/$ARRAY_TB/array_rtl.txt" || status=1
-    same "hooks: stream trace HEAD bench vs current bench (CSA top, no define)" \
+    same "hooks: stream trace $HOOKS_BASE_DESC bench vs current bench (CSA top, no define)" \
         "$OUT/hook_head_stream/$HEAD_DIR/power_payn_array.sv/array_streaming_rtl.txt" \
         "$OUT/hook_cur_stream/$STREAM_TB/array_streaming_rtl.txt" || status=1
     if cmp -s <(saif_body "$OUT/hook_head_stream/$HEAD_DIR/power_payn_array.sv/dut.saif") \
               <(saif_body "$OUT/hook_cur_stream/$STREAM_TB/dut.saif"); then
-        echo "hooks: SAIF body HEAD bench vs current bench: identical"
+        echo "hooks: SAIF body $HOOKS_BASE_DESC bench vs current bench: identical"
     else
-        echo "hooks: SAIF body HEAD bench vs current bench: DIFFER"; status=1
+        echo "hooks: SAIF body $HOOKS_BASE_DESC bench vs current bench: DIFFER"; status=1
     fi
     return "$status"
 }

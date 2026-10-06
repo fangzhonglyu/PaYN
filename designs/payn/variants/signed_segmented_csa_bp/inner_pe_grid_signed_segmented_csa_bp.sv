@@ -38,8 +38,46 @@
 //     BW*NB + 8*(BW-1) + (P_ROWS + P_COLS - 2) + 8*P_COLS   edges
 //
 // (NB data edges per weight pass, BW passes): the skew is paid once per output
-// block, before the drain, not once per pass.  Checked bit-exactly by
-// designs/payn/tb/test_pe_grid_bp.sv (sweeps/int_mode/bp/run_bp_grid_checks.sh).
+// block, before the drain, not once per pass.  This is the schedule of
+// designs/payn/tb/test_pe_grid_bp.sv (sweeps/int_mode/bp/run_bp_grid_checks.sh):
+// the RTL runs it bit-exactly (multi-block runs also measure the drain-start
+// spacing), and tightness controls fail when any term is one edge shorter
+// (lap on the last MAC, drain one edge early, next block one edge early).
+// A per-PE-row drain (shift_in skewed by r, not in this wrapper) would cut the
+// skew term from P_ROWS+P_COLS-2 to P_COLS-1.
+//
+// Global shift_in on a grid.  shift_in reaches every PE on the same edge, so
+// besides drains it is legal only on edges where every PE is lapping (the OR
+// with ring_q is idempotent there); on any other edge it shifts PEs that are
+// not lapping.  When P_ROWS+P_COLS-2 >= 8 no such edge exists (4x8).  The
+// single-PE csa_bp_20261003b contract (one global ring signal, shift_in on
+// every lap edge) therefore needs a broadcast ring: it holds for P_COLS = 1
+// (with each lap waiting for the skew), but this wrapper's ring wave cannot
+// make simultaneous laps for P_COLS > 1 (the bench's OLDC_UNFORCED case passes
+// on 4x1 and fails on 2x2 and 4x8; its GLOBAL_LAP_WAIT control forces every
+// PE's ring_in).
+//
+// int_mode only gates the west-edge ring inputs; the links between PEs are
+// not gated.  So int_mode must be high on every edge where a row injects
+// (ring_in[r] high), and a wave already in a row finishes whatever int_mode
+// does: PE (r,c) still laps up to c+1 edges after the row's last west ring_in
+// edge (P_COLS edges for the far column).  SC work that relies on ring_q = 0
+// must wait those edges; in practice lower int_mode after the drain.
+//
+// Reset.  The operand bit pipes (a_bits / w_bits, one register per PE) are
+// not reset and are not gated by mac_en; ring_q, the sign pipes, the sign
+// load wave and the tiles are reset.  After a reset, PE (r,c) still holds
+// planes driven before the reset until c (A) or r (W) fresh edges have
+// flowed in, so a MAC at PE (r,c) can add a stale product while
+// min(r,c) >= (edges since the reset started).  Rule: from the first reset
+// edge on, drive no planes of an aborted block (zero planes or the next
+// block's), and let the first MAC edge (mac_en high) come at least
+// min(P_ROWS,P_COLS) edges after the first reset edge: hold reset that long,
+// or keep mac_en low for min(P_ROWS,P_COLS) - n edges after an n-edge reset.
+// The same holds for X after power-up.  A single PE needs one reset edge.
+// This is a property of the CSA core's pipes (the clean grid shares it), not
+// of the ring.  Characterized by sweeps/int_mode/bp/verify_grid/run_vg.sh
+// (reset_pass_n<n>_f<f>).
 //
 // ring_out[r] is PE (r, P_COLS-1)'s ring_q: an east-edge plane combiner for
 // PE row r captures on int_mode & shift_in & ~ring_out[r], as the single-PE

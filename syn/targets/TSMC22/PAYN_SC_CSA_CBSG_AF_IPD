@@ -1,0 +1,28 @@
+#!/bin/sh
+# C-BSG A-first (AF) carry-save array with bit-plane INT mode and in-place
+# doubling (signed_segmented_csa_cbsg_af_ipd): SC mode = the AF C-BSG edge of
+# PAYN_SC_CSA_CBSG_AF (bit-exact with the scmp_kernels C-BSG accumulator), INT
+# mode = the BP INT contract with 1-edge in-place laps of PAYN_SC_CSA_BP_IPD
+# (raw-bit bypass after the AF streams, int_mode register + MAC guard, per-PE
+# lap enable, per-tile doubling mux, east combiner).  Knobs are identical to
+# PAYN_SC_CSA_CBSG_AF / PAYN_SC_CSA_BP_IPD / PAYN_SC_CSA (only TOP and SRC_SV
+# change), so area deltas are the added hardware.
+export TOP=payn_array_signed_segmented_csa_cbsg_af_ipd
+export TECH=TSMC22
+export SRC_SV="payn/variants/signed_segmented_csa_cbsg_af_ipd/payn_array_signed_segmented_csa_cbsg_af_ipd.sv"
+export PERIOD=2.5
+export INPUT_DELAY=1.25
+export OUTPUT_DELAY=0.05
+export TSMC22_CELL_TIER=sc7mcpp140z
+export TSMC22_LIB_FLAVORS=svt_c30
+export TSMC22_HPK_FLAVORS=svt_c30
+export ZERO_PINLESS_NET_ACTIVITY=1
+export TSMC22_HPK=1
+export MULTIBIT_INFER=1
+export CLOCK_GATE=1
+export MINPOWER=0
+export FLATTEN=0
+export MAX_FANOUT=16
+export SYN_DEFINES="${SYN_DEFINES:-PAYN_K=8 PAYN_M=16 PAYN_NH=8 PAYN_NW=8 PAYN_SEG_LOW_W=9}"
+export SYN_AREA_HIGH_EFFORT=0
+unset POST_LOAD_SCRIPT

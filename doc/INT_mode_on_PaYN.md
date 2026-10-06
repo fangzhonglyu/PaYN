@@ -128,6 +128,25 @@ What has to change for BP (areas are cell counts *(corrected)*):
 | Control | Sequencer for passes, ring laps, sign loads and drain | ~100 um² per grid |
 | Memory | 1,024 bits/cycle per edge half; W bit-plane-major; A byte-major | not costed |
 
+**Other schedules on the same hardware (2026-10-04).** The mapping above (called T1 in the schedule study, section 9) puts the 8
+activation bits in space and the 8 weight bits in time. Any split of the bits between space and time runs on the same tile, PE and
+grid wrapper. In the hybrid **H(TA,TW)**, each tile takes TA activation bits *and* TW weight bits in time:
+
+```
+GA = BA/TA bit groups per activation row on the tile rows   ->  8*TA/BA activation rows per PE
+GW = BW/TW bit groups per output column on the tile columns ->  8*TW/BW output columns per PE
+tile row h = (activation row h/GA, group g = h%GA)      tile column v = (output column v/GW, group s = v%GW)
+pass (ta, q): a_bits = bit g*TA+ta of a, w_bits = bit s*TW+q of w; sign = (g*TA+ta == BA-1) ^ (s*TW+q == BW-1)
+passes grouped by Horner level k = ta+q (highest first), one 8-cycle ring lap between levels: TA+TW-2 laps
+after the drain: T((i,g),(j,s)) = sum_kk Afield_g[i][kk] * Wfield_s[kk][j]     (field signed iff it holds the MSB)
+east edge:       y[i][j] = sum_g sum_s 2^(g*TA + s*TW) * T((i,g),(j,s))
+```
+
+INT8 H(4,8) holds 4 activation rows x 8 output columns = 32 outputs per PE (T1: 8); its east edge forms `y = T(i,g=0) + 16*T(i,g=1)`.
+The 24-bit tile holds 15 x 128 x L, so one block takes L <= 4,369. T1 is H(1,8), "weight bits in space" (T2 S=8) is H(1,1), and the
+round-1 "HB" mapping is H(8,8). What changes outside the array: the east combine, and the A feeder must deliver bit planes (A stored
+bit-plane-major, or a TA:1 select per A line).
+
 ### 2.3 Spatial Booth (CNSB): the option that changes nothing in the array
 
 Booth digits, with `a_-1 = w_-1 = 0`:
@@ -466,7 +485,7 @@ What the table shows:
 
 **Correction: grid-level INT items the composite misses (2026-10-04).**
 
-1. **Ring laps are global in the as-built RTL.** After review, laps use the global `shift_in` to keep the tile clock-gate path
+1. **Ring laps were global in the first routed RTL (`csa_bp_20261003b`).** After review, laps use the global `shift_in` to keep the tile clock-gate path
    untouched. On a grid, each lap must wait for the last PE's skewed pass, so every pass pays P_R+P_C-2 bubble cycles. The
    L=4096 figures in the table above assumed per-PE skewed laps.
 
@@ -488,3 +507,137 @@ What the table shows:
 
 Everything else at grid level is either common to SC or already counted: inter-PE operand forwarding, the drain chain, the
 clock, the edge bypass, the combiners, and the 1-bit ring wave.
+
+**Update to the correction above (2026-10-04).** Item 1 is fixed. The per-PE lap enable (core shift = `shift_in | ring_q`) is
+verified at RTL on single PEs and on 2x2 to 4x8 PE grids, synthesized as `csa_bp_20261004_lap`, and routed with pinned IO
+(`csa_bp_20261004_lap_distguide_spp_pins`, grid basin). Measured on the 4x4 grid at L=4096, every PE laps at offset r+c with no
+per-pass bubbles: INT8 runs 350 edges per block instead of 392. The skewed-lap figures in the table above hold again (INT8 L=4096:
+1,128 on 4x4, 1,055 on 4x8).
+
+Against the `csa_bp_20261003b` pinned route:
+- SC power is 16.494 vs 16.491 mW and area 46,096 vs 46,130 um2, both layout noise.
+- Routed INT energy is 0.1-0.2% lower (INT8 peak 0.348 pJ/MAC, INT4 0.087).
+- Routed full-timing functional GL in the new contract is 8/8, including a negative control. On the 03b netlist the ring-only cases
+  fail, which shows the test can tell the two netlists apart.
+- Timing costs more than the DC estimate. `shift_in` becomes the critical start point, at +0.078 ns (it was +0.361 ns), because of
+  the OR2 plus weaker buffering on the core shift net. It still closes 400 MHz.
+
+The registered per-PE shift enable mentioned above was not used. Item 2 (raw-plane edge skew) is still open. Evidence:
+`build/power_char/pinned_pass2_csa_bp_20261004_lap/comparison.txt`, `build/power_char/int_mode_energy_20261004_lap/bp/`.
+
+**Lap schedules: can the reduction run first and the shift come at the end? (2026-10-04)**
+
+Model: `sweeps/int_mode/bp/model_lap_schedules.py` (log and CSV next to it). Every period below is also measured in RTL on the
+unchanged `csa_bp_20261004_lap` design. One output block on a P_R x P_C grid costs (NB = L/128):
+
+```
+T1 as built      BW*NB    + 8*(BW-1)      + (P_R+P_C-2) + 8*P_C     8 outputs per PE
+T2 S=8           NB       + 0             + (P_R+P_C-2) + 8*P_C     1 output per PE (all 8 weight bits in space)
+T3 self-doubling BW*NB    + 1*(BW-1)      + (P_R+P_C-2) + 8*P_C     8 outputs per PE (PE change)
+H(TA,TW)         TA*TW*NB + 8*(TA+TW-2)   + (P_R+P_C-2) + 8*P_C     (8*TA/BA) x (8*TW/BW) outputs per PE
+```
+
+INT8, % of peak / GMAC/s/mm2 (routed `csa_bp_20261004_lap` composite; H includes an unsynthesized +601 um2 combiner per PE row,
+T3 the synthesized +969 um2 per PE):
+
+| INT8 schedule | 4x4 L=1024 | 4x4 L=4096 | 4x8 L=1024 | 4x8 L=4096 | change |
+|---|---:|---:|---:|---:|---|
+| T1 as built | 40.5% / 625 | 73.1% / 1,128 | 33.0% / 525 | 66.3% / 1,055 | - |
+| T2 S=8: reduction first, shift at the end | 17.4% / 269 | 45.7% / 707 | 9.8% / 156 | 30.2% / 482 | none |
+| T3: 1-cycle in-place doubling | 58.7% / 880 | 85.0% / 1,274 | 44.1% / 682 | 76.0% / 1,174 | 64 tile muxes per PE |
+| **H(4,8): 4 activation bits in time too** | **68.4% / 1,051** | **89.7% / 1,376** | **62.4% / 991** | **86.9% / 1,380** | none in the array |
+| H(4,8) with T3's 1-cycle laps | 84.2% / 1,256 | 95.5% / 1,425 | 75.3% / 1,161 | 92.4% / 1,424 | as T3 |
+| T1 with 2-tile sub-rings (2-cycle laps) | 55.2% / 840 | 83.1% / 1,265 | 42.1% / 661 | 74.4% / 1,169 | 32 muxes per PE, synthesis to be rerun (AFS) |
+
+W4A8 H(8,4) and INT4 H(4,4) (the round-1 "HB" corner) reach 89.7% / 2,753 and 85.6% / 5,257 on 4x4 at L=4096, against T1's
+67.4% / 2,077 and 67.4% / 4,155.
+
+What the table shows:
+- **Running the reduction first (T2) ties T1 on one PE and loses on grids.** It removes the laps, but each PE then holds one output
+  instead of 8, so every output pays its own drain across the PE row (8*P_C cycles) and skew. A lap stays inside one PE (8 cycles).
+- **The lever is outputs per PE per block, not where the 2^s is applied.** 4x4 INT8 L=4096, cycles per 8 outputs per PE: T2 S=8 560,
+  T1 350, H(4,8) 285.5. The hybrid amortizes the same drain and skew, and 10 laps instead of 7, over 4x more MACs.
+- **H beats T3 on every grid point above without touching the PE.** On one PE, T3 is ahead (L=4096: 1,028 vs 1,010), because the
+  1-PE drain is short and H's combiner is a larger fraction of one PE.
+- **The best split depends on L** (4x4 and 4x8 alike):
+  - H(8,8) for L <= 511;
+  - H(4,8) up to L = 4,369;
+  - H(4,4) up to about L = 37,000 (16 outputs per PE);
+  - H(2,4) beyond that (8 outputs per PE, range 186k). It gives 98.3% at L = 65,536, where T1 must split the block.
+- **Costs of H, none inside the array:** the east combine changes (and the 1-PE top's combiner does not do it); A must arrive as
+  bit planes (bit-plane-major storage, written at run time by the previous layer, or a TA:1 select per A line: +7.2k um2, -1.3%
+  GMAC/s/mm2 on 4x4); the per-block working set grows 4x on the A side (A replay buffer) and W is re-sent TA times per block. Operand bits
+  per MAC and per-GEMM sends are the same as T1.
+
+RTL evidence (unchanged RTL, bit-exact against numpy):
+- PE grids 1x1 to 4x8: 26 nominal hybrid runs plus 6 controls from the review (`build/rtl_preflight/bp_hybrid/`, reproduced
+  identically in `bp_hybrid_rerun/`), and 16 more plus 5 controls (`bp_hybrid_fix/`). They include the INT8 H(4,8) range edge
+  L = 4,352 with |tile| = 8,355,840.
+- The single-PE top with a proposed hybrid combiner as a sidecar (`designs/payn/variants/signed_segmented_csa_bp_hyb/bp_hybrid_combiner.sv`):
+  16 runs, 4 controls and 3 byte-identical cross-checks against the T2 bench at S=1 (`build/rtl_preflight/bp_hybrid_top/`).
+- 58 measured block periods all equal the formula. Gate level was not run (the AFS token had expired).
+- T2 runs: `build/rtl_preflight/bp_space/` has 127 simulation cases (single PE: 28 positive, 14 period, 8 controls; grids: 29 positive,
+  28 period, 20 controls) plus 6 cross-checks, all as expected.
+
+## 10. Memory bandwidth: can an SC-sized SRAM feed the INT mode? (2026-10-04)
+
+BP needs 1,024 operand bits per edge half per cycle on both sides. SC T=128 needs 576 bits per edge half once every 8 cycles.
+
+The weight side binds: in pass q, column v needs bit q of 128 weights x 8 columns every cycle. An activation replay buffer cannot help
+it. In the as-built schedule the 8 tile rows carry the 8 bits of one activation row, so a block holds 8x fewer outputs than in SC.
+*(Corrected 2026-10-04: this is a property of the schedule, not of BP. The hybrid H(4,8) of section 9 holds 4x more outputs per block
+on the same hardware, and a W block buffer at the array edge removes the weight-side re-fetch; see "edge buffers" below.)*
+
+4x4 throughput, for two readings of "sized for SC", **assuming no operand reuse at the array edge** (every bit a data cycle needs
+comes from the SRAM; peak x supply / demand):
+
+| mode | (i) SC T=128 average, 72 b/cycle per edge half | (ii) the 576-bit block every cycle (what SC T=16 needs) |
+|---|---|---|
+| SC T=128 | 1.0 MAC/tile-cycle (771 GMAC/s/mm2) | 1.0 |
+| BP INT8 | 0.14 (7% of peak), 108 | 1.12 (56%), 867 |
+| BP W4A8 | 0.28, 217 | 2.25, 1,734 |
+| BP INT4 | 0.56, 434 | 4.5, 3,469 |
+| spatial Booth INT8 | 0.28 (28%), 217 | 1.0 (100%), 771 |
+| spatial Booth INT4 | 1.12, 867 | 4.0, 3,083 |
+
+What follows from each reading:
+- **(i):** BP is memory-bound and slower than SC itself, and spatial Booth is the better INT mode.
+- **(ii):** BP INT8 lands just above SC T=128 at about half the energy per MAC, and INT4 still beats the binary array.
+- **BP at peak** needs about 1,024 b/cycle per edge half (1.8x the SC block width).
+
+The answer depends on how the SRAM is actually provisioned, which is still open. A standalone binary 8x8 array also needs about
+2 bits/MAC, so the binary area-efficiency figures assume their own feed.
+
+**With edge buffers (added 2026-10-04, review of the schedule study).** The table above assumes no reuse at the array edge. Two
+buffers change it:
+- an A replay buffer per PE-row edge, holding one block's activations (double-buffered);
+- a W block buffer per PE-column edge (8 columns x BW x L bits), kept for a whole sweep over M (M as the inner loop).
+
+Then the SRAM delivers each A bit once per block and each W bit once per M sweep. The buffers serve the full 1,024 b per cycle per
+edge half, so they are wide local SRAMs.
+
+Model section 6b, 4x4, L=4096, M = 2,048, N = 4,096. Cells: MAC/tile-cycle / GMAC/s/mm2 [buffer capacity on the grid]:
+
+| mode | (i) 72 b/cycle, no buffers | (i) with buffers | (ii) 576 b/cycle, no buffers | (ii) with buffers |
+|---|---|---|---|---|
+| BP INT8, T1 as built | 0.14 / 108 | 1.11 / 854 [160 KB] | 1.12 / 867 | 1.46 / 1,125 [160 KB] |
+| BP INT8, H(4,8) | 0.14 / 108 | 1.11 / 850 [256 KB] | 1.12 / 863 | 1.79 / 1,372 [256 KB] |
+| BP W4A8, H(8,4) | 0.28 / 216 | 2.22 / 1,700 [256 KB] | 2.25 / 1,727 | 3.58 / 2,744 [256 KB] |
+| BP INT4, H(4,4) | 0.56 / 432 | 2.23 / 1,713 [192 KB] | 4.50 / 3,453 | 6.81 / 5,225 [192 KB] |
+| spatial Booth INT8 | 0.28 / 217 | 0.56 / 430 [128 KB] | 0.93 / 718 | 0.93 / 716 [128 KB] |
+| spatial Booth INT4 | 1.12 / 867 | 2.22 / 1,708 [128 KB] | 3.72 / 2,871 | 3.71 / 2,861 [128 KB] |
+
+Spatial Booth is on the same area basis as the table above (the BP-lap composite; its own edge blocks are not added). Its no-buffer
+(ii) cells include skew and drain (0.93), unlike the peak figure above.
+
+What the buffers change:
+- **Under (i) with buffers, BP INT8 and W4A8 run at about 2x spatial Booth, and INT4 ties.** Each BP data cycle then needs about
+  128 b of A from the SRAM, and spatial Booth needs 128 b per cycle for half as many MACs. So reading (i) alone no longer picks spatial
+  Booth. It does if the buffers are not built.
+- **The rescheduling gain shows only where the array is compute-bound** (reading (ii) with buffers). Memory-bound points run at the
+  same rate whatever the schedule.
+- **T2 S=8 gains nothing from the buffers**: with one output per PE there is no reuse inside a block.
+- **The cost is the buffers**: 128-256 KB on a 4x4 at L=4096, with 1,024-bit ports for BP (128 / 256-bit for spatial Booth).
+
+So the open decision has a second part. Besides "72 b/cycle average or the full 576-bit block every cycle", it matters whether edge
+buffers of this size and port width can be built.
