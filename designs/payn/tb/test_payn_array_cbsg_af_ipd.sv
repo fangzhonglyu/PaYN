@@ -134,6 +134,43 @@
 //   +NEG_SW_NO_RELOAD     the first SC block after INT loads A but not W (W holds
 //                         the INT zero magnitudes): CHECK + CONTRACT
 //
+// ---------------------------------------------------------- +MODE=abit --
+// [ABIT] Opt-in (added 2026-10-06; no other mode reads it): the all-bits-in-time
+// INT schedule of doc/cbsg_handoff.md section 5 on the same top, no RTL change.
+// Every tile holds one output: tile row h = activation row ig*8 + h, column v =
+// weight column jg*8 + v (block blk = ig*NJG + jg).  One pass per bit pair
+// (p, q): row bus h carries bit p of its activation row, column bus v bit q of
+// its weight column, chunk u of a pass = reduction elements 128u + 16k + m
+// (lane k, position m), NB = L/128 data edges per pass.  Passes are grouped by
+// level p + q, MSB level first (A bit ascending inside a level); passes of a
+// level are contiguous (no bubble), and between two levels there is one bubble
+// capture and one 1-edge lap (ring_in one edge ahead; every tile doubles in
+// place).  Pass sign (p == BA-1) XOR (q == BW-1) on the W side through the
+// existing load_w / load_w_sign wave one edge ahead of each pass (zero
+// magnitudes); A signs 0, loaded once with the zero-load on INT entry.  After
+// the last level one bubble (the last MAC edge), then the drain: shift_in for
+// 8 edges with acc_in_west = 0, read on acc_out_east (8 raw rows; the combiner
+// still captures, its words are not used), the 8th drain edge being the next
+// block's first capture.  shift_in is high on drain edges only (laps on ring_q
+// alone).  Block period BA*BW*NB + (BA+BW-2) + 8.  int_prec = 0.
+//   +BA +BW (2..8) +L (multiple of 128, worst case L*2^(BA+BW-2) < 2^23; +ABIT_RANGE_DATA
+//   skips that bound, for workloads whose actual GEMM fits, which the checker verifies)
+//   +MROWS +NCOLS (multiples of 8) +MODE_AT +JUNK +PARK_CYC0 +SEED as +MODE=int;
+//   operands bpt_a.hex / bpt_w.hex (sweeps/cbsg/af_ipd/abit/gen_abit_workload.py);
+//   trace abit_trace.txt (format at run_abit_segment), schedule abit_sched.txt;
+//   checker sweeps/cbsg/af_ipd/abit/check_abit_trace.py.  Negative controls
+//   (the checker must find wrong drains):
+//   +NEG_ABIT_NO_LAP=n     no lap before level n of the order (bubble kept)
+//   +NEG_ABIT_EXTRA_LAP=n  an extra bubble + lap after the first pass of level n
+//   +NEG_ABIT_SIGN=1|2     1: pass sign (q == BW-1) only (A term dropped);
+//                          2: the sign of pass BA*BW/2 flipped
+//   +NEG_ABIT_ORDER=1|2    1: levels LSB first; 2: levels 1 and 2 of the order swapped
+//   +NEG_ABIT_NO_BUBBLE    tightness: no bubble before a lap (the lap edge drops
+//                          the level's last MAC)
+//   +NEG_ABIT_DRAIN_EARLY  tightness: no bubble before the drain
+//   +NEG_ABIT_OVERLAP      tightness: next block one edge early (its first MAC
+//                          lands on the last drain edge)
+//
 // Needs DesignWare for the CSA tile heap: make sim ... USE_DW=1 (or the
 // runner's -y $SYNOPSYS/dw/sim_ver).
 
@@ -1089,6 +1126,277 @@ module Top;
         acc_in_west = '0;
     endtask
 
+    //========================================================= ABIT part ==
+    // [ABIT] +MODE=abit, the all-bits-in-time INT schedule (doc/cbsg_handoff.md
+    // section 5) on the unchanged AF-IPD top.  Opt-in: no other mode calls these
+    // tasks or reads these variables (the header's +MODE=abit section).
+    int AB_NLEV, AB_NP, AB_NBLK, AB_D0, AB_BLK_NOM, AB_BLK_LEN, AB_FORMULA, AB_E_END, AB_N;
+    int ab_lev_k [$];                            // processing order n -> level k = p + q
+    int ab_pp [$], ab_pq [$], ab_ps [$], ab_pn [$];   // pass j: A bit p, W bit q, sign, level index n
+    int ab_cap_blk [], ab_cap_pass [], ab_cap_u [];   // raw data captured at P_e (blk -1: zero planes)
+    int ab_start_pass [];                        // pass whose first plane is captured at P_e (-1: none)
+    bit ab_lap [];                               // P_e is a lap edge (ring_q high; ring_in at P_{e-1})
+    int ab_drn_blk [], ab_drn_t [];              // P_e is drain step t of block ab_drn_blk (-1: none)
+    int ab_neg_no_lap = -1, ab_neg_extra_lap = -1, ab_neg_sign = 0, ab_neg_order = 0;
+    bit ab_neg_no_bubble = 1'b0, ab_neg_drain_early = 0, ab_neg_overlap = 1'b0;
+
+    // Pass order, per-block slot list and the per-edge schedule of one segment.
+    task automatic abit_config();
+        int sl_kind [$], sl_pass [$], sl_u [$];   // slot: 0 data / 1 bubble, pass, chunk
+        bit sl_lap [$];
+        bit lap_next;
+        int first_in_level, base, e;
+        if (BA < 2 || BA > 8 || BW < 2 || BW > 8) $fatal(1, "[ABIT] BA, BW must be 2..8 (got %0d, %0d)", BA, BW);
+        if (L < K*M || L % (K*M) != 0) $fatal(1, "[ABIT] L=%0d must be a positive multiple of %0d", L, K*M);
+        if (MROWS < N_H || MROWS % N_H != 0 || NCOLS < N_W || NCOLS % N_W != 0)
+            $fatal(1, "[ABIT] MROWS must be a multiple of %0d and NCOLS of %0d", N_H, N_W);
+        // Worst case |C| = L * 2^(BA-1) * 2^(BW-1) must fit the signed OWIDTH-bit tile.
+        if (longint'(L) * (longint'(1) << (BA + BW - 2)) > (longint'(1) << (OWIDTH-1)) - 1 &&
+            !$test$plusargs("ABIT_RANGE_DATA"))
+            $fatal(1, "[ABIT] L=%0d at BA=%0d BW=%0d can overflow the %0d-bit tile (worst case L*2^%0d)",
+                   L, BA, BW, OWIDTH, BA + BW - 2);
+        if (park_cyc0 && !(MODE_AT >= 2 && MODE_AT <= E0 - 1))
+            $fatal(1, "[ABIT] PARK_CYC0 needs MODE_AT 2..%0d", E0 - 1);
+        NB = L / (K*M);
+        NIG = MROWS / N_H;
+        NJG = NCOLS / N_W;
+        AB_NBLK = NIG * NJG;
+        AB_NLEV = BA + BW - 1;
+        AB_NP = BA * BW;
+        AB_FORMULA = BA*BW*NB + (BA + BW - 2) + N_W;     // + (P_R+P_C-2) = 0, 8*P_C = 8
+        // Levels MSB first (NEG_ORDER=1: LSB first; 2: levels 1 and 2 of the order swapped).
+        ab_lev_k.delete();
+        for (int n = 0; n < AB_NLEV; n++) ab_lev_k.push_back(AB_NLEV - 1 - n);
+        if (ab_neg_order == 1) ab_lev_k.reverse();
+        if (ab_neg_order == 2) begin
+            int tmp;
+            if (AB_NLEV < 3) $fatal(1, "[ABIT] NEG_ORDER=2 needs 3 levels");
+            tmp = ab_lev_k[1]; ab_lev_k[1] = ab_lev_k[2]; ab_lev_k[2] = tmp;
+        end
+        // Passes: level by level, A bit ascending inside a level.  Sign of pass
+        // (p, q) = (p == BA-1) XOR (q == BW-1), applied on the W side (A sign 0).
+        ab_pp.delete(); ab_pq.delete(); ab_ps.delete(); ab_pn.delete();
+        for (int n = 0; n < AB_NLEV; n++)
+            for (int p = 0; p < BA; p++) begin
+                int q;
+                q = ab_lev_k[n] - p;
+                if (q < 0 || q >= BW) continue;
+                ab_pp.push_back(p);
+                ab_pq.push_back(q);
+                ab_pn.push_back(n);
+                if (ab_neg_sign == 1) ab_ps.push_back(q == BW - 1);   // NEG_SIGN=1: A sign term dropped
+                else ab_ps.push_back((p == BA - 1) ^ (q == BW - 1));
+            end
+        if (ab_pp.size() != AB_NP) $fatal(1, "[ABIT] %0d passes, expected %0d", ab_pp.size(), AB_NP);
+        if (ab_neg_sign == 2) ab_ps[AB_NP/2] = !ab_ps[AB_NP/2];      // NEG_SIGN=2: one pass flipped
+        if (ab_neg_extra_lap >= AB_NLEV || ab_neg_no_lap >= AB_NLEV || ab_neg_no_lap == 0)
+            $fatal(1, "[ABIT] NEG_NO_LAP must be 1..%0d, NEG_EXTRA_LAP 0..%0d", AB_NLEV - 1, AB_NLEV - 1);
+        if (ab_neg_extra_lap >= 0) begin
+            int np_lev;
+            np_lev = 0;
+            foreach (ab_pn[j]) np_lev += (ab_pn[j] == ab_neg_extra_lap);
+            if (np_lev < 2) $fatal(1, "[ABIT] NEG_EXTRA_LAP=%0d: that level has %0d pass(es), needs 2", ab_neg_extra_lap, np_lev);
+        end
+        // Slots of one block: every pass NB data slots; before every level but
+        // the first a bubble slot (the MAC on the lap edge is dropped), the lap
+        // on the next level's first capture; after the last level one bubble
+        // (the last MAC edge), then the drain.
+        lap_next = 1'b0;
+        for (int j = 0; j < AB_NP; j++) begin
+            first_in_level = (j == 0) || (ab_pn[j] != ab_pn[j-1]);
+            if (first_in_level && j > 0) begin
+                if (!ab_neg_no_bubble) begin
+                    sl_kind.push_back(1); sl_pass.push_back(-1); sl_u.push_back(-1); sl_lap.push_back(1'b0);
+                end
+                lap_next = (ab_pn[j] != ab_neg_no_lap);               // NEG_NO_LAP: this level's lap dropped
+            end
+            if (!first_in_level && ab_pn[j] == ab_neg_extra_lap && ab_pn[j-1] == ab_neg_extra_lap &&
+                (j < 2 || ab_pn[j-2] != ab_neg_extra_lap)) begin       // NEG_EXTRA_LAP: lap after the level's first pass
+                if (!ab_neg_no_bubble) begin
+                    sl_kind.push_back(1); sl_pass.push_back(-1); sl_u.push_back(-1); sl_lap.push_back(1'b0);
+                end
+                lap_next = 1'b1;
+            end
+            for (int u = 0; u < NB; u++) begin
+                sl_kind.push_back(0); sl_pass.push_back(j); sl_u.push_back(u);
+                sl_lap.push_back(lap_next && u == 0);
+            end
+            lap_next = 1'b0;
+        end
+        if (!ab_neg_drain_early) begin
+            sl_kind.push_back(1); sl_pass.push_back(-1); sl_u.push_back(-1); sl_lap.push_back(1'b0);
+        end
+        AB_D0 = sl_kind.size();                  // first drain slot
+        AB_BLK_NOM = AB_D0 + N_W - 1;            // 8th drain edge = next block's slot 0
+        AB_BLK_LEN = AB_BLK_NOM - (ab_neg_overlap ? 1 : 0);
+        AB_E_END = E0 + (AB_NBLK - 1)*AB_BLK_LEN + AB_BLK_NOM;
+        AB_N = AB_E_END + 8;
+        ab_cap_blk = new[AB_N]; ab_cap_pass = new[AB_N]; ab_cap_u = new[AB_N];
+        ab_start_pass = new[AB_N]; ab_lap = new[AB_N]; ab_drn_blk = new[AB_N]; ab_drn_t = new[AB_N];
+        for (int i = 0; i < AB_N; i++) begin
+            ab_cap_blk[i] = -1; ab_cap_pass[i] = -1; ab_cap_u[i] = -1; ab_start_pass[i] = -1;
+            ab_lap[i] = 1'b0; ab_drn_blk[i] = -1; ab_drn_t[i] = -1;
+        end
+        for (int b = 0; b < AB_NBLK; b++) begin
+            base = E0 + b*AB_BLK_LEN;
+            for (int s = 0; s < AB_D0; s++) begin
+                e = base + s;
+                if (sl_lap[s]) ab_lap[e] = 1'b1;
+                if (sl_kind[s] == 0) begin
+                    ab_cap_blk[e] = b; ab_cap_pass[e] = sl_pass[s]; ab_cap_u[e] = sl_u[s];
+                    if (sl_u[s] == 0) ab_start_pass[e] = sl_pass[s];
+                end
+            end
+            for (int t = 0; t < N_W; t++) begin
+                e = base + AB_D0 + t;
+                if (ab_drn_blk[e] >= 0) $fatal(1, "[ABIT] two drains on edge %0d", e);
+                ab_drn_blk[e] = b; ab_drn_t[e] = t;
+            end
+        end
+    endtask
+
+    function automatic bit abit_drain_at(input int e);
+        return e >= 0 && e < AB_N && ab_drn_blk[e] >= 0;
+    endfunction
+
+    function automatic bit abit_lap_at(input int e);
+        return e >= 0 && e < AB_N && ab_lap[e];
+    endfunction
+
+    // Raw planes captured at P_e: tile row h = activation row ig*8 + h (bit p),
+    // tile column v = weight column jg*8 + v (bit q).
+    task automatic abit_set_raw(input int e);
+        logic [N_H*K*M-1:0] a_next;
+        logic [N_W*K*M-1:0] w_next;
+        int blk, j, u, ig, jg, p, q, x;
+        a_next = '0;
+        w_next = '0;
+        if (e >= 0 && e < AB_N && ab_cap_blk[e] >= 0) begin
+            blk = ab_cap_blk[e]; j = ab_cap_pass[e]; u = ab_cap_u[e];
+            ig = blk / NJG; jg = blk % NJG;
+            p = ab_pp[j]; q = ab_pq[j];
+            for (int h = 0; h < N_H; h++)
+                for (int k = 0; k < K; k++)
+                    for (int m = 0; m < M; m++) begin
+                        x = u*K*M + k*M + m;
+                        a_next[(h*K + k)*M + m] = a_mem[(ig*N_H + h)*L + x][p];
+                    end
+            for (int v = 0; v < N_W; v++)
+                for (int k = 0; k < K; k++)
+                    for (int m = 0; m < M; m++) begin
+                        x = u*K*M + k*M + m;
+                        w_next[(v*K + k)*M + m] = w_mem[(jg*N_W + v)*L + x][q];
+                    end
+        end
+        a_raw_in = a_next;
+        w_raw_in = w_next;
+    endtask
+
+    // W sign load one edge ahead of every pass start (the existing load_w_sign
+    // wave; zero magnitudes); A signs 0, loaded once with the zero-load on entry.
+    task automatic abit_set_signs(input int e);
+        int j;
+        load_a = 1'b0;
+        load_a_sign = 1'b0;
+        load_w = 1'b0;
+        load_w_sign = 1'b0;
+        if (e + 1 >= 0 && e + 1 < AB_N && ab_start_pass[e + 1] >= 0) begin
+            j = ab_start_pass[e + 1];
+            w_signs_in = ab_ps[j] ? '1 : '0;
+            load_w = 1'b1;
+            load_w_sign = 1'b1;
+            if (e + 1 == E0) begin
+                a_signs_in = '0;
+                load_a = 1'b1;
+                load_a_sign = 1'b1;
+            end
+        end
+        if (junk && int_mode) begin                  // as set_signs: sign words that no pipe latches
+            if (!load_a && ($urandom & 1)) begin
+                load_a = 1'b1;
+                a_signs_in = {$urandom, $urandom};
+            end
+            if (!load_w && ($urandom & 1)) begin
+                load_w = 1'b1;
+                w_signs_in = {$urandom, $urandom};
+            end
+        end
+    endtask
+
+    // One all-bits-in-time segment (edge 0 = next posedge), trace abit_trace.txt:
+    //   ABITCFG BA BW L MROWS NCOLS NBLK NB E0 E_END BLK_LEN D0 FORMULA NLEV JUNK MODE_AT
+    //           NEG_NO_LAP NEG_EXTRA_LAP NEG_SIGN NEG_ORDER NEG_NO_BUBBLE NEG_DRAIN_EARLY NEG_OVERLAP PARK_CYC0
+    //   P e blk j p q sign    first capture of pass j (the sign the W wave loaded for it)
+    //   K e blk j u           raw-plane capture (chunk u of pass j)
+    //   L e                   lap edge (ring_in driven on e-1)
+    //   X e blk t             drain step t (shift_in, acc_in_west = 0)
+    //   M e                   first edge with mac_en high
+    //   D blk t v0..v7 / C blk t lo hi   (the INT monitor: acc_out_east, combiner word)
+    task automatic run_abit_segment(input int tail);
+        int seg;
+        cap_t c;
+        if (n_seg >= MAX_SEG) $fatal(1, "more than %0d INT segments", MAX_SEG);
+        seg = n_seg++;
+        seg_dir[seg] = "abit";
+        seg_nblk[seg] = AB_NBLK;
+        seg_ndrain[seg] = 0;
+        seg_ncomb[seg] = 0;
+        read_hex("bpt_a.hex", MROWS*L, a_mem);
+        read_hex("bpt_w.hex", NCOLS*L, w_mem);
+        seg_trace[seg] = $fopen("abit_trace.txt", "w");
+        if (seg_trace[seg] == 0) $fatal(1, "cannot open abit_trace.txt");
+        seg_sched[seg] = $fopen("abit_sched.txt", "w");
+        if (seg_sched[seg] == 0) $fatal(1, "cannot open abit_sched.txt");
+        $fwrite(seg_trace[seg], "ABITCFG %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d\n",
+                BA, BW, L, MROWS, NCOLS, AB_NBLK, NB, E0, AB_E_END, AB_BLK_LEN, AB_D0, AB_FORMULA, AB_NLEV,
+                junk, MODE_AT, ab_neg_no_lap, ab_neg_extra_lap, ab_neg_sign, ab_neg_order,
+                ab_neg_no_bubble, ab_neg_drain_early, ab_neg_overlap, park_cyc0);
+        $fwrite(seg_sched[seg], "SCHED abit=1 blk_len=%0d d0=%0d nb=%0d ba=%0d bw=%0d nblk=%0d formula=%0d\n",
+                AB_BLK_LEN, AB_D0, NB, BA, BW, AB_NBLK, AB_FORMULA);
+        seg_base[seg] = int'(edge_n) + 1;
+        for (int e = 0; e <= AB_E_END + tail; e++) begin
+            if (e == MODE_AT) int_mode = 1'b1;
+            abit_set_raw(e);
+            abit_set_signs(e);
+            set_binary();
+            set_af_side(e);
+            if (junk) begin
+                if (abit_drain_at(e)) acc_in_west = '0;
+                else for (int n = 0; n < N_H*OWIDTH; n++) acc_in_west[n] = $urandom & 1;
+            end
+            ring_in = abit_lap_at(e + 1);
+            shift_in = abit_drain_at(e);
+            mac_en = (e > E0);                   // first MAC at P_{E0+1}
+            if (e == E0 + 1) $fwrite(seg_trace[seg], "M %0d\n", e);
+            if (e < AB_N && ab_start_pass[e] >= 0)
+                $fwrite(seg_trace[seg], "P %0d %0d %0d %0d %0d %0d\n", e, ab_cap_blk[e], ab_start_pass[e],
+                        ab_pp[ab_start_pass[e]], ab_pq[ab_start_pass[e]], ab_ps[ab_start_pass[e]]);
+            if (e < AB_N && ab_cap_blk[e] >= 0)
+                $fwrite(seg_trace[seg], "K %0d %0d %0d %0d\n", e, ab_cap_blk[e], ab_cap_pass[e], ab_cap_u[e]);
+            if (abit_lap_at(e)) $fwrite(seg_trace[seg], "L %0d\n", e);
+            if (abit_drain_at(e)) begin
+                $fwrite(seg_trace[seg], "X %0d %0d %0d\n", e, ab_drn_blk[e], ab_drn_t[e]);
+                c.seg = seg;
+                c.blk = ab_drn_blk[e];
+                c.t = ab_drn_t[e];
+                drain_expect[edge_n + 1] = c;
+            end
+            @(posedge clk);                      // P_e
+            @(negedge clk);
+        end
+        shift_in = 1'b0;
+        ring_in = 1'b0;
+        a_raw_in = '0;
+        w_raw_in = '0;
+        load_a = 1'b0;
+        load_w = 1'b0;
+        load_a_sign = 1'b0;
+        load_w_sign = 1'b0;
+        block_start = 1'b0;
+        slice_start = 1'b0;
+        acc_in_west = '0;
+    endtask
+
     //=========================================================== main ==
     int seed, reset_settle;
 
@@ -1404,7 +1712,51 @@ module Top;
                 $display("FAIL: CBSG AF-IPD switch bench");
             $finish;
         end
+
+        if (bench_mode == "abit") begin
+            //--------------------------------------------- [ABIT] abit --
+            void'($value$plusargs("NEG_ABIT_NO_LAP=%d", ab_neg_no_lap));
+            void'($value$plusargs("NEG_ABIT_EXTRA_LAP=%d", ab_neg_extra_lap));
+            void'($value$plusargs("NEG_ABIT_SIGN=%d", ab_neg_sign));
+            void'($value$plusargs("NEG_ABIT_ORDER=%d", ab_neg_order));
+            ab_neg_no_bubble = $test$plusargs("NEG_ABIT_NO_BUBBLE");
+            ab_neg_drain_early = $test$plusargs("NEG_ABIT_DRAIN_EARLY");
+            ab_neg_overlap = $test$plusargs("NEG_ABIT_OVERLAP");
+            if (!(ab_neg_sign >= 0 && ab_neg_sign <= 2) || !(ab_neg_order >= 0 && ab_neg_order <= 2))
+                $fatal(1, "[ABIT] NEG_ABIT_SIGN and NEG_ABIT_ORDER must be 0..2");
+            void'($urandom(seed));
+            abit_config();
+            int_mode = (MODE_AT < 0);
+            int_prec = 1'b0;                     // the combiner is not used (raw rows from acc_out_east)
+            rng_en = park_cyc0 ? 1'b0 : junk;
+
+            clk_utils.set_clock(PERIOD);
+            clk_utils.do_reset();
+            repeat (2) @(negedge clk);
+            int_mon_on = 1'b1;
+            run_abit_segment(2);
+            mac_en = 1'b0;
+            shift_in = 1'b0;
+            ring_in = 1'b0;
+            @(negedge clk);                      // monitor reads the last combiner word at E_END+2
+            if (seg_ndrain[0] != AB_NBLK*N_W || seg_ncomb[0] != AB_NBLK*N_W)
+                $fatal(1, "drained %0d columns and %0d combiner outputs, expected %0d each",
+                       seg_ndrain[0], seg_ncomb[0], AB_NBLK*N_W);
+            $fclose(seg_trace[0]);
+            $fclose(seg_sched[0]);
+            contract = dut_contract();
+`ifndef GL_SIM
+            $display("LAP_COVERAGE lap_edges=%0d tile_laps=%0d with_pending_carry=%0d with_pending_borrow=%0d",
+                     cov_lap_edges, cov_tile_laps, cov_pending_carry, cov_pending_borrow);
+            $display("INT_SILENT_MAC_SAMPLES %0d", int_mac_samples);
 `endif
-        $fatal(1, "[BENCH] unknown +MODE=%s (sc | int | switch)", bench_mode);
+            $display("PASS: ABIT INT bench BA=%0d BW=%0d L=%0d MROWS=%0d NCOLS=%0d blocks=%0d block_len=%0d formula=%0d edges=%0d junk=%0d mode_at=%0d af_contract=%0d park_cyc0=%0d neg=%0d/%0d/%0d/%0d/%0d/%0d/%0d",
+                     BA, BW, L, MROWS, NCOLS, AB_NBLK, AB_BLK_LEN, AB_FORMULA, AB_E_END + 3, junk, MODE_AT,
+                     contract, park_cyc0, ab_neg_no_lap, ab_neg_extra_lap, ab_neg_sign, ab_neg_order,
+                     ab_neg_no_bubble, ab_neg_drain_early, ab_neg_overlap);
+            $finish;
+        end
+`endif
+        $fatal(1, "[BENCH] unknown +MODE=%s (sc | int | switch | abit)", bench_mode);
     end
 endmodule
