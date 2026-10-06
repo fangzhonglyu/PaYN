@@ -4,9 +4,9 @@ Superseded designs, studies and scripts, moved here untouched on 2026-10-06 when
 here is maintained or expected to run: paths inside these files still name their original locations.
 
 **Path rule:** `archive/<path>` is the file that lived at `<path>` in commit `8da2bf4`. To restore one, `git mv` it
-back (or check out `8da2bf4`). Results documents in `doc/` that cite `sweeps/...`, `designs/payn/variants/...` etc.
-refer to these files; their numbers came from runs under `build/`, `syn/build/` and `apr/build/`, which were not
-moved.
+back (or check out `8da2bf4`). The archived documents in `archive/doc/` cite `sweeps/...`,
+`designs/payn/variants/...` etc.: read those as `archive/sweeps/...`, `archive/designs/...`.  Their numbers came from
+runs under `build/`, `syn/build/` and `apr/build/`, which were not moved.
 
 What is here:
 
@@ -19,6 +19,7 @@ What is here:
 | `sweeps/` | every campaign, study, probe, review and debug script (C-BSG, INT-mode exploration, popcount, K/M/N, wire, T-sweep, pending-bit, ROC, ...) |
 | `syn/targets/`, `apr/targets/` | targets of the archived designs and studies |
 | `syn/scripts/`, `apr/scripts/` | hook scripts only those targets used |
+| `doc/` | results and handoff notes of the archived designs and studies: the A7/SVT and A6P5 results, the SC breakdown, timing, wire and area-efficiency studies, the INT-mode exploration and its datapath figure, the C-BSG port plan and variant comparison (AF / RG / CSA, AF-IPD), the low-corner GL-X note, the ROC study, the bitmod comparison, the experiment index |
 | `equivalence/` | the Formality proof that `designs/payn/rtl` equals the AF-IPD variant (below) |
 
 ## Equivalence of the cleaned RTL

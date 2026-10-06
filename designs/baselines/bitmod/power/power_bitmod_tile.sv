@@ -16,7 +16,7 @@
 //   * X on the drain rail during the window is fatal
 //
 // Two deliberate divergences from the other benches, both documented in
-// doc/results.md because they affect how the row may be read:
+// archive/doc/results.md because they affect how the row may be read:
 //
 //   1. The DUT is the tile only.  Operand decode (booth term generation, group
 //      scale distribution, skew) lives in `controller`, which this bench
