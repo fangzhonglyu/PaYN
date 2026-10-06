@@ -172,7 +172,7 @@ Peak (no laps, skew or drain), GMAC/s/mm2: INT8 1,152 / 1,522 / 1,590; INT6 2,04
 
 ## Against BOS
 
-BOS: binary output-stationary 8x8 array per precision (24-bit accumulators, 64 MAC/cycle, 400 MHz), routed and measured with the same PT-PX method; its GMAC/s/mm2 is the drain-excluded peak.  PaYN: routed single-PE pJ/MAC (dr window) and 4x4 GMAC/s/mm2 with laps, skew and drain.
+INT schedule of record: all bits in time (abit); the bit-plane points stay in the INT tables for reference.  BOS: binary output-stationary 8x8 array per precision (24-bit accumulators, 64 MAC/cycle, 400 MHz), routed and measured with the same PT-PX method; its GMAC/s/mm2 is the drain-excluded peak, the same for any grid of BOS arrays.  PaYN: routed single-PE pJ/MAC (dr window: data + laps, drain excluded) and grid GMAC/s/mm2 with laps, skew and drain.
 
 | BOS | area (um2) | power (mW) | pJ/MAC | GMAC/s/mm2 | setup WNS (ns) | source |
 |---|---:|---:|---:|---:|---:|---|
@@ -180,24 +180,113 @@ BOS: binary output-stationary 8x8 array per precision (24-bit accumulators, 64 M
 | INT6 | 12,404 | 6.660 | 0.2601 | 2,064 | +0.422 | build/bos_precision/bos_precision_20261002/results.csv |
 | INT8 | 15,797 | 10.559 | 0.4125 | 1,621 | +1.109 | apr/build/TSMC22/BOS_ARRAY/20260728_143921 + build/power_char/BOS_ARRAY__T4096/power.rpt |
 
-| route | PaYN point | pJ/MAC | BOS pJ/MAC | vs BOS | 4x4 GMAC/s/mm2 | BOS GMAC/s/mm2 | vs BOS |
-|---|---|---:|---:|---:|---:|---:|---:|
-| K16/M8 (payn_k16m8_20261006_final) | abit INT4 L=1,024 | 0.0990 | 0.1552 | -36.2% | 3,923 | 2,491 | 1.57x |
-| K16/M8 (payn_k16m8_20261006_final) | abit INT4 L=4,096 | 0.0943 | 0.1552 | -39.2% | 4,854 | 2,491 | 1.95x |
-| K16/M8 (payn_k16m8_20261006_final) | bp INT4 L=1,024 | 0.1035 | 0.1552 | -33.3% | 2,311 | 2,491 | 0.93x |
-| K16/M8 (payn_k16m8_20261006_final) | abit INT6 L=1,024 | 0.2195 | 0.2601 | -15.6% | 2,008 | 2,064 | 0.97x |
-| K16/M8 (payn_k16m8_20261006_final) | abit INT6 L=4,096 | 0.2112 | 0.2601 | -18.8% | 2,249 | 2,064 | 1.09x |
-| K16/M8 (payn_k16m8_20261006_final) | abit INT8 L=256 | 0.4312 | 0.4125 | +4.5% | 937 | 1,621 | 0.58x |
-| K16/M8 (payn_k16m8_20261006_final) | abit INT8 L=384 | 0.4107 | 0.4125 | -0.4% | 1,037 | 1,621 | 0.64x |
-| K16/M8 (payn_k16m8_20261006_final) | bp INT8 L=1,024 | 0.4142 | 0.4125 | +0.4% | 774 | 1,621 | 0.48x |
-| K8/M16 (cbsg_af_ipd_20261005_distguide_spp_pins_postfill) | abit INT4 L=1,024 | 0.0932 | 0.1552 | -39.9% | 4,530 | 2,491 | 1.82x |
-| K8/M16 (cbsg_af_ipd_20261005_distguide_spp_pins_postfill) | abit INT4 L=4,096 | 0.0895 | 0.1552 | -42.4% | 5,606 | 2,491 | 2.25x |
-| K8/M16 (cbsg_af_ipd_20261005_distguide_spp_pins_postfill) | bp INT4 L=1,024 | 0.0972 | 0.1552 | -37.3% | 2,668 | 2,491 | 1.07x |
-| K8/M16 (cbsg_af_ipd_20261005_distguide_spp_pins_postfill) | abit INT6 L=1,024 | 0.2072 | 0.2601 | -20.3% | 2,319 | 2,064 | 1.12x |
-| K8/M16 (cbsg_af_ipd_20261005_distguide_spp_pins_postfill) | abit INT6 L=4,096 | 0.2007 | 0.2601 | -22.9% | 2,597 | 2,064 | 1.26x |
-| K8/M16 (cbsg_af_ipd_20261005_distguide_spp_pins_postfill) | abit INT8 L=256 | 0.3994 | 0.4125 | -3.2% | 1,082 | 1,621 | 0.67x |
-| K8/M16 (cbsg_af_ipd_20261005_distguide_spp_pins_postfill) | abit INT8 L=384 | 0.3834 | 0.4125 | -7.1% | 1,198 | 1,621 | 0.74x |
-| K8/M16 (cbsg_af_ipd_20261005_distguide_spp_pins_postfill) | bp INT8 L=1,024 | 0.3906 | 0.4125 | -5.3% | 894 | 1,621 | 0.55x |
+| route | abit point | pJ/MAC | BOS pJ/MAC | vs BOS | 4x4 GMAC/s/mm2 | 4x8 GMAC/s/mm2 | BOS GMAC/s/mm2 | 4x4 vs BOS | 4x8 vs BOS |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| K16/M8 (payn_k16m8_20261006_final) | INT4 L=1,024 | 0.0990 | 0.1552 | -36.2% | 3,923 | 3,482 | 2,491 | 1.57x | 1.40x |
+| K16/M8 (payn_k16m8_20261006_final) | INT4 L=4,096 | 0.0943 | 0.1552 | -39.2% | 4,854 | 4,894 | 2,491 | 1.95x | 1.96x |
+| K16/M8 (payn_k16m8_20261006_final) | INT6 L=1,024 | 0.2195 | 0.2601 | -15.6% | 2,008 | 1,947 | 2,064 | 0.97x | 0.94x |
+| K16/M8 (payn_k16m8_20261006_final) | INT6 L=4,096 | 0.2112 | 0.2601 | -18.8% | 2,249 | 2,344 | 2,064 | 1.09x | 1.14x |
+| K16/M8 (payn_k16m8_20261006_final) | INT8 L=256 | 0.4312 | 0.4125 | +4.5% | 937 | 838 | 1,621 | 0.58x | 0.52x |
+| K16/M8 (payn_k16m8_20261006_final) | INT8 L=384 | 0.4107 | 0.4125 | -0.4% | 1,037 | 970 | 1,621 | 0.64x | 0.60x |
+| K8/M16 (cbsg_af_ipd_20261005_distguide_spp_pins_postfill) | INT4 L=1,024 | 0.0932 | 0.1552 | -39.9% | 4,530 | 3,915 | 2,491 | 1.82x | 1.57x |
+| K8/M16 (cbsg_af_ipd_20261005_distguide_spp_pins_postfill) | INT4 L=4,096 | 0.0895 | 0.1552 | -42.4% | 5,606 | 5,502 | 2,491 | 2.25x | 2.21x |
+| K8/M16 (cbsg_af_ipd_20261005_distguide_spp_pins_postfill) | INT6 L=1,024 | 0.2072 | 0.2601 | -20.3% | 2,319 | 2,189 | 2,064 | 1.12x | 1.06x |
+| K8/M16 (cbsg_af_ipd_20261005_distguide_spp_pins_postfill) | INT6 L=4,096 | 0.2007 | 0.2601 | -22.9% | 2,597 | 2,635 | 2,064 | 1.26x | 1.28x |
+| K8/M16 (cbsg_af_ipd_20261005_distguide_spp_pins_postfill) | INT8 L=256 | 0.3994 | 0.4125 | -3.2% | 1,082 | 942 | 1,621 | 0.67x | 0.58x |
+| K8/M16 (cbsg_af_ipd_20261005_distguide_spp_pins_postfill) | INT8 L=384 | 0.3834 | 0.4125 | -7.1% | 1,198 | 1,091 | 1,621 | 0.74x | 0.67x |
+
+## INT throughput vs reduction length L (all bits in time)
+
+For an A (BA-bit) x W (BW-bit) GEMM with reduction length L on a P_R x P_C grid of PEs (8 x 8 tiles, 64 outputs per PE per block):
+
+    E(L)  = BA*BW*ceil(L/128) + (BA+BW-2) + (P_R+P_C-2) + 8*P_C      edges per block: data passes, laps, skew, drain
+    GMAC/s/mm2 = 0.4 GHz * P_R*P_C*64*L / (E(L) * A_grid)  =  peak * U(L),   U(L) = BA*BW*(L/128) / E(L)
+
+A_grid is the grid composite area of the Area section; the measured block periods equal E(L) for every measured point (regression and INT tables).  Other drains: replace 8*P_C by D (4*P_C both-way drain, 8 per-PE drain, ~1 overlapped).  Accumulator range is not modelled, for PaYN or BOS (both 24-bit).  BOS: drain-excluded peak, independent of L.
+
+K16/M8 (payn_k16m8_20261006_final), 4x4:
+
+| L | 128 | 256 | 384 | 512 | 768 | 1,024 | 2,048 | 4,096 | 8,192 | 16,384 | 65,536 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| INT8 GMAC/s/mm2 | 727 | 937 | 1,037 | 1,095 | 1,161 | 1,196 | 1,254 | 1,285 | 1,301 | 1,310 | 1,316 |
+| INT8 vs BOS (1,621) | 0.45x | 0.58x | 0.64x | 0.68x | 0.72x | 0.74x | 0.77x | 0.79x | 0.80x | 0.81x | 0.81x |
+| INT6 GMAC/s/mm2 | 1,004 | 1,406 | 1,622 | 1,757 | 1,917 | 2,008 | 2,163 | 2,249 | 2,295 | 2,319 | 2,337 |
+| INT6 vs BOS (2,064) | 0.49x | 0.68x | 0.79x | 0.85x | 0.93x | 0.97x | 1.05x | 1.09x | 1.11x | 1.12x | 1.13x |
+| INT4 GMAC/s/mm2 | 1,406 | 2,219 | 2,750 | 3,124 | 3,615 | 3,923 | 4,498 | 4,854 | 5,054 | 5,160 | 5,243 |
+| INT4 vs BOS (2,491) | 0.56x | 0.89x | 1.10x | 1.25x | 1.45x | 1.57x | 1.81x | 1.95x | 2.03x | 2.07x | 2.10x |
+
+K16/M8 (payn_k16m8_20261006_final), 4x8:
+
+| L | 128 | 256 | 384 | 512 | 768 | 1,024 | 2,048 | 4,096 | 8,192 | 16,384 | 65,536 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| INT8 GMAC/s/mm2 | 596 | 838 | 970 | 1,053 | 1,151 | 1,207 | 1,303 | 1,356 | 1,385 | 1,400 | 1,411 |
+| INT8 vs BOS (1,621) | 0.37x | 0.52x | 0.60x | 0.65x | 0.71x | 0.74x | 0.80x | 0.84x | 0.85x | 0.86x | 0.87x |
+| INT6 GMAC/s/mm2 | 754 | 1,161 | 1,415 | 1,588 | 1,811 | 1,947 | 2,195 | 2,344 | 2,426 | 2,470 | 2,503 |
+| INT6 vs BOS (2,064) | 0.37x | 0.56x | 0.69x | 0.77x | 0.88x | 0.94x | 1.06x | 1.14x | 1.18x | 1.20x | 1.21x |
+| INT4 GMAC/s/mm2 | 943 | 1,617 | 2,122 | 2,515 | 3,086 | 3,482 | 4,311 | 4,894 | 5,248 | 5,446 | 5,604 |
+| INT4 vs BOS (2,491) | 0.38x | 0.65x | 0.85x | 1.01x | 1.24x | 1.40x | 1.73x | 1.96x | 2.11x | 2.19x | 2.25x |
+
+K8/M16 (cbsg_af_ipd_20261005_distguide_spp_pins_postfill), 4x4:
+
+| L | 128 | 256 | 384 | 512 | 768 | 1,024 | 2,048 | 4,096 | 8,192 | 16,384 | 65,536 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| INT8 GMAC/s/mm2 | 840 | 1,082 | 1,198 | 1,265 | 1,340 | 1,382 | 1,448 | 1,484 | 1,503 | 1,512 | 1,519 |
+| INT8 vs BOS (1,621) | 0.52x | 0.67x | 0.74x | 0.78x | 0.83x | 0.85x | 0.89x | 0.92x | 0.93x | 0.93x | 0.94x |
+| INT6 GMAC/s/mm2 | 1,159 | 1,623 | 1,873 | 2,029 | 2,214 | 2,319 | 2,497 | 2,597 | 2,650 | 2,678 | 2,698 |
+| INT6 vs BOS (2,064) | 0.56x | 0.79x | 0.91x | 0.98x | 1.07x | 1.12x | 1.21x | 1.26x | 1.28x | 1.30x | 1.31x |
+| INT4 GMAC/s/mm2 | 1,623 | 2,563 | 3,176 | 3,607 | 4,174 | 4,530 | 5,195 | 5,606 | 5,837 | 5,959 | 6,055 |
+| INT4 vs BOS (2,491) | 0.65x | 1.03x | 1.27x | 1.45x | 1.68x | 1.82x | 2.09x | 2.25x | 2.34x | 2.39x | 2.43x |
+
+K8/M16 (cbsg_af_ipd_20261005_distguide_spp_pins_postfill), 4x8:
+
+| L | 128 | 256 | 384 | 512 | 768 | 1,024 | 2,048 | 4,096 | 8,192 | 16,384 | 65,536 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| INT8 GMAC/s/mm2 | 670 | 942 | 1,091 | 1,184 | 1,294 | 1,357 | 1,465 | 1,525 | 1,557 | 1,573 | 1,586 |
+| INT8 vs BOS (1,621) | 0.41x | 0.58x | 0.67x | 0.73x | 0.80x | 0.84x | 0.90x | 0.94x | 0.96x | 0.97x | 0.98x |
+| INT6 GMAC/s/mm2 | 848 | 1,305 | 1,590 | 1,786 | 2,036 | 2,189 | 2,467 | 2,635 | 2,728 | 2,777 | 2,814 |
+| INT6 vs BOS (2,064) | 0.41x | 0.63x | 0.77x | 0.87x | 0.99x | 1.06x | 1.20x | 1.28x | 1.32x | 1.35x | 1.36x |
+| INT4 GMAC/s/mm2 | 1,060 | 1,818 | 2,386 | 2,827 | 3,470 | 3,915 | 4,847 | 5,502 | 5,901 | 6,122 | 6,300 |
+| INT4 vs BOS (2,491) | 0.43x | 0.73x | 0.96x | 1.13x | 1.39x | 1.57x | 1.95x | 2.21x | 2.37x | 2.46x | 2.53x |
+
+### Drain variants (upper bounds)
+
+The same E(L) with the drain term D in place of 8*P_C.  The area is the measured one: the hardware each variant needs is not included, so these are upper bounds until that hardware is synthesized.  Variants: both-way (each half of a PE row drains to its own edge, D = 4*P_C), per-PE (each PE drains on its own path, D = 8), overlapped (shadow registers drain during the next block, D ~ 1).
+
+K16/M8 (payn_k16m8_20261006_final), 4x4, GMAC/s/mm2 (vs BOS):
+
+| drain | INT8 L=384 | INT8 L=1,024 | INT6 L=1,024 | INT4 L=1,024 | INT4 L=4,096 |
+|---|---:|---:|---:|---:|---:|
+| now, 8*P_C | 1,037 (0.64x) | 1,196 (0.74x) | 2,008 (0.97x) | 3,923 (1.57x) | 4,854 (1.95x) |
+| both-way, 4*P_C | 1,110 (0.68x) | 1,231 (0.76x) | 2,109 (1.02x) | 4,325 (1.74x) | 4,998 (2.01x) |
+| per-PE, 8 | 1,150 (0.71x) | 1,249 (0.77x) | 2,163 (1.05x) | 4,559 (1.83x) | 5,073 (2.04x) |
+| overlapped, ~1 | 1,188 (0.73x) | 1,266 (0.78x) | 2,212 (1.07x) | 4,785 (1.92x) | 5,141 (2.06x) |
+
+K16/M8 (payn_k16m8_20261006_final), 4x8, GMAC/s/mm2 (vs BOS):
+
+| drain | INT8 L=384 | INT8 L=1,024 | INT6 L=1,024 | INT4 L=1,024 | INT4 L=4,096 |
+|---|---:|---:|---:|---:|---:|
+| now, 8*P_C | 970 (0.60x) | 1,207 (0.74x) | 1,947 (0.94x) | 3,482 (1.40x) | 4,894 (1.96x) |
+| both-way, 4*P_C | 1,095 (0.68x) | 1,275 (0.79x) | 2,130 (1.03x) | 4,115 (1.65x) | 5,173 (2.08x) |
+| per-PE, 8 | 1,213 (0.75x) | 1,331 (0.82x) | 2,292 (1.11x) | 4,765 (1.91x) | 5,405 (2.17x) |
+| overlapped, ~1 | 1,252 (0.77x) | 1,349 (0.83x) | 2,344 (1.14x) | 4,995 (2.01x) | 5,477 (2.20x) |
+
+K8/M16 (cbsg_af_ipd_20261005_distguide_spp_pins_postfill), 4x4, GMAC/s/mm2 (vs BOS):
+
+| drain | INT8 L=384 | INT8 L=1,024 | INT6 L=1,024 | INT4 L=1,024 | INT4 L=4,096 |
+|---|---:|---:|---:|---:|---:|
+| now, 8*P_C | 1,198 (0.74x) | 1,382 (0.85x) | 2,319 (1.12x) | 4,530 (1.82x) | 5,606 (2.25x) |
+| both-way, 4*P_C | 1,282 (0.79x) | 1,422 (0.88x) | 2,435 (1.18x) | 4,995 (2.00x) | 5,772 (2.32x) |
+| per-PE, 8 | 1,328 (0.82x) | 1,443 (0.89x) | 2,497 (1.21x) | 5,265 (2.11x) | 5,858 (2.35x) |
+| overlapped, ~1 | 1,372 (0.85x) | 1,462 (0.90x) | 2,555 (1.24x) | 5,526 (2.22x) | 5,937 (2.38x) |
+
+K8/M16 (cbsg_af_ipd_20261005_distguide_spp_pins_postfill), 4x8, GMAC/s/mm2 (vs BOS):
+
+| drain | INT8 L=384 | INT8 L=1,024 | INT6 L=1,024 | INT4 L=1,024 | INT4 L=4,096 |
+|---|---:|---:|---:|---:|---:|
+| now, 8*P_C | 1,091 (0.67x) | 1,357 (0.84x) | 2,189 (1.06x) | 3,915 (1.57x) | 5,502 (2.21x) |
+| both-way, 4*P_C | 1,231 (0.76x) | 1,434 (0.88x) | 2,395 (1.16x) | 4,627 (1.86x) | 5,816 (2.33x) |
+| per-PE, 8 | 1,363 (0.84x) | 1,497 (0.92x) | 2,577 (1.25x) | 5,357 (2.15x) | 6,077 (2.44x) |
+| overlapped, ~1 | 1,407 (0.87x) | 1,516 (0.94x) | 2,635 (1.28x) | 5,616 (2.25x) | 6,157 (2.47x) |
 
 ## Sources
 

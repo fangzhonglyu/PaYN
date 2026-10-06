@@ -200,6 +200,24 @@ Where things are:
      2,064, 2,491).
    - Option, not started: share the kA encoders over a block (kA is constant per block; a K16/M8 block is up to 16
      cycles; the shortest ladder row, L=38, gives 5 cycles, so ~4 encoders per row instead of 16).
+3a. **(Decided 2026-10-06) INT schedule of record: all bits in time.** The BOS comparison uses it only; bit-plane stays
+   in the INT tables for reference. Accumulator range is not considered (the user's rule: BOS has the same 24-bit
+   accumulators and is not range-limited either), so every L runs as one block; the throughput-vs-L formula and LUT
+   are in `doc/payn_results.md`. The bit-plane-only hardware is the east INT combiner (~700 µm², 1.2% of K16/M8); removing it is an RTL
+   option, not started.
+3b. **(Open) Better draining.** The drain is the largest per-block INT overhead: 32 of 52 overhead edges at 4x4 and
+   64 of 88 at 4x8 (INT8, L = 384). It costs 8 edges per PE column because the accumulators shift out through every
+   PE of the row, which stops the whole row. Upper bounds (no added area) are in `doc/payn_results.md`, "Drain
+   variants": K16/M8 INT8 L = 384 goes from 1,037 / 970 (4x4 / 4x8) to 1,110 / 1,095 (both-way), 1,150 / 1,213
+   (per-PE) and 1,188 / 1,252 (overlapped); INT4 L = 1,024 4x8 from 3,482 to 4,995. Options, cheapest first
+   (area by estimate, to be synthesized):
+   - both-way drain: halves of each row drain west and east (D = 4*P_C); one more input on the tile's existing lap
+     mux plus west-edge output pins;
+   - per-PE drain path: D = 8 for any grid; mostly wiring past the neighbouring PEs and an edge collector;
+   - overlapped drain with 24-bit shadow registers (D ~ 1): about 1,536 flops per PE, roughly +10-13% PE area,
+     about what it gains at INT8 L = 384 and a net loss for SC and long L.
+   Next step proposed: model the exact block periods of the first two, synthesize the cheaper one at K16/M8 and check
+   net GMAC/s/mm2 for INT and SC. Not started.
 4. **Encoder remap.** DC maps the kA encoders onto bigger adders whenever the INT bypass is present. That costs about
    +1.9k µm² and +0.16 mW in AF-IPD.
 5. **Grid open items:**

@@ -381,9 +381,11 @@ def block_int(S: list[MeasureSet]) -> list[str]:
 
 
 def block_bos(S: list[MeasureSet], bos: dict) -> list[str]:
-    L = ["## Against BOS", "", "BOS: binary output-stationary 8x8 array per precision (24-bit accumulators, 64 MAC/cycle,"
-         " 400 MHz), routed and measured with the same PT-PX method; its GMAC/s/mm2 is the drain-excluded peak.  PaYN: "
-         "routed single-PE pJ/MAC (dr window) and 4x4 GMAC/s/mm2 with laps, skew and drain.", ""]
+    L = ["## Against BOS", "", "INT schedule of record: all bits in time (abit); the bit-plane points stay in the INT "
+         "tables for reference.  BOS: binary output-stationary 8x8 array per precision (24-bit accumulators, 64 "
+         "MAC/cycle, 400 MHz), routed and measured with the same PT-PX method; its GMAC/s/mm2 is the drain-excluded "
+         "peak, the same for any grid of BOS arrays.  PaYN: routed single-PE pJ/MAC (dr window: data + laps, drain "
+         "excluded) and grid GMAC/s/mm2 with laps, skew and drain.", ""]
     rows = [[p, f0(b["area_um2"]), f3(b["power_mW"]), f4(b["pJ_MAC"]), f0(b["gmacs_mm2"]),
              f"{b['setup_wns_ns']:+.3f}" if b.get("setup_wns_ns") is not None else "-", b["source"]]
             for p, b in sorted(bos.items())]
@@ -392,17 +394,88 @@ def block_bos(S: list[MeasureSet], bos: dict) -> list[str]:
     rows = []
     for s in S:
         pts = [(r, float(r["pJ_MAC"])) for r in s.int.values()] + [(b, None) for b in s.blocked]
-        for r, pj in sorted(pts, key=lambda x: (x[0]["precision"], x[0]["schedule"], int(x[0]["L"]))):
-            if r["saif_mode"] != "0" or r["point"].endswith("_ctl") or r["precision"] not in bos:
+        for r, pj in sorted(pts, key=lambda x: (x[0]["precision"], int(x[0]["L"]))):
+            if (r["schedule"] != "abit" or r["saif_mode"] != "0" or r["point"].endswith("_ctl")
+                    or r["precision"] not in bos):
                 continue
             b = bos[r["precision"]]
-            g = s.int_gmacs(r, "4x4")
-            rows.append([s.label, f"{r['schedule']} {r['precision']} L={int(r['L']):,}",
+            g4, g8 = s.int_gmacs(r, "4x4"), s.int_gmacs(r, "4x8")
+            rows.append([s.label, f"{r['precision']} L={int(r['L']):,}",
                          f4(pj) if pj is not None else f"stopped at {r['stage']}", f4(b["pJ_MAC"]),
-                         pct(pj, b["pJ_MAC"]), f0(g), f0(b["gmacs_mm2"]), ratio(g, b["gmacs_mm2"])])
-    L += table(["route", "PaYN point", "pJ/MAC", "BOS pJ/MAC", "vs BOS", "4x4 GMAC/s/mm2", "BOS GMAC/s/mm2",
-                "vs BOS"], rows, "llrrrrrr")
+                         pct(pj, b["pJ_MAC"]), f0(g4), f0(g8), f0(b["gmacs_mm2"]), ratio(g4, b["gmacs_mm2"]),
+                         ratio(g8, b["gmacs_mm2"])])
+    L += table(["route", "abit point", "pJ/MAC", "BOS pJ/MAC", "vs BOS", "4x4 GMAC/s/mm2", "4x8 GMAC/s/mm2",
+                "BOS GMAC/s/mm2", "4x4 vs BOS", "4x8 vs BOS"], rows, "llrrrrrrrr")
     return L + [""]
+
+
+def abit_edges(L: int, ba: int, bw: int, pr: int, pc: int, drain: int | None = None) -> int:
+    """Edges to finish one set of output tiles over a reduction of L in one block: its data passes, BA+BW-2
+    laps, P_R+P_C-2 skew and the drain (8*P_C edges unless given).  Accumulator range is not modelled, as for
+    BOS (both have 24-bit accumulators)."""
+    return ba * bw * -(-L // 128) + (ba + bw - 2) + (pr + pc - 2) + (8 * pc if drain is None else drain)
+
+
+def abit_gmacs(L: int, ba: int, bw: int, pr: int, pc: int, area_mm2: float, drain: int | None = None) -> float:
+    return pr * pc * 64 * L / abit_edges(L, ba, bw, pr, pc, drain) * F_GHZ / area_mm2
+
+
+LUT_L = [128, 256, 384, 512, 768, 1024, 2048, 4096, 8192, 16384, 65536]
+
+
+def block_lut(S: list[MeasureSet], bos: dict) -> list[str]:
+    L = ["## INT throughput vs reduction length L (all bits in time)", "",
+         "For an A (BA-bit) x W (BW-bit) GEMM with reduction length L on a P_R x P_C grid of PEs (8 x 8 tiles, "
+         "64 outputs per PE per block):", "",
+         "    E(L)  = BA*BW*ceil(L/128) + (BA+BW-2) + (P_R+P_C-2) + 8*P_C      edges per block: data passes, "
+         "laps, skew, drain",
+         "    GMAC/s/mm2 = 0.4 GHz * P_R*P_C*64*L / (E(L) * A_grid)  =  peak * U(L),   "
+         "U(L) = BA*BW*(L/128) / E(L)", "",
+         "A_grid is the grid composite area of the Area section; the measured block periods equal E(L) for every "
+         "measured point (regression and INT tables).  Other drains: replace 8*P_C by D (4*P_C both-way drain, 8 "
+         "per-PE drain, ~1 overlapped).  Accumulator range is not modelled, for PaYN or BOS (both 24-bit).  BOS: "
+         "drain-excluded peak, independent of L.", ""]
+    for s in S:
+        for grid in ("4x4", "4x8"):
+            area = s.grid_area(grid)
+            if not area:
+                continue
+            pr, pc = (int(x) for x in grid.split("x"))
+            rows = []
+            for ba in (8, 6, 4):
+                prec = f"INT{ba}"
+                g = [abit_gmacs(x, ba, ba, pr, pc, area * 1e-6) for x in LUT_L]
+                rows.append([f"{prec} GMAC/s/mm2"] + [f0(v) for v in g])
+                if prec in bos:
+                    rows.append([f"{prec} vs BOS ({f0(bos[prec]['gmacs_mm2'])})"]
+                                + [f"{v / bos[prec]['gmacs_mm2']:.2f}x" for v in g])
+            L += [f"{s.label}, {grid}:", ""]
+            L += table(["L"] + [f"{x:,}" for x in LUT_L], rows, "l" + "r" * len(LUT_L)) + [""]
+    L += ["### Drain variants (upper bounds)", "",
+          "The same E(L) with the drain term D in place of 8*P_C.  The area is the measured one: the hardware each "
+          "variant needs is not included, so these are upper bounds until that hardware is synthesized.  Variants: "
+          "both-way (each half of a PE row drains to its own edge, D = 4*P_C), per-PE (each PE drains on its own "
+          "path, D = 8), overlapped (shadow registers drain during the next block, D ~ 1).", ""]
+    drains = [("now, 8*P_C", None), ("both-way, 4*P_C", lambda pc: 4 * pc), ("per-PE, 8", lambda pc: 8),
+              ("overlapped, ~1", lambda pc: 1)]
+    points = [(8, 384), (8, 1024), (6, 1024), (4, 1024), (4, 4096)]
+    for s in S:
+        for grid in ("4x4", "4x8"):
+            area = s.grid_area(grid)
+            if not area:
+                continue
+            pr, pc = (int(x) for x in grid.split("x"))
+            rows = []
+            for name, d in drains:
+                row = [name]
+                for ba, l in points:
+                    g = abit_gmacs(l, ba, ba, pr, pc, area * 1e-6, None if d is None else d(pc))
+                    b = bos.get(f"INT{ba}")
+                    row.append(f0(g) + (f" ({g / b['gmacs_mm2']:.2f}x)" if b else ""))
+                rows.append(row)
+            L += [f"{s.label}, {grid}, GMAC/s/mm2 (vs BOS):", ""]
+            L += table(["drain"] + [f"INT{ba} L={l:,}" for ba, l in points], rows, "l" + "r" * len(points)) + [""]
+    return L
 
 
 def block_sources(S: list[MeasureSet]) -> list[str]:
@@ -443,7 +516,8 @@ def main() -> int:
          "Generated by `flow/report.py` from the run directories listed under Sources; do not edit by hand (rerun "
          "`python3 flow/report.py` after new measurements).  Every number below is read from a qualified route, "
          "its qualification evidence and its gated measurements.", ""]
-    L += block_route(S) + block_area(S) + block_sc(S) + block_int(S) + block_bos(S, bos) + block_sources(S)
+    L += block_route(S) + block_area(S) + block_sc(S) + block_int(S) + block_bos(S, bos) + block_lut(S, bos) \
+         + block_sources(S)
     a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_text("\n".join(L) + "\n")
     print(f"wrote {a.out} ({len(S)} measurement sets: {', '.join(s.label for s in S)}; BOS {', '.join(sorted(bos))})")
