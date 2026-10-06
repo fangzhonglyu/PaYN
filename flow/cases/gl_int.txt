@@ -1,0 +1,37 @@
+# Gate-level INT bit-plane suite (bench test_payn_array.sv +MODE=int on a netlist and on RTL with the same
+# inputs), workloads from int_workload.py bp.
+# label  BA BW L MROWS NCOLS DIST SEED  flags  expect  modes
+#   expect  pass (GL and RTL PASS, traces byte-identical, int_trace.py bp PASS) | fail:CHECK (the checker finds
+#           wrong outputs, traces identical) | fail:TIMING ([TIMING-FAIL] in GL and RTL, the same line) |
+#           glonly:CHECK (RTL stops at the [INT-CONTRACT] monitor, which is not in the netlist; the checker must
+#           find the GL outputs wrong)
+int8_uniform_L1024_m2n16             8 8  1024 2 16 uniform      3 -                       pass         syn-unit
+int8_allmin_L1024_m1n8               8 8  1024 1  8 allmin       0 -                       pass         syn-unit,syn-sdf,apr
+int8_allmax_L1024_m1n8               8 8  1024 1  8 allmax       0 -                       pass         syn-unit,apr
+int8_alternating_L1024_m2n8          8 8  1024 2  8 alternating  0 -                       pass         syn-unit
+int8_uniform_L256_m2n16_junk         8 8   256 2 16 uniform      6 JUNK                    pass         syn-unit,syn-sdf,apr
+int8_uniform_L256_m2n8_modeat3       8 8   256 2  8 uniform      7 MODE_AT=3               pass         syn-unit
+int8_neg1xmin_L65408_m1n8            8 8 65408 1  8 neg1xmin     0 -                       pass         syn-unit
+w4a8_uniform_L1024_m2n16             8 4  1024 2 16 uniform     12 -                       pass         syn-unit
+w4a8_minxmax_L1024_m1n8              8 4  1024 1  8 minxmax      0 -                       pass         syn-unit,syn-sdf,apr
+w4a8_uniform_L256_m3n8_junk          8 4   256 3  8 uniform     13 JUNK                    pass         syn-unit
+int4_uniform_L1024_m4n16             4 4  1024 4 16 uniform     22 -                       pass         syn-unit
+int4_allmin_L1024_m2n8               4 4  1024 2  8 allmin       0 -                       pass         syn-unit
+int4_uniform_L256_m2n16_junk         4 4   256 2 16 uniform     23 JUNK                    pass         syn-unit,syn-sdf,apr
+int8_uniform_L1024_m2n16_lapring     8 8  1024 2 16 uniform      3 LAP_RING_ONLY           pass         syn-unit,syn-sdf,apr
+int8_uniform_L4096_m1n8_lapring      8 8  4096 1  8 uniform      4 LAP_RING_ONLY           pass         syn-unit
+int8_uniform_L256_m2n16_junk_lapring 8 8   256 2 16 uniform      6 JUNK,LAP_RING_ONLY      pass         syn-unit
+w4a8_uniform_L1024_m2n16_lapring     8 4  1024 2 16 uniform     12 LAP_RING_ONLY           pass         syn-unit,syn-sdf,apr
+int4_uniform_L1024_m4n16_lapring     4 4  1024 4 16 uniform     22 LAP_RING_ONLY           pass         syn-unit,syn-sdf,apr
+int4_uniform_L256_m2n16_junk_lapring 4 4   256 2 16 uniform     23 JUNK,LAP_RING_ONLY      pass         syn-unit
+int8_park_cyc0_L256_m2n8             8 8   256 2  8 uniform     61 PARK_CYC0,MODE_AT=3     pass         syn-unit,syn-sdf,apr
+int8_park_cyc0_L1024_m1n8_lapring    8 8  1024 1  8 uniform     62 PARK_CYC0,MODE_AT=2,LAP_RING_ONLY pass syn-unit
+int4_park_cyc0_L256_m2n8_junk        4 4   256 2  8 uniform     63 PARK_CYC0,MODE_AT=3,JUNK pass        syn-unit
+w4a8_uniform_L512_m2n8_junk_modeat2  8 4   512 2  8 uniform     64 JUNK,MODE_AT=2,LAP_RING_ONLY pass    syn-unit
+int8_park_cyc0_L256_m1n8_lendc255    8 8   256 1  8 uniform     71 PARK_CYC0,MODE_AT=2,INT_LEN_DC=255 pass syn-unit
+neg_int8_ringstray_L256_m1n8_lapring 8 8   256 1  8 uniform     37 NEG_RING_STRAY,LAP_RING_ONLY fail:CHECK syn-unit,syn-sdf,apr
+neg_w4a8_lap2_L256_m1n8_lapring      8 4   256 1  8 uniform     43 LAP_LEN=2,LAP_RING_ONLY fail:CHECK  syn-unit,syn-sdf,apr
+neg_int4_prec_L256_m2n8              4 4   256 2  8 uniform     32 NEG_PREC                fail:CHECK   syn-unit,syn-sdf,apr
+neg_int8_noring_L256_m1n8            8 8   256 1  8 uniform     31 NEG_NO_RING             fail:TIMING  syn-unit
+neg_int8_mag_a_park_L256_m1n8        8 8   256 1  8 uniform     65 PARK_CYC0,MODE_AT=3,NEG_MAG_A glonly:CHECK syn-unit
+neg_int8_mag_w_L256_m1n8             8 8   256 1  8 uniform     67 NEG_MAG_W               glonly:CHECK syn-unit,syn-sdf,apr

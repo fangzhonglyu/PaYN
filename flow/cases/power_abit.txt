@@ -1,0 +1,8 @@
+# INT all-bits-in-time power-bench suite (bench power_payn_int.sv +MODE=abit), RTL, workloads
+# int_workload.py abit --dist plain --plain-dist uniform --row-unit 8 (seed 1).
+# label  BA BW L MROWS NCOLS SAIF_MODE  flags
+int8_L384_d     8 8  384 8 8 1 -
+int8_L384_all   8 8  384 8 8 2 -
+int6_L1024_d    6 6 1024 8 8 1 -
+int4_L1024_dr   4 4 1024 8 8 0 -
+w4a8_L1024_d    8 4 1024 8 8 1 -

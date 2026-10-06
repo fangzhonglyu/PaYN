@@ -1,0 +1,11 @@
+# INT bit-plane power-bench suite (bench power_payn_int.sv +MODE=bp), RTL, workloads int_workload.py bp
+# (uniform, seed 1).  label  BA BW L MROWS NCOLS SAIF_MODE  flags  checker-args (- for none)
+int8_L1024_dr     8 8 1024 1 8 0 -                --lap-ring-only
+int8_L1024_d      8 8 1024 1 8 1 -                --lap-ring-only
+int8_L1024_all    8 8 1024 1 8 2 -                --lap-ring-only
+w4a8_L1024_dr     8 4 1024 1 8 0 -                --lap-ring-only
+int4_L1024_dr     4 4 1024 2 8 0 -                --lap-ring-only
+int4_L1024_all    4 4 1024 2 8 2 -                --lap-ring-only
+int8_L2048_m2n16_dr 8 8 2048 2 16 0 -             --lap-ring-only
+int8_L1024_dr_shiftlaps 8 8 1024 1 8 0 LAP_RING_ONLY=0 -
+int8_L1024_dr_modeat_m1 8 8 1024 1 8 0 MODE_AT=-1 --lap-ring-only

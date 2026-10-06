@@ -1,0 +1,22 @@
+# SC <-> INT switching suite (bench test_payn_array.sv +MODE=switch).
+# label | flags | expect | items
+#   items   SC case name, or i:BA:BW:L:MROWS:NCOLS:MODE_AT:JUNK:LAP_RING_ONLY:DIST:SEED for an INT block;
+#           @ALL = every golden / extra / review case, each followed by a rotating INT block
+#   expect  pass | fail:TIMING | fail:INTCONTRACT | fail:TAG+TAG (CHECK CONTRACT INTCOUNT CUT ...)
+sw_basic | - | pass | plain_u128 i:8:8:256:1:8:0:0:1:uniform:5 calls_prot i:4:4:256:2:8:0:0:0:uniform:6 plain_u97 i:8:4:384:1:16:3:0:1:uniform:7 chunked_rung
+sw_int_junk | INT_JUNK,SEED=3 | pass | chunked_96 i:8:8:384:2:8:0:1:1:uniform:11 perhead_64 i:4:4:256:2:16:1:1:0:uniform:12 i:8:8:256:1:8:2:1:1:alternating:0 plain_ladder i:8:4:256:1:8:0:1:0:uniform:13 calls_av257
+sw_stall_gaps | INT_JUNK,STALL,GAPS,RNG_GAP_LOW,MAC_EXACT,LOOSE_DRAIN,SEED=4 | pass | rv_tiny_calls i:8:8:512:1:8:0:0:1:uniform:21 af_calls_mixed i:4:4:384:2:8:3:1:1:uniform:22 rv_cd8 i:8:8:256:2:8:0:1:0:minxmax:0 chunked_tail5
+sw_no_ss | INT_JUNK,NO_SLICE_START | pass | calls_prot i:8:8:256:1:8:0:0:1:uniform:31 chunked_100 i:8:4:256:1:8:0:1:1:uniform:32 rv_cd16 i:4:4:256:2:8:0:0:1:uniform:33 perhead_128
+sw_ss_only | INT_JUNK,KILL_DRAIN_RESET | pass | calls_av257 i:8:8:256:1:8:0:0:1:uniform:34 chunked_rung i:4:4:128:2:8:0:1:1:uniform:35 plain_extreme
+sw_gap3 | INT_JUNK,SW_GAP=3 | pass | plain_u128 i:8:8:256:1:8:3:1:1:uniform:41 plain_u97 i:4:4:256:2:8:0:0:0:allmin:0 plain_extreme
+sw_int_first | INT_JUNK | pass | i:8:8:256:1:8:0:0:1:uniform:51 plain_u128 i:8:8:1024:1:8:0:1:1:allmin:0 i:4:4:256:2:8:0:0:1:allmax:0 rv_c1_chain
+all_interleaved | INT_JUNK,SEED=5 | pass | @ALL
+sw_len_dc_hold | INT_JUNK,RNG_LOW_IDLE,INT_LEN_DC=255 | pass | rv_c1_chain i:8:8:256:1:8:0:0:1:uniform:71 af_perhead i:4:4:256:2:8:0:0:0:uniform:72 af_uL_001_032 i:8:4:256:1:8:2:0:1:uniform:73 perhead_64 i:8:8:128:1:8:0:0:1:uniform:74 plain_u97 i:4:4:128:2:8:1:0:1:uniform:75 calls_prot
+sw_len_dc128_gap1 | RNG_LOW_IDLE,INT_LEN_DC=128,SW_GAP=1 | pass | rv_c1_chain i:8:8:256:1:8:0:0:1:uniform:76 af_uL_001_032 i:8:8:256:1:8:3:0:0:uniform:77 af_perhead
+all_interleaved_len_dc | INT_JUNK,RNG_LOW_IDLE,INT_LEN_DC=255,SEED=6 | pass | @ALL
+neg_sw_early_int | NEG_SW_EARLY_INT | fail:TIMING | plain_u128 i:8:8:256:1:8:0:0:1:uniform:61 plain_u97
+neg_sw_late_drop | NEG_SW_LATE_DROP | fail:CHECK+CONTRACT | plain_u128 i:8:8:256:1:8:0:0:1:uniform:62 plain_u97
+neg_sw_no_zero_load | NEG_SW_NO_ZERO_LOAD | fail:INTCONTRACT | plain_u128 i:8:8:256:1:8:0:0:1:uniform:63 plain_u97
+neg_sw_int_drop_early | NEG_SW_INT_DROP_EARLY | fail:TIMING | plain_u128 i:8:8:256:1:8:0:0:1:uniform:64 plain_u97
+neg_sw_no_reload | NEG_SW_NO_RELOAD | fail:CHECK+CONTRACT | plain_u128 i:8:8:256:1:8:0:0:1:uniform:65 plain_u97
+neg_sw_cut_across_int | NEG_SHORT_LAST=2,RNG_LOW_IDLE | fail:CHECK+CONTRACT+CUT | plain_u128 i:8:8:256:1:8:0:0:1:uniform:78 plain_u97

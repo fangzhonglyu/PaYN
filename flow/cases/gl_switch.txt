@@ -1,0 +1,14 @@
+# Gate-level SC <-> INT switching suite (bench test_payn_array.sv +MODE=switch on a netlist and on RTL with the
+# same inputs).
+# label | flags | expect | items | modes
+#   items   SC case name, or i:BA:BW:L:MROWS:NCOLS:MODE_AT:JUNK:LAP_RING_ONLY:DIST:SEED for an INT block;
+#           @ALL = every golden / extra / review case, each followed by a rotating INT block
+#   expect  pass (both PASS, every INT segment bit-exact) | fail:CHECK | fail:TIMING
+# The SC RESULT fields must equal RTL's and every INT segment's trace must be byte-identical to RTL's.
+sw_sc_first_intjunk | INT_JUNK | pass | plain_u128 i:8:8:256:1:8:0:0:1:uniform:61 plain_u97 i:8:4:384:1:8:1:1:0:uniform:62 calls_prot i:4:4:256:2:8:2:0:1:uniform:63 af_perhead | syn-unit,apr
+sw_int_first_idle | INT_JUNK,RNG_LOW_IDLE,INT_LEN_DC=255 | pass | i:8:8:256:1:8:3:0:1:uniform:71 rv_c1_chain i:4:4:256:2:8:0:0:0:uniform:72 af_uL_001_032 i:8:4:256:1:8:2:0:1:uniform:73 plain_ladder | syn-unit
+sw_int_first_intjunk | INT_JUNK | pass | i:8:8:256:1:8:3:0:1:uniform:81 plain_u128 i:8:4:384:1:8:1:1:0:uniform:82 calls_prot i:4:4:256:2:8:2:0:1:uniform:83 plain_ladder | syn-sdf,apr
+all_interleaved | INT_JUNK,SEED=5 | pass | @ALL | syn-unit,apr
+neg_sw_no_reload | NEG_SW_NO_RELOAD | fail:CHECK | plain_u128 i:8:8:256:1:8:0:0:1:uniform:65 plain_u97 | syn-unit
+neg_sw_int_first_no_reload | NEG_SW_NO_RELOAD | fail:CHECK | i:8:8:256:1:8:3:0:1:uniform:84 plain_u97 | syn-sdf,apr
+neg_sw_early_int | NEG_SW_EARLY_INT | fail:TIMING | plain_u128 i:8:8:256:1:8:0:0:1:uniform:61 plain_u97 | syn-unit

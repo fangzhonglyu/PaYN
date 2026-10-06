@@ -1,91 +1,41 @@
 # PaYN
 
-Stochastic-computing (SC) GEMM accelerator, plus binary and unary systolic
-baselines, with a self-contained synth / place-and-route / power-characterization
-flow. PaYN is a **design repo**: it consumes the [ASTRAEA](../ASTRAEA) flow engine
-(`make` targets, Tcl scripts, PDK setups) and depends on nothing in `SCArch`.
+Stochastic-computing (SC) GEMM accelerator with an integer (INT) mode on the same datapath, plus binary and unary
+baselines. PaYN is a **design repo**: it consumes the [ASTRAEA](../ASTRAEA) flow engine (`make synth|apr|power_apr`,
+Tcl scripts, PDK setups).
 
 ## Layout
 
 ```
 designs/
-  common/                 shared bench utils (clk_util, defines)
-  payn/                   the SC accelerator (manual tile / PE / peripheral)
-    inner_tile.sv           InnerTile — output-stationary MAC + row-serial drain
-    inner_tile_comb.sv      combinational tile cone + flat GF22/ROC analysis top
-    inner_pe.sv             InnerPE / InnerPEFlat — the N_H×N_W tile array
-    pe_peripheral.sv        sc_pe_peripheral — binary→stochastic edge streams
-    sobol.sv                sobol_generator / sobol_bank — shared Sobol RNGs
-    payn_array.sv           (Phase 1) integrated banks + peripheral + InnerPE top
-    tb/                     functional testbenches
-    power/                  SAIF power benches (output-checked)
-    cosim/                  bit-exact array model (sc_kernel.py) + RTL cosim harness
-  baselines/
-    binary_parallel/        BP array_8 (+ asymmetric INT8 correction)
-    binary_serial/          BS array_8
-    binary_os/              BOS — output-stationary INT8/INT6/INT4 8x8 PE
-                            array with the PaYN dataflow (stationary accumulator,
-                            row-serial east drain), binary MACs instead of SC lanes
-      binary_os_pe.sv         BinaryOSPE — signed MAC + A/W hop regs + accumulator
-      binary_os_array.sv      BinaryOSArray/Flat + binary_os_array INT8 top
-      binary_os_array_native.sv  fixed-width INT6 and INT4 synthesis tops
-    unary_rate/             UR array_8 (Sobol rate coding)
-    unary_temporal/         UT array_8 (temporal + Sobol)
-syn/targets/TSMC22/         synthesis targets (parameterized)
-apr/targets/TSMC22/         place-and-route targets
-apr/scripts/                place_guides_sc_tiles.tcl
-roc_flow/configs/           PaYN-local configurations for sibling ROC_flow
-sweeps/                     power-characterization tooling (PT scripts, SAIF validators)
+  payn/                 PaYN: A-first C-BSG SC + INT (bit-plane, all-bits-in-time), K16/M8 or K8/M16
+    rtl/                  the RTL (top payn_array, grid PaynPeGrid)
+    model/                numpy reference models and checkers
+    tb/  power/           functional and power benches
+  baselines/            binary_os (BOS), binary_parallel, binary_serial, unary_rate, unary_temporal, bitmod
+  common/               shared bench utilities
+flow/                   regression, route, measure, report (see flow/README.md)
+syn/targets/TSMC22/     synthesis targets: PAYN and the baselines
+apr/targets/TSMC22/     APR targets
+apr/scripts/            APR hooks (PaYN pre-place: guides + fixed pins + post-fill repair; clock uncertainty)
+doc/                    results and handoff notes
+archive/                superseded designs, studies and scripts, untouched (see archive/README.md)
 ```
 
-Every design keeps RTL at its top level; tests live in `tb/`, power benches in
-`power/`.
+Start with `designs/payn/README.md` (the design and its files) and `flow/README.md` (how to verify, route, measure
+and report).
 
 ## Prerequisites
 
-- The ASTRAEA flow repo cloned next to this one (`../ASTRAEA`), or `ASTRAEA_FLOW=<path>`.
-- EDA tools + PDK on the environment (VCS, DC, PrimeTime, Innovus; TSMC22 ARM kit).
-  Load the standard modules before running the flow.
+- The ASTRAEA flow repo next to this one (`../ASTRAEA`), or `ASTRAEA_FLOW=<path>`.
+- VCS, DC, PrimeTime, Innovus, Formality and the TSMC22 ARM kit; `flow/env.sh` loads the exact module versions.
 
 ## Common commands
 
 ```bash
-# Functional simulation (RTL). SC designs instantiate DesignWare DW02_tree, so
-# they need the DesignWare sim library via USE_DW=1 (requires $SYNOPSYS):
-make sim TB=designs/payn/tb/test_inner_pe.sv USE_DW=1
-make sim TB=designs/payn/tb/test_peripheral.sv          # peripheral: no DW needed
-make sim TB=designs/baselines/binary_parallel/tb/test_array_8_power_workload.sv
-
-# Binary output-stationary array vs an independent golden matmul:
-make sim TB=designs/baselines/binary_os/tb/test_binary_os_array.sv
-
-# Native INT8/INT6/INT4 OS: golden tests, workload SAIF, synthesis, gate checks:
-bash sweeps/run_bos_precision_synth.sh 8 6 4
-
-# Route native INT6/INT4, run max-SDF checks, and measure extracted power:
-bash sweeps/run_bos_precision_apr.sh 6 4
-python3 sweeps/report_bos_precision_apr.py
-
-# Bit-exact array cosim (RTL vs the Python reference):
-bash designs/payn/cosim/run_peripheral.sh
-
-# Multi-PE systolic regression (2x3 signed-segmented InnerPE grid):
-bash designs/payn/cosim/run_systolic_pe_grid.sh
-
-# Large end-to-end matmul: 8x8 K8/M16/N8 PEs, 64x64 result, T=128:
-bash designs/payn/cosim/run_systolic_matmul.sh
-
-# Synthesis / APR / power (see syn/targets, apr/targets):
-make synth TARGET=TSMC22/BP_ARRAY
-make apr   TARGET=TSMC22/BP_ARRAY SYNTH_RUN=<run>
-make power_apr TARGET=TSMC22/BP_ARRAY ...
-
-# GF22 combinational inner-tile soft-error comparison (requires ../ROC_flow):
-ROC_ANGLE=omni ROC_TRIALS=10000000 bash sweeps/run_roc_inner_tile.sh all
-ROC_ANGLE=omni ROC_TRIALS=10000000 bash sweeps/run_roc_binary_mac.sh all
+python3 flow/regress.py --shape both                 # RTL regression of PaYN, both shapes
+make sim TB=designs/baselines/binary_os/tb/test_binary_os_array.sv   # a baseline bench
+make synth TARGET=TSMC22/BOS_ARRAY                   # synthesis of a baseline
 ```
 
-The GF22 extraction, matched binary reference, results, and caveats are in
-[`doc/ROC_inner_tile.md`](doc/ROC_inner_tile.md).
-
-Build artifacts land under `build/`, `syn/build/`, `apr/build/` (all git-ignored).
+Build artifacts land under `build/`, `syn/build/` and `apr/build/` (all git-ignored).

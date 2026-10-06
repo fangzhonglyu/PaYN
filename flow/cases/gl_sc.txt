@@ -1,0 +1,43 @@
+# Gate-level SC suite (bench test_payn_array.sv +MODE=sc on a netlist and on RTL with the same inputs).
+# label  cases  flags  settle  expect  modes
+#   settle  +RESET_SETTLE idle edges after reset, or - for the mode's default (syn-unit 0, syn-sdf 2, apr 2)
+#   expect  pass (both PASS, 0 drains wrong) | fail (both FAIL, [CHECK] in the GL log)
+#   modes   comma list of syn-unit, syn-sdf, apr; in apr every run also reads the drain at the SDC output-delay
+#           point (+DRAIN_SAMPLE_LATE_PS=50, GL and RTL alike)
+# The GL RESULT fields (cases calls blocks drains edges, drain values / bad, stalls, stray loads) must equal RTL's.
+plain_u128               plain_u128      -                     - pass syn-unit,syn-sdf
+plain_u97                plain_u97       -                     - pass syn-unit
+plain_ladder             plain_ladder    -                     - pass syn-unit,syn-sdf,apr
+plain_extreme            plain_extreme   -                     - pass syn-unit
+chunked_rung             chunked_rung    -                     - pass syn-unit,syn-sdf
+chunked_100              chunked_100     -                     - pass syn-unit
+chunked_tail5            chunked_tail5   -                     - pass syn-unit
+perhead_64               perhead_64      -                     - pass syn-unit
+calls_prot               calls_prot      -                     - pass syn-unit,apr
+calls_av257              calls_av257     -                     - pass syn-unit,syn-sdf
+af_calls_mixed           af_calls_mixed  -                     - pass syn-unit,syn-sdf,apr
+af_calls_odd             af_calls_odd    -                     - pass syn-unit
+af_uL_001_032            af_uL_001_032   -                     - pass syn-unit
+af_lad_chunk_0           af_lad_chunk_0  -                     - pass syn-unit
+af_perhead               af_perhead      -                     - pass syn-unit
+af_extreme_max           af_extreme_max  -                     - pass syn-unit
+af_av2048                af_av2048       -                     - pass syn-unit
+rv_tiny_calls            rv_tiny_calls   -                     - pass syn-unit,syn-sdf,apr
+rv_cd8                   rv_cd8          -                     - pass syn-unit
+rv_c1_chain              rv_c1_chain     -                     - pass syn-unit
+rv_plain_randL           rv_plain_randL  -                     - pass syn-unit
+settle2_plain_u128       plain_u128      -                     2 pass apr
+settle2_chunked_rung     chunked_rung    -                     2 pass apr
+settle2_calls_av257      calls_av257     -                     2 pass apr
+settle0_plain_u128       plain_u128      -                     0 pass apr
+settle0_chunked_rung     chunked_rung    -                     0 pass apr
+settle0_calls_av257      calls_av257     -                     0 pass apr
+calls_prot_intjunk       calls_prot      INT_JUNK              - pass apr
+chain_all_no_ss          @all            NO_SLICE_START        - pass syn-unit
+chain_all_no_ss_intjunk  @all            NO_SLICE_START,INT_JUNK - pass syn-unit,syn-sdf,apr
+chain_all_combo_s10      @all            NO_SLICE_START,STALL,JUNK_BUS,MID_RESET,GAPS,RNG_GAP_LOW,MAC_EXACT,LOOSE_DRAIN,FULL_CYCLES,INT_JUNK,SEED=10 - pass syn-unit
+chain_golden_combo_s10   @golden         NO_SLICE_START,STALL,JUNK_BUS,GAPS,RNG_GAP_LOW,MAC_EXACT,LOOSE_DRAIN,FULL_CYCLES,INT_JUNK,SEED=10 - pass syn-sdf,apr
+chain_golden_idle_s4     @golden         RNG_LOW_IDLE,INT_JUNK,SEED=4 - pass syn-unit
+neg_short_u97            plain_u97       NEG_SHORT_BLOCK       - fail syn-unit,syn-sdf,apr
+neg_next_early_rung      chunked_rung    NEG_NEXT_EARLY        - fail syn-unit,syn-sdf,apr
+neg_stall_nomac          plain_u97,calls_prot NEG_STALL_NOMAC,SEED=3 - fail syn-unit

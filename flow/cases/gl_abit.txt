@@ -1,0 +1,21 @@
+# Gate-level all-bits-in-time suite (bench test_payn_array.sv +MODE=abit on a netlist and on RTL with the same
+# inputs), workloads from int_workload.py abit.
+# label  BA BW L MROWS NCOLS DIST SEED  flags  expect  modes
+#   expect  pass (GL and RTL PASS, traces byte-identical, int_trace.py abit PASS) | caught (traces identical, the
+#           checker must catch the negative control: the hardware did exactly what the wrong schedule asked)
+int8_uniform_L384_m16n16          8 8  384 16 16 uniform      3 -                       pass   apr
+int8_uniform_L384_m24n16_junk     8 8  384 24 16 uniform      4 JUNK                    pass   apr
+int8_allmin_L384_m8n8             8 8  384  8  8 allmin       0 -                       pass   apr
+int8_minxmax_L384_m8n8            8 8  384  8  8 minxmax      0 -                       pass   apr
+int8_uniform_L256_m8n16_park      8 8  256  8 16 uniform      8 PARK_CYC0,MODE_AT=2     pass   apr
+int6_uniform_L1024_m16n8_junk     6 6 1024 16  8 uniform     24 JUNK                    pass   apr
+int6_allmin_L4096_m8n8            6 6 4096  8  8 allmin       0 -                       pass   apr
+int4_uniform_L4096_m8n8           4 4 4096  8  8 uniform     33 -                       pass   apr
+int4_uniform_L1024_m8n16_junk     4 4 1024  8 16 uniform     34 JUNK                    pass   apr
+w4a8_uniform_L512_m8n8_junk       8 4  512  8  8 uniform     42 JUNK                    pass   apr
+w6a8_minxmax_L1024_m8n8           8 6 1024  8  8 minxmax      0 -                       pass   apr
+neg_int8_nolap_mid_L128           8 8  128  8  8 uniform     52 NEG_ABIT_NO_LAP=7       caught apr
+neg_int8_extralap_L128            8 8  128  8  8 uniform     57 NEG_ABIT_EXTRA_LAP=7    caught apr
+neg_int6_sign_a0_L1024            6 6 1024  8  8 uniform     63 NEG_ABIT_SIGN=1         caught apr
+neg_int8_order_lsb_L128           8 8  128  8  8 uniform     66 NEG_ABIT_ORDER=1        caught apr
+neg_int8_overlap_L256_m8n16       8 8  256  8 16 uniform     74 NEG_ABIT_OVERLAP        caught apr

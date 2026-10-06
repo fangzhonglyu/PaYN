@@ -1,0 +1,58 @@
+# SC suite (bench test_payn_array.sv +MODE=sc).  Besides these rows, every golden,
+# extra and review case also runs alone with INT_JUNK (expect pass).
+# label  cases  flags  expect
+#   cases   comma list of case names, or @golden / @extra / @rv / @all
+#   flags   comma list of plusargs, or -
+#   expect  pass | fail:TAG+TAG+!TAG   (tags from the bench's result lines: CHECK BLOCK KA PHASE
+#           CONTRACT; !TAG must be absent)
+chain_all                 @all            INT_JUNK                                                   pass
+chain_all_tied            @all            -                                                          pass
+chain_all_stall_tied_s21  @all            STALL,GAPS,RNG_GAP_LOW,MAC_EXACT,SEED=21                   pass
+chain_all_full            @all            FULL_CYCLES,INT_JUNK                                       pass
+chain_all_gaps_s1         @all            GAPS,RNG_GAP_LOW,SEED=1,INT_JUNK                           pass
+chain_all_gaps_mac_s2     @all            GAPS,RNG_GAP_LOW,MAC_EXACT,SEED=2,INT_JUNK                 pass
+chain_all_loose_s3        @all            LOOSE_DRAIN,MAC_EXACT,SEED=3,INT_JUNK                      pass
+chain_all_combo_s4        @all            GAPS,RNG_GAP_LOW,MAC_EXACT,LOOSE_DRAIN,FULL_CYCLES,SEED=4,INT_JUNK pass
+chain_all_stall_s5        @all            STALL,SEED=5,INT_JUNK                                      pass
+chain_all_stall_mac_s6    @all            STALL,GAPS,RNG_GAP_LOW,MAC_EXACT,SEED=6,INT_JUNK           pass
+chain_all_rng_end_mac_s7  @all            RNG_LOW_END,GAPS,MAC_EXACT,SEED=7,INT_JUNK                 pass
+chain_all_rng_end_tight   @all            RNG_LOW_END,INT_JUNK                                       pass
+chain_all_junk_s8         @all            JUNK_BUS,GAPS,RNG_GAP_LOW,SEED=8,INT_JUNK                  pass
+chain_all_reset_s9        @all            MID_RESET,SEED=9,INT_JUNK                                  pass
+chain_all_no_ss           @all            NO_SLICE_START,INT_JUNK                                    pass
+chain_all_ss_only         @all            KILL_DRAIN_RESET,INT_JUNK                                  pass
+chain_all_no_ss_combo_s10 @all            NO_SLICE_START,STALL,JUNK_BUS,MID_RESET,GAPS,RNG_GAP_LOW,MAC_EXACT,LOOSE_DRAIN,FULL_CYCLES,SEED=10,INT_JUNK pass
+chain_all_ss_only_combo_s11 @all          KILL_DRAIN_RESET,STALL,JUNK_BUS,GAPS,RNG_GAP_LOW,LOOSE_DRAIN,SEED=11,INT_JUNK pass
+chain_all_rng_low_idle    @all            RNG_LOW_IDLE,INT_JUNK                                      pass
+chain_all_rng_low_idle_combo_s13 @all     RNG_LOW_IDLE,STALL,GAPS,MAC_EXACT,LOOSE_DRAIN,SEED=13,INT_JUNK pass
+neg_short_last_idle       @golden         NEG_SHORT_LAST=2,RNG_LOW_IDLE,INT_JUNK                     fail:CHECK+CONTRACT
+neg_call_phase_prot       calls_prot      NO_CALL_SS,KILL_DRAIN_RESET,INT_JUNK                       fail:CHECK+CONTRACT
+neg_call_phase_av257      calls_av257     NO_CALL_SS,KILL_DRAIN_RESET,INT_JUNK                       fail:CHECK+CONTRACT
+neg_call_phase_uL         af_uL_001_032   NO_CALL_SS,KILL_DRAIN_RESET,INT_JUNK                       fail:CHECK+CONTRACT
+neg_call_phase_mixed      af_calls_mixed  NO_CALL_SS,KILL_DRAIN_RESET,INT_JUNK                       fail:CHECK+CONTRACT
+neg_call_phase_tiny       rv_tiny_calls   NO_CALL_SS,KILL_DRAIN_RESET,INT_JUNK                       fail:CHECK+CONTRACT
+neg_call_phase_chain      @golden         NO_CALL_SS,KILL_DRAIN_RESET,INT_JUNK                       fail:CHECK+CONTRACT
+neg_no_ss_chain           @golden         NO_SLICE_START,KILL_DRAIN_RESET,INT_JUNK                   fail:CHECK+CONTRACT
+neg_slice_phase_96        chunked_96      NO_SLICE_SS,KILL_DRAIN_RESET,INT_JUNK                      fail:CHECK+CONTRACT
+neg_slice_phase_100       chunked_100     NO_SLICE_SS,KILL_DRAIN_RESET,INT_JUNK                      fail:CHECK+CONTRACT
+neg_slice_phase_perhead   af_perhead      NO_SLICE_SS,KILL_DRAIN_RESET,INT_JUNK                      fail:CHECK+CONTRACT
+neg_slice_phase_cd8       rv_cd8          NO_SLICE_SS,KILL_DRAIN_RESET,INT_JUNK                      fail:CHECK+CONTRACT
+slice_phase_rung128_noop  chunked_rung    NO_SLICE_SS,KILL_DRAIN_RESET,INT_JUNK                      pass
+neg_stall_nomac           plain_u97,calls_prot NEG_STALL_NOMAC,SEED=3,INT_JUNK                       fail:CHECK+CONTRACT
+neg_rng_low_end_gaps      @golden         RNG_LOW_END,GAPS,SEED=4,INT_JUNK                           fail:CHECK+CONTRACT
+neg_stray_load            @golden         NEG_STRAY_LOAD,SEED=12,INT_JUNK                            fail:CHECK+CONTRACT
+neg_junk_ss               @golden         JUNK_SS,SEED=2,INT_JUNK                                    fail:CONTRACT+!CHECK+!BLOCK+!KA+!PHASE
+neg_lane_rev_u97          plain_u97       NEG_LANE_REV,INT_JUNK                                      fail:CHECK+KA
+neg_lane_rev_u128         plain_u128      NEG_LANE_REV,INT_JUNK                                      fail:CHECK
+neg_lane_rev_ladders      af_ladders_0    NEG_LANE_REV,INT_JUNK                                      fail:CHECK+KA
+neg_ka_eq_b_ladder        plain_ladder    NEG_KA_EQ_B,INT_JUNK                                       fail:CHECK+KA
+neg_ka_eq_b_uL            af_uL_033_064   NEG_KA_EQ_B,INT_JUNK                                       fail:CHECK+KA
+neg_ka_eq_b_u128          plain_u128      NEG_KA_EQ_B,INT_JUNK                                       pass
+neg_row_len_max_ladder    plain_ladder    NEG_ROW_LEN_MAX,INT_JUNK                                   fail:CHECK+KA
+neg_row_len_max_rung      chunked_rung    NEG_ROW_LEN_MAX,INT_JUNK                                   fail:CHECK+KA
+neg_len_128_u97           plain_u97       NEG_LEN_128,INT_JUNK                                       fail:CHECK+KA
+neg_len_128_uL            af_uL_001_032   NEG_LEN_128,INT_JUNK                                       fail:CHECK+KA
+neg_short_u97             plain_u97       NEG_SHORT_BLOCK,INT_JUNK                                   fail:CHECK+CONTRACT
+neg_short_uL              af_uL_065_096   NEG_SHORT_BLOCK,INT_JUNK                                   fail:CHECK+CONTRACT
+neg_drain_early_rung      chunked_rung    NEG_DRAIN_EARLY,INT_JUNK                                   fail:CHECK+CONTRACT
+neg_next_early_rung       chunked_rung    NEG_NEXT_EARLY,INT_JUNK                                    fail:CHECK+CONTRACT

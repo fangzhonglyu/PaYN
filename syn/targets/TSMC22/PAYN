@@ -1,0 +1,27 @@
+#!/bin/sh
+# PaYN single-PE array (designs/payn/rtl/payn_array.sv): A-first C-BSG SC mode
+# and INT mode (bit-plane and all-bits-in-time schedules, in-place doubling).
+# Shape from PAYN_M: 8 = K16/M8 (default), 16 = K8/M16.  8 x 8 tiles, LOW_W 9,
+# 400 MHz, A7 SVT C30 + HPK, clock gating and multibit.  Override the shape:
+#   SYN_DEFINES="PAYN_M=16 PAYN_NH=8 PAYN_NW=8 PAYN_LOW_W=9" make synth TARGET=TSMC22/PAYN ...
+# PAYN_TOP names the netlist top when flow/measure.py measures a route of the same hardware written under an
+# earlier module name (make sim GL=apr / make power_apr on a view directory); never set it for synthesis.
+export TOP=${PAYN_TOP:-payn_array}
+export TECH=TSMC22
+export SRC_SV="payn/rtl/payn_array.sv"
+export PERIOD=2.5
+export INPUT_DELAY=1.25
+export OUTPUT_DELAY=0.05
+export TSMC22_CELL_TIER=sc7mcpp140z
+export TSMC22_LIB_FLAVORS=svt_c30
+export TSMC22_HPK_FLAVORS=svt_c30
+export ZERO_PINLESS_NET_ACTIVITY=1
+export TSMC22_HPK=1
+export MULTIBIT_INFER=1
+export CLOCK_GATE=1
+export MINPOWER=0
+export FLATTEN=0
+export MAX_FANOUT=16
+export SYN_DEFINES="${SYN_DEFINES:-PAYN_M=8 PAYN_NH=8 PAYN_NW=8 PAYN_LOW_W=9}"
+export SYN_AREA_HIGH_EFFORT=0
+unset POST_LOAD_SCRIPT
