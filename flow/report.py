@@ -39,12 +39,15 @@ REPO = Path(__file__).resolve().parent.parent
 PERIOD_NS = 2.5
 F_GHZ = 1.0 / PERIOD_NS
 GRIDS = {"1 PE": (1, 1), "4x4": (4, 4), "4x8": (4, 8)}
-BOS_RESULTS = [REPO / "build/bos_precision/bos_precision_20261002/results.csv"]
+# BOS qualified results, later files overriding earlier ones per precision: the precision campaign, then every
+# flow/bos.sh campaign (its INT6 rerun reproduces the campaign's INT6 row exactly).
+BOS_RESULTS = [REPO / "build/bos_precision/bos_precision_20261002/results.csv",
+               *sorted((REPO / "build/flow/bos").glob("*/results.csv"))]
 BOS_INT8 = dict(route=REPO / "apr/build/TSMC22/BOS_ARRAY/20260728_143921",
                 power=REPO / "build/power_char/BOS_ARRAY__T4096/power.rpt",
                 sim=REPO / "build/power_char/BOS_ARRAY__T4096/sim.log")
 SHAPE_LABEL = {"k16m8": "K16/M8", "k8m16": "K8/M16"}
-PREC_BITS = {"INT8": (8, 8), "INT6": (6, 6), "INT4": (4, 4), "W4A8": (8, 4), "W6A8": (8, 6)}
+PREC_BITS = {"INT8": (8, 8), "INT7": (7, 7), "INT6": (6, 6), "INT4": (4, 4), "W4A8": (8, 4), "W6A8": (8, 6)}
 
 
 # ------------------------------------------------------------------------------------------------ helpers --
@@ -375,7 +378,7 @@ def block_int(S: list[MeasureSet]) -> list[str]:
             L += table(["point", "trace check", "window", "stopped at", "reason"] + [f"GMAC/s/mm2 {g}" for g in GRIDS],
                        rows, "lllllrrr")
         L += ["", "Peak (no laps, skew or drain), GMAC/s/mm2: " + "; ".join(
-            f"{p} " + " / ".join(f0(s.int_peak(*PREC_BITS[p], g)) for g in GRIDS) for p in ("INT8", "INT6", "INT4"))
+            f"{p} " + " / ".join(f0(s.int_peak(*PREC_BITS[p], g)) for g in GRIDS) for p in ("INT8", "INT7", "INT6", "INT4"))
               + f" ({' / '.join(GRIDS)})", ""]
     return L
 
@@ -442,7 +445,7 @@ def block_lut(S: list[MeasureSet], bos: dict) -> list[str]:
                 continue
             pr, pc = (int(x) for x in grid.split("x"))
             rows = []
-            for ba in (8, 6, 4):
+            for ba in (8, 7, 6, 4):
                 prec = f"INT{ba}"
                 g = [abit_gmacs(x, ba, ba, pr, pc, area * 1e-6) for x in LUT_L]
                 rows.append([f"{prec} GMAC/s/mm2"] + [f0(v) for v in g])
@@ -458,7 +461,7 @@ def block_lut(S: list[MeasureSet], bos: dict) -> list[str]:
           "path, D = 8), overlapped (shadow registers drain during the next block, D ~ 1).", ""]
     drains = [("now, 8*P_C", None), ("both-way, 4*P_C", lambda pc: 4 * pc), ("per-PE, 8", lambda pc: 8),
               ("overlapped, ~1", lambda pc: 1)]
-    points = [(8, 384), (8, 1024), (6, 1024), (4, 1024), (4, 4096)]
+    points = [(8, 384), (8, 1024), (7, 1024), (6, 1024), (4, 1024), (4, 4096)]
     for s in S:
         for grid in ("4x4", "4x8"):
             area = s.grid_area(grid)

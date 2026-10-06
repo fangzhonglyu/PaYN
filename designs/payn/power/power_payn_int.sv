@@ -127,7 +127,9 @@
 //   INT_MROWS       default 1 (bp) / 8 (abit); INT_NCOLS default 8
 //   INT_SAIF_MODE   default 0;  INT_MODE_AT default 1
 //   INT_LAP_RING_ONLY  (bp) default 1
-//   INT_LOW_W (9), INT_MAX_EDGES (200000), INT_VCD (debug only: dumps the top
+//   INT_LOW_W (9), INT_MAX_EDGES (200000), INT_RANGE_DATA (abit: skip the
+//   worst-case tile range check for workloads whose actual GEMM fits; also
+//   +ABIT_RANGE_DATA), INT_VCD (debug only: dumps the top
 //   ports and the PE to int_debug.vcd; never in measured runs)
 // Operands: bpt_a.hex (A row-major, MROWS x L) and bpt_w.hex (W column-major,
 // W[x, j] at j*L + x), one two's-complement byte per line, in the run
@@ -593,14 +595,23 @@ module Top;
         if (drn_blk[e] >= 0) $fwrite(trace_file, "X %0d %0d %0d\n", e, drn_blk[e], drn_t[e]);
     endtask
 
+`ifdef INT_RANGE_DATA
+    bit range_data = 1'b1;
+`else
+    bit range_data = 1'b0;
+`endif
     task automatic abit_config();
         if (BA < 2 || BA > 8 || BW < 2 || BW > 8) $fatal(1, "BA, BW must be 2..8 (got %0d, %0d)", BA, BW);
         if (!(SAIF_MODE >= 0 && SAIF_MODE <= 2)) $fatal(1, "SAIF_MODE must be 0, 1 or 2 (got %0d)", SAIF_MODE);
         if (L < K*M || L % (K*M) != 0) $fatal(1, "L=%0d must be a positive multiple of %0d", L, K*M);
         if (MROWS < N_H || MROWS % N_H != 0 || NCOLS < N_W || NCOLS % N_W != 0)
             $fatal(1, "MROWS must be a multiple of %0d and NCOLS of %0d", N_H, N_W);
-        if (longint'(L) * (longint'(1) << (BA + BW - 2)) > (longint'(1) << (OWIDTH-1)) - 1)
-            $fatal(1, "L=%0d at BA=%0d BW=%0d can overflow the %0d-bit tile", L, BA, BW, OWIDTH);
+        // Worst-case range of the tile; INT_RANGE_DATA / +ABIT_RANGE_DATA skip it for workloads whose actual GEMM
+        // fits (the checker requires every drained tile value to fit and be exact).
+        if (longint'(L) * (longint'(1) << (BA + BW - 2)) > (longint'(1) << (OWIDTH-1)) - 1 &&
+            !(range_data || $test$plusargs("ABIT_RANGE_DATA")))
+            $fatal(1, "L=%0d at BA=%0d BW=%0d can overflow the %0d-bit tile (INT_RANGE_DATA: data-dependent range)",
+                   L, BA, BW, OWIDTH);
         NB = L / (K*M);
         NIG = MROWS / N_H;
         NJG = NCOLS / N_W;

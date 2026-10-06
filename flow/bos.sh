@@ -1,8 +1,8 @@
 #!/bin/bash
-# BOS baseline (designs/baselines/binary_os): the native signed INT8 / INT6 / INT4 output-stationary 8x8 arrays
-# (targets TSMC22/BOS_ARRAY, BOS_ARRAY_INT6, BOS_ARRAY_INT4; 24-bit accumulators, 64 MAC/cycle, 400 MHz), from RTL
+# BOS baseline (designs/baselines/binary_os): the native signed INT8 / INT7 / INT6 / INT4 output-stationary 8x8 arrays
+# (targets TSMC22/BOS_ARRAY, BOS_ARRAY_INT7, BOS_ARRAY_INT6, BOS_ARRAY_INT4; 24-bit accumulators, 64 MAC/cycle, 400 MHz), from RTL
 # to routed PrimeTime power, with the same tools and gates as the PaYN flow.
-#   bash flow/bos.sh CAMPAIGN [8] [6] [4]          # default widths 8 6 4
+#   bash flow/bos.sh CAMPAIGN [8] [7] [6] [4]      # default widths 8 6 4
 #   DRY_RUN=1 bash flow/bos.sh CAMPAIGN 6 4        # the plan, with each stage's state
 #   RETRY_FAILED=1 bash flow/bos.sh CAMPAIGN 6     # redo a failed stage (its output moved aside)
 # Per width, stages (PASS marker + log each, in build/flow/bos/<CAMPAIGN>/int<W>/; resume only from markers):
@@ -29,7 +29,7 @@ shift
 WIDTHS=("$@"); ((${#WIDTHS[@]})) || WIDTHS=(8 6 4)
 DRY_RUN=${DRY_RUN:-0}
 RETRY_FAILED=${RETRY_FAILED:-0}
-for w in "${WIDTHS[@]}"; do [[ "$w" =~ ^(8|6|4)$ ]] || { echo "unsupported width $w" >&2; exit 2; }; done
+for w in "${WIDTHS[@]}"; do [[ "$w" =~ ^(8|7|6|4)$ ]] || { echo "unsupported width $w" >&2; exit 2; }; done
 source "$REPO/flow/env.sh"
 # BOS synthesis / APR knobs (the PaYN APR block of env.sh minus guides, plus the BOS route's optimizations).
 export MULTIBIT_INFER=1 CLOCK_GATE=1 MINPOWER=0 FLATTEN=0 SYN_AREA_HIGH_EFFORT=0 MAX_FANOUT=16
@@ -197,11 +197,13 @@ done
 status=0
 for p in "${pids[@]}"; do wait "$p" || status=1; done
 if [[ "$DRY_RUN" == 0 && "$status" == 0 ]]; then
-    python3 - "$OUT" "${WIDTHS[@]}" <<'PY'
+    # Every finished width of the campaign, not only this invocation's, so separate runs do not overwrite each other.
+    python3 - "$OUT" <<'PY'
 import csv, sys
 from pathlib import Path
 out = Path(sys.argv[1])
-rows = [next(csv.DictReader((out / f"int{w}" / "result.csv").open())) for w in sys.argv[2:]]
+done = sorted(out.glob("int*/result.csv"), key=lambda p: -int(p.parent.name[3:]))
+rows = [next(csv.DictReader(p.open())) for p in done]
 with (out / "results.csv").open("w", newline="") as f:
     w = csv.DictWriter(f, fieldnames=list(rows[0])); w.writeheader(); w.writerows(rows)
 print(out / "results.csv")

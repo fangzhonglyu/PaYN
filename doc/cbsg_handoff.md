@@ -205,6 +205,14 @@ Where things are:
    accumulators and is not range-limited either), so every L runs as one block; the throughput-vs-L formula and LUT
    are in `doc/payn_results.md`. The bit-plane-only hardware is the east INT combiner (~700 µm², 1.2% of K16/M8); removing it is an RTL
    option, not started.
+3c. **(Done 2026-10-06) All-bits-in-time INT7** (49 passes, 12 laps), no RTL or bench change: RTL bit-exact at both
+   shapes (single PE 9 + 4 negative, grid 2x2/4x4 3 + 1 negative, power bench 2), routed functional GL 3/3 per route,
+   5 routed energy points per route (`build/flow/*/measure_int7`). K16/M8: 0.296 pJ/MAC and 1,527 / 1,515 GMAC/s/mm2
+   (4x4 / 4x8) at L = 1,024; 0.287 and 1,668 / 1,752 at L = 4,096; peak 1,721 / 1,848. Native BOS INT7
+   (`binary_os_array_int7`, target `TSMC22/BOS_ARRAY_INT7`, `flow/bos.sh bos_20261006 7`): 14,176 µm², 8.141 mW,
+   0.3180 pJ/MAC, 1,806 GMAC/s/mm², setup +0.393 ns; the same flow rerun on INT6 reproduces the qualified INT6 row
+   exactly. PaYN INT7 vs BOS INT7 (K16/M8): energy −0.1% / −6.9% / −9.9% at L = 384 / 1,024 / 4,096, throughput
+   0.85x / 0.92x (4x4) and 0.84x / 0.97x (4x8) at L = 1,024 / 4,096, parity at 4x8 from L ≈ 8,192.
 3b. **(Open) Better draining.** The drain is the largest per-block INT overhead: 32 of 52 overhead edges at 4x4 and
    64 of 88 at 4x8 (INT8, L = 384). It costs 8 edges per PE column because the accumulators shift out through every
    PE of the row, which stops the whole row. Upper bounds (no added area) are in `doc/payn_results.md`, "Drain

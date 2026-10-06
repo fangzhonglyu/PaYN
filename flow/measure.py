@@ -60,7 +60,7 @@ INT_TB = "designs/payn/power/power_payn_int.sv"
 GL_FLAGS = "+neg_tchk +sdfverbose"
 SC_COLUMNS = 3072
 T_POINTS = (16, 32, 48, 64, 80, 96, 112)
-PREC = {"int8": (8, 8), "int6": (6, 6), "int4": (4, 4), "w4a8": (8, 4), "w6a8": (8, 6)}
+PREC = {"int8": (8, 8), "int7": (7, 7), "int6": (6, 6), "int4": (4, 4), "w4a8": (8, 4), "w6a8": (8, 6)}
 WINDOW = {"dr": 0, "d": 1, "all": 2}
 HIER = ("u_pe", "u_peripheral", "u_combiner", "u_rng")
 
@@ -124,11 +124,13 @@ def point_table() -> dict[str, Point]:
     # all bits in time: per (precision, L) a fixed operand shape of ~3,072 data cycles
     shapes = {("int8", 384): (16, 64, 1), ("int8", 256): (24, 64, 1), ("int6", 1024): (24, 32, 9),
               ("int6", 4096): (8, 24, 9), ("int4", 1024): (24, 64, 3), ("int4", 4096): (16, 24, 3),
-              ("w4a8", 1024): (8, 96, 5)}
+              ("w4a8", 1024): (8, 96, 5), ("int7", 384): (24, 56, 7), ("int7", 1024): (16, 32, 7),
+              ("int7", 4096): (8, 16, 7)}
     for prec, L, win in (("int8", 384, "dr"), ("int8", 384, "all"), ("int8", 384, "d"), ("int8", 256, "dr"),
                          ("int6", 1024, "dr"), ("int6", 1024, "all"), ("int6", 4096, "dr"), ("int6", 4096, "d"),
                          ("int4", 1024, "dr"), ("int4", 1024, "all"), ("int4", 4096, "dr"), ("int4", 4096, "d"),
-                         ("w4a8", 1024, "dr")):
+                         ("w4a8", 1024, "dr"), ("int7", 384, "dr"), ("int7", 1024, "dr"), ("int7", 1024, "all"),
+                         ("int7", 4096, "dr"), ("int7", 4096, "d")):
         pts.append(int_point("abit", prec, L, win, *shapes[(prec, L)]))
     # bit-plane controls on the abit operands
     for prec, L, win in (("int8", 384, "dr"), ("int8", 384, "all"), ("int8", 256, "dr"), ("int4", 1024, "dr"),
@@ -243,6 +245,8 @@ def vcs_args(r: Route, p: Point) -> str:
     else:
         if p.kind == "abit":
             d.append("+define+INT_ABIT")
+        if p.kind == "abit" and p.L << (p.ba + p.bw - 2) > (1 << 23) - 1:
+            d.append("+define+INT_RANGE_DATA")   # worst case exceeds the tile; the checker requires every value to fit
         d += [f"+define+INT_BA={p.ba}", f"+define+INT_BW={p.bw}", f"+define+INT_L={p.L}",
               f"+define+INT_MROWS={p.mrows}", f"+define+INT_NCOLS={p.ncols}", f"+define+INT_SAIF_MODE={p.mode}"]
     return " ".join(d + [GL_FLAGS])

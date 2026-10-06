@@ -19,3 +19,6 @@ neg_int8_extralap_L128            8 8  128  8  8 uniform     57 NEG_ABIT_EXTRA_L
 neg_int6_sign_a0_L1024            6 6 1024  8  8 uniform     63 NEG_ABIT_SIGN=1         caught apr
 neg_int8_order_lsb_L128           8 8  128  8  8 uniform     66 NEG_ABIT_ORDER=1        caught apr
 neg_int8_overlap_L256_m8n16       8 8  256  8 16 uniform     74 NEG_ABIT_OVERLAP        caught apr
+int7_uniform_L1024_m16n8_junk     7 7 1024 16  8 uniform     85 JUNK                    pass   apr
+int7_allmin_L1024_m8n8            7 7 1024  8  8 allmin       0 -                       pass   apr
+neg_int7_sign_flip_L1024          7 7 1024  8  8 uniform     88 NEG_ABIT_SIGN=2         caught apr

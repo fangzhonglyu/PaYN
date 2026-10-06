@@ -72,3 +72,16 @@ neg_int8_overlap_L256_m8n16       8 8  256  8 16 uniform     74 NEG_ABIT_OVERLAP
 neg_int4_overlap_L1024_m8n16      4 4 1024  8 16 uniform     75 NEG_ABIT_OVERLAP        caught
 neg_int8_mag_w_L128               8 8  128  8  8 uniform     76 NEG_MAG_W               fail:CONTRACT
 neg_int6_scstrobe_L1024           6 6 1024  8  8 uniform     77 JUNK_SCSTROBE           fail:SCCONTRACT
+int7_uniform_L128_m8n8            7 7  128  8  8 uniform     81 -                       pass
+int7_uniform_L384_m16n16          7 7  384 16 16 uniform     82 -                       pass
+int7_uniform_L1024_m16n16         7 7 1024 16 16 uniform     83 -                       pass
+int7_uniform_L4096_m8n8           7 7 4096  8  8 uniform     84 ABIT_RANGE_DATA         pass
+int7_allmin_L1024_m8n8            7 7 1024  8  8 allmin       0 -                       pass
+int7_allmax_L1024_m8n8            7 7 1024  8  8 allmax       0 -                       pass
+int7_minxmax_L1024_m8n8           7 7 1024  8  8 minxmax      0 -                       pass
+int7_alternating_L1024_m8n8       7 7 1024  8  8 alternating  0 -                       pass
+int7_uniform_L1024_m16n8_junk     7 7 1024 16  8 uniform     85 JUNK                    pass
+neg_int7_nolap_L1024              7 7 1024  8  8 uniform     86 NEG_ABIT_NO_LAP=6       caught
+neg_int7_extralap_L1024           7 7 1024  8  8 uniform     87 NEG_ABIT_EXTRA_LAP=6    caught
+neg_int7_sign_flip_L1024          7 7 1024  8  8 uniform     88 NEG_ABIT_SIGN=2         caught
+neg_int7_order_L1024              7 7 1024  8  8 uniform     89 NEG_ABIT_ORDER=1        caught

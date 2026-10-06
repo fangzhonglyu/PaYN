@@ -35,3 +35,7 @@ gneg2_int8_nolap_L128                2x2 8 8  128 16 16 uniform     41 NEG_ABIT_
 gneg4_int8_extralap_L256             4x4 8 8  256 32 32 uniform     42 NEG_ABIT_EXTRA_LAP=7 caught
 gneg2_int6_sign_L1024                2x2 6 6 1024 16 16 uniform     43 NEG_ABIT_SIGN=1      caught
 gneg4_int4_order_L1024               4x4 4 4 1024 32 32 uniform     44 NEG_ABIT_ORDER=1     caught
+g2_int7_uniform_L1024_m16n16         2x2 7 7 1024 16 16 uniform     91 -                    pass
+g4_int7_uniform_L1024_m32n32         4x4 7 7 1024 32 32 uniform     92 -                    pass
+g4_int7_uniform_L4096_m32n32         4x4 7 7 4096 32 32 uniform     93 ABIT_RANGE_DATA      pass
+gneg4_int7_nolap_L1024               4x4 7 7 1024 32 32 uniform     94 NEG_ABIT_NO_LAP=6    caught

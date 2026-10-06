@@ -77,11 +77,20 @@ def plusargs(flags: str) -> list[str]:
     return [] if flags == "-" else ["+" + f for f in flags.split(",")]
 
 
+ONLY: re.Pattern | None = None                  # --only: run just the rows whose label matches
+
+
+def selected(label: str) -> bool:
+    return ONLY is None or ONLY.search(label) is not None
+
+
 def table(name: str, sep: str | None = None) -> list[list[str]]:
     rows = []
     for line in (CASES / name).read_text().splitlines():
         if line.strip() and not line.lstrip().startswith("#"):
-            rows.append([x.strip() for x in line.split(sep)] if sep else line.split())
+            row = [x.strip() for x in line.split(sep)] if sep else line.split()
+            if selected(row[0]):
+                rows.append(row)
     return rows
 
 
@@ -185,7 +194,8 @@ def sc_case(c: Ctx, label: str, cases: str, flags: str, expect: str) -> tuple[bo
 
 def suite_sc(c: Ctx) -> list[tuple[bool, str]]:
     rows = [[f"{s}_{d.name}", d.name, "INT_JUNK", "pass"]
-            for s in CASE_SETS for d in sorted((c.out / "cases" / s).iterdir()) if d.is_dir()]
+            for s in CASE_SETS for d in sorted((c.out / "cases" / s).iterdir())
+            if d.is_dir() and selected(f"{s}_{d.name}")]
     rows += table("sc.txt")
     c.simv("array", TB / "test_payn_array.sv")
     return c.run_all(lambda *r: sc_case(c, *r), rows)
@@ -250,6 +260,8 @@ def coverage(c: Ctx, suite: str, formula) -> tuple[bool, str]:
         if not formula(d, json.loads(j.read_text())):
             bad.append(d.name)
     ok = rows > 0 and not bad and cov["with_pending_carry"] > 0 and cov["with_pending_borrow"] > 0
+    if ONLY is not None:                       # a filtered run need not cover both pending kinds
+        ok = rows > 0 and not bad
     return ok, (f"{suite} totals: {rows} bit-exact runs, block periods = formula in {rows - len(bad)}"
                 f"{' (mismatch: ' + ','.join(bad) + ')' if bad else ''}; lap coverage "
                 + ", ".join(f"{k} {v}" for k, v in cov.items())
@@ -445,7 +457,8 @@ def power_int(c: Ctx, mode, label, ba, bw, L, mrows, ncols, saif_mode, flags, ch
 
 
 def suite_power(c: Ctx) -> list[tuple[bool, str]]:
-    jobs = [lambda w=w, j=j: power_sc(c, w, j) for w in ("uniform", "ladder") for j in (False, True)]
+    jobs = [lambda w=w, j=j: power_sc(c, w, j) for w in ("uniform", "ladder") for j in (False, True)
+            if selected(f"sc_{w}" + ("_junk" if j else ""))]
     jobs += [lambda r=r: power_int(c, "bp", *r) for r in table("power_bp.txt")]
     jobs += [lambda r=r: power_int(c, "abit", *r) for r in table("power_abit.txt")]
     for key, tb, defs in [("power_int", "power_payn_int.sv", [])] + \
@@ -798,7 +811,10 @@ def main() -> int:
     ap.add_argument("--top", default="payn_array", help="netlist top (gate-level mode)")
     ap.add_argument("--target", default="TSMC22/PAYN", help="ASTRAEA target (gate-level mode)")
     ap.add_argument("--gl-approve", default="", help="apr: gl-audit approvals, used only after a strict failure")
+    ap.add_argument("--only", help="run only the case-table rows whose label matches this regular expression")
     a = ap.parse_args()
+    global ONLY
+    ONLY = re.compile(a.only) if a.only else None
     if a.gl:
         return main_gl(a)
     suites = a.suite.split(",")
