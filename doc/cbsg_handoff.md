@@ -213,19 +213,34 @@ Where things are:
    0.3180 pJ/MAC, 1,806 GMAC/s/mm², setup +0.393 ns; the same flow rerun on INT6 reproduces the qualified INT6 row
    exactly. PaYN INT7 vs BOS INT7 (K16/M8): energy −0.1% / −6.9% / −9.9% at L = 384 / 1,024 / 4,096, throughput
    0.85x / 0.92x (4x4) and 0.84x / 0.97x (4x8) at L = 1,024 / 4,096, parity at 4x8 from L ≈ 8,192.
-3b. **(Open) Better draining.** The drain is the largest per-block INT overhead: 32 of 52 overhead edges at 4x4 and
-   64 of 88 at 4x8 (INT8, L = 384). It costs 8 edges per PE column because the accumulators shift out through every
-   PE of the row, which stops the whole row. Upper bounds (no added area) are in `doc/payn_results.md`, "Drain
-   variants": K16/M8 INT8 L = 384 goes from 1,037 / 970 (4x4 / 4x8) to 1,110 / 1,095 (both-way), 1,150 / 1,213
-   (per-PE) and 1,188 / 1,252 (overlapped); INT4 L = 1,024 4x8 from 3,482 to 4,995. Options, cheapest first
-   (area by estimate, to be synthesized):
-   - both-way drain: halves of each row drain west and east (D = 4*P_C); one more input on the tile's existing lap
-     mux plus west-edge output pins;
-   - per-PE drain path: D = 8 for any grid; mostly wiring past the neighbouring PEs and an edge collector;
-   - overlapped drain with 24-bit shadow registers (D ~ 1): about 1,536 flops per PE, roughly +10-13% PE area,
-     about what it gains at INT8 L = 384 and a net loss for SC and long L.
-   Next step proposed: model the exact block periods of the first two, synthesize the cheaper one at K16/M8 and check
-   net GMAC/s/mm2 for INT and SC. Not started.
+3b. **(Done 2026-10-07: RTL, routed, measured) Better draining: the drain-register chain** (`doc/column_sort_drain.md`
+   section 4; routed and measured results in section 4.6 and `doc/payn_results.md`, "Drain register vs in-tile chain").
+   The in-tile drain was the largest per-block INT overhead (8 edges per PE column, the whole row stopped). Built:
+   one 768-bit drain register per PE and a per-PE drain wave; a PE reads its two halves (tile rows 0-3, 4-7) on the
+   two edges after its own last MAC, and the registers shift west against the operand wave. Build-time define
+   `PAYN_DRAIN=1` in `designs/payn/rtl`; the default 0 is the qualified hardware, unchanged (Formality against the
+   committed RTL: array K16/M8 6,918/6,918, K8/M16 5,682/5,682, 2x2 grid 20,882/20,882 compare points; only the new
+   ports unmatched). With 1 the bit-plane INT schedule is not available (its combiner reads the in-tile chain).
+   - **Block period** (all bits in time, any grid): max(BA*BW*NB + (BA+BW-2) + 2, 2*P_C), measured in RTL: INT8
+     L = 384 208 edges on 1 PE, 4x4 and 4x8 (in-tile chain: 214 / 244 / 280), INT7 L = 1,024 406 on 4x8, the busy
+     rule INT2 L = 128 8 on 4x4 (tight) and 16 on 4x8.
+   - **Regression** `python3 flow/regress.py --drain 1 --shape both` (`build/dr_chain/final/dr/`): both shapes
+     cases 3/3, units 1/1, sc 96/96 (sc.txt + sc_dr.txt), abit 84/84, grid-abit 57/57 (grid_abit.txt +
+     grid_abit_dr.txt: 4x8, busy rule, drain-wave controls). The edited benches on the default build, K16/M8 all
+     suites: 3, 1, 94, 73, 17, 84, 41, 39, 20 of as many (`build/dr_chain/final/tile/`).
+   - **Contract difference:** the slice's last advance edge needs `rng_en` high (the in-tile drain dropped the
+     repeated cycle; the drain register would count it twice in one half); `[SC-CONTRACT]` flags a live sample on
+     a read edge.
+   - **Routed and measured** (K16/M8, `payn_k16m8_dr_20261007_final`, `flow/route.py --drain 1`, `flow/measure.py
+     --drain 1`): qualified final (setup +0.051 / hold +0.170 ns), grid basin, routed GL 14/14 SC + 19/19 abit.
+     Area: single PE +2.4%, `u_pe` +5.3% (drain register 1,912 um2), 4x4 composite +4.0%, 4x8 +4.5%.  Energy: SC
+     within +-1.6% at every T, INT abit +0.7 .. +1.5%.  4x8 GMAC/s/mm2: INT8 L = 384 970 -> 1,249 (0.77x BOS), INT7
+     L = 1,024 1,515 -> 1,706 (0.94x), INT6 L = 1,024 1,947 -> 2,309 (1.12x), INT4 L = 1,024 3,482 -> 5,094; at
+     L = 4,096 within +-2%; in-order SC -4.4% (area); the per-column sort it enables: SC utilization 0.647 -> ~0.925
+     at 14B t48.
+   - **Open:** the PsumBuffer side (64-128 token banks + a small conflict buffer), the sorter / gather,
+     PaYN_eval's column_sort schedule, K8/M16 not routed with the drain register. The earlier drain options (both-way, per-PE path, shadow
+     registers) are superseded; their upper bounds stay in `doc/payn_results.md`, "Drain variants".
 4. **Encoder remap.** DC maps the kA encoders onto bigger adders whenever the INT bypass is present. That costs about
    +1.9k µm² and +0.16 mW in AF-IPD.
 5. **Grid open items:**

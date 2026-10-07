@@ -18,6 +18,8 @@ Throughput (period 2.5 ns, so f = 0.4 GHz; MACs per data edge of one PE = 8,192 
   SC        GMAC/s/mm2 = N_PE x MAC/cycle x f / area, MAC/cycle = kernel MACs / window edges (64 at L = 128)
   INT bp    block period on a P_R x P_C grid = BW*NB + (BW-1) + (P_R+P_C-2) + 8*P_C, data edges BW*NB
   INT abit  block period = BA*BW*NB + (BA+BW-2) + (P_R+P_C-2) + 8*P_C, data edges BA*BW*NB      (NB = L / 128)
+            drain-register route (PAYN_DRAIN=1): max(BA*BW*NB + (BA+BW-2) + 2, 2*P_C) (per-PE read-out in the
+            wavefront: no skew or drain per block; the chain is busy 2*P_C edges)
             GMAC/s/mm2 = P_R x P_C x MACs per data edge x data / period x f / area
   BOS       GMAC/s/mm2 = MAC/cycle x f / area (drain-excluded peak; a grid of BOS arrays has the same density)
 Areas: 1 PE = the route; grids = the split composite of the per-PE class areas,
@@ -142,8 +144,9 @@ class MeasureSet:
         self.route = Path(kv["route"])
         self.top = kv["top"]
         self.shape = kv["shape"].split()[0]
+        self.drain = int(kv.get("drain", "0"))
         self.evidence = Path(kv["evidence"])
-        self.label = f"{SHAPE_LABEL[self.shape]} ({self.route.name})"
+        self.label = f"{SHAPE_LABEL[self.shape]}{' DR' if self.drain else ''} ({self.route.name})"
         self.sc = {r["point"]: r for r in rcsv(measure / "sc_results.csv")}
         self.int = {r["point"]: r for r in rcsv(measure / "int_results.csv")}
         self.classes = {p: jload(measure / p / "classes/power_classes.json") for p in ("sc_uniform", "sc_ladder")}
@@ -220,7 +223,7 @@ class MeasureSet:
         pr, pc = GRIDS[grid]
         ba, bw, nb = int(r["ba"]), int(r["bw"]), int(r["L"]) // 128
         data, laps = (ba * bw * nb, ba + bw - 2) if r["schedule"] == "abit" else (bw * nb, bw - 1)
-        period = data + laps + (pr + pc - 2) + 8 * pc
+        period = max(data + laps + 2, 2 * pc) if self.drain else data + laps + (pr + pc - 2) + 8 * pc
         return pr * pc * (8192 / (ba * bw)) * data / period * F_GHZ / (area * 1e-6)
 
     def int_peak(self, ba: int, bw: int, grid: str) -> float | None:
@@ -288,7 +291,8 @@ def block_area(S: list[MeasureSet]) -> list[str]:
          "of the SC uniform class run (flow/tcl/pt_power_classes.tcl).", ""]
     keys = [("total", "total"), ("u_pe", "PE core (u_pe)"), ("tiles", "  tiles"),
             ("pe_pipes_glue", "  bit / sign pipes, core clock gates, glue"), ("dbl_mux", "  doubling muxes"),
-            ("dbl_sel", "  lap select"), ("pe_clk_buf", "  PE clock tree"), ("a_edge", "A edge"),
+            ("dbl_sel", "  lap select"), ("pe_clk_buf", "  PE clock tree"),
+            ("drain_reg", "  drain register (flops + mux; DR routes)"), ("a_edge", "A edge"),
             ("a_regs", "  A registers"), ("ka_enc", "  kA encoders"), ("ka_in_buf", "  encoder input buffers"),
             ("therm_byp", "  thermometers + INT bypass"), ("w_edge", "W edge"), ("w_regs", "  W registers"),
             ("w_cmp_byp", "  W comparators + INT bypass"), ("sel_shared", "bypass select (shared)"),
@@ -338,8 +342,8 @@ def block_sc(S: list[MeasureSet]) -> list[str]:
     cl = [(s, s.classes["sc_uniform"].get("rows_mW"), s.classes["sc_ladder"].get("rows_mW")) for s in S]
     if any(c[1] for c in cl):
         L += ["", "SC power by block (mW, uniform / ladder):", ""]
-        keys = ["total", "tiles", "pe_pipes_glue", "pe_clk_buf", "dbl_mux", "a_edge", "ka_enc", "therm_byp", "w_edge",
-                "w_cmp_byp", "w_bank", "combiner", "periph_clk_buf", "other"]
+        keys = ["total", "tiles", "pe_pipes_glue", "pe_clk_buf", "dbl_mux", "drain_reg", "a_edge", "ka_enc",
+                "therm_byp", "w_edge", "w_cmp_byp", "w_bank", "combiner", "periph_clk_buf", "other"]
         rows = [[k] + [f"{f3(u.get(k)) if u else '-'} / {f3(l.get(k)) if l else '-'}" for _, u, l in cl] for k in keys]
         L += table(["block"] + [s.label for s in S], rows)
     return L + [""]
@@ -412,15 +416,18 @@ def block_bos(S: list[MeasureSet], bos: dict) -> list[str]:
     return L + [""]
 
 
-def abit_edges(L: int, ba: int, bw: int, pr: int, pc: int, drain: int | None = None) -> int:
+def abit_edges(L: int, ba: int, bw: int, pr: int, pc: int, drain: int | None = None, dr: bool = False) -> int:
     """Edges to finish one set of output tiles over a reduction of L in one block: its data passes, BA+BW-2
-    laps, P_R+P_C-2 skew and the drain (8*P_C edges unless given).  Accumulator range is not modelled, as for
-    BOS (both have 24-bit accumulators)."""
+    laps, P_R+P_C-2 skew and the drain (8*P_C edges unless given).  dr: the drain-register hardware, max(data + laps
+    + 2, 2*P_C).  Accumulator range is not modelled, as for BOS (both have 24-bit accumulators)."""
+    if dr:
+        return max(ba * bw * -(-L // 128) + (ba + bw - 2) + 2, 2 * pc)
     return ba * bw * -(-L // 128) + (ba + bw - 2) + (pr + pc - 2) + (8 * pc if drain is None else drain)
 
 
-def abit_gmacs(L: int, ba: int, bw: int, pr: int, pc: int, area_mm2: float, drain: int | None = None) -> float:
-    return pr * pc * 64 * L / abit_edges(L, ba, bw, pr, pc, drain) * F_GHZ / area_mm2
+def abit_gmacs(L: int, ba: int, bw: int, pr: int, pc: int, area_mm2: float, drain: int | None = None,
+               dr: bool = False) -> float:
+    return pr * pc * 64 * L / abit_edges(L, ba, bw, pr, pc, drain, dr) * F_GHZ / area_mm2
 
 
 LUT_L = [128, 256, 384, 512, 768, 1024, 2048, 4096, 8192, 16384, 65536]
@@ -436,8 +443,9 @@ def block_lut(S: list[MeasureSet], bos: dict) -> list[str]:
          "U(L) = BA*BW*(L/128) / E(L)", "",
          "A_grid is the grid composite area of the Area section; the measured block periods equal E(L) for every "
          "measured point (regression and INT tables).  Other drains: replace 8*P_C by D (4*P_C both-way drain, 8 "
-         "per-PE drain, ~1 overlapped).  Accumulator range is not modelled, for PaYN or BOS (both 24-bit).  BOS: "
-         "drain-excluded peak, independent of L.", ""]
+         "per-PE drain, ~1 overlapped).  Drain-register routes (DR): E(L) = max(BA*BW*ceil(L/128) + (BA+BW-2) + 2, "
+         "2*P_C), with their own measured area.  Accumulator range is not modelled, for PaYN or BOS (both 24-bit).  "
+         "BOS: drain-excluded peak, independent of L.", ""]
     for s in S:
         for grid in ("4x4", "4x8"):
             area = s.grid_area(grid)
@@ -447,7 +455,7 @@ def block_lut(S: list[MeasureSet], bos: dict) -> list[str]:
             rows = []
             for ba in (8, 7, 6, 4):
                 prec = f"INT{ba}"
-                g = [abit_gmacs(x, ba, ba, pr, pc, area * 1e-6) for x in LUT_L]
+                g = [abit_gmacs(x, ba, ba, pr, pc, area * 1e-6, dr=bool(s.drain)) for x in LUT_L]
                 rows.append([f"{prec} GMAC/s/mm2"] + [f0(v) for v in g])
                 if prec in bos:
                     rows.append([f"{prec} vs BOS ({f0(bos[prec]['gmacs_mm2'])})"]
@@ -463,6 +471,8 @@ def block_lut(S: list[MeasureSet], bos: dict) -> list[str]:
               ("overlapped, ~1", lambda pc: 1)]
     points = [(8, 384), (8, 1024), (7, 1024), (6, 1024), (4, 1024), (4, 4096)]
     for s in S:
+        if s.drain:                                # its drain is built and measured: the DR comparison section
+            continue
         for grid in ("4x4", "4x8"):
             area = s.grid_area(grid)
             if not area:
@@ -478,6 +488,49 @@ def block_lut(S: list[MeasureSet], bos: dict) -> list[str]:
                 rows.append(row)
             L += [f"{s.label}, {grid}, GMAC/s/mm2 (vs BOS):", ""]
             L += table(["drain"] + [f"INT{ba} L={l:,}" for ba, l in points], rows, "l" + "r" * len(points)) + [""]
+    return L
+
+
+def block_drain(S: list[MeasureSet], bos: dict) -> list[str]:
+    """Drain register against the in-tile chain, per shape with both routes measured."""
+    pairs = [(t, d) for d in S if d.drain for t in S if not t.drain and t.shape == d.shape]
+    if not pairs:
+        return []
+    L = ["## Drain register vs in-tile chain", "",
+         "The same shape built with PAYN_DRAIN=1 (one 768-bit drain register per PE, per-PE drain wave, registers "
+         "shifting west; doc/column_sort_drain.md) and with the qualified in-tile chain, each routed, qualified and "
+         "measured by the same flow.  INT throughput uses each route's own block period and area.", ""]
+    for t, d in pairs:
+        rows = [["area 1 PE (um2)", f0(t.grid_area("1 PE")), f0(d.grid_area("1 PE")),
+                 pct(d.grid_area("1 PE"), t.grid_area("1 PE"))]]
+        for g in ("4x4", "4x8"):
+            rows.append([f"area {g} composite (um2)", f0(t.grid_area(g)), f0(d.grid_area(g)),
+                         pct(d.grid_area(g), t.grid_area(g))])
+        dt, dd = (s.classes["sc_uniform"].get("rows_area_um2") or {} for s in (t, d))
+        rows.append(["  u_pe (um2)", f1(dt.get("u_pe")), f1(dd.get("u_pe")), pct(dd.get("u_pe"), dt.get("u_pe"))])
+        rows.append(["  drain register (um2)", f1(dt.get("drain_reg")), f1(dd.get("drain_reg")), "-"])
+        rows.append(["setup / hold WNS (ns)", f"{t.q.get('setup_wns_ns', 0):+.3f} / {t.q.get('hold_wns_ns', 0):+.3f}",
+                     f"{d.q.get('setup_wns_ns', 0):+.3f} / {d.q.get('hold_wns_ns', 0):+.3f}", "-"])
+        for p in sorted(set(t.sc) & set(d.sc), key=lambda n: (not n.startswith("sc_uniform"), n)):
+            a, b = float(t.sc[p]["pJ_MAC"]), float(d.sc[p]["pJ_MAC"])
+            rows.append([f"SC {t.sc[p]['workload']} pJ/MAC", f4(a), f4(b), pct(b, a)])
+        for g in ("4x4", "4x8"):
+            a, b = t.sc_gmacs(g), d.sc_gmacs(g)
+            rows.append([f"SC L=128 GMAC/s/mm2 {g}", f1(a), f1(b), pct(b, a)])
+        for p in sorted(set(t.int) & set(d.int)):
+            rt, rd = t.int[p], d.int[p]
+            if rt["schedule"] != "abit":
+                continue
+            a, b = float(rt["pJ_MAC"]), float(rd["pJ_MAC"])
+            rows.append([f"{int_label(rt)} pJ/MAC", f4(a), f4(b), pct(b, a)])
+            if rt["saif_mode"] == "0":
+                for g in ("4x4", "4x8"):
+                    ga, gb = t.int_gmacs(rt, g), d.int_gmacs(rd, g)
+                    bb = bos.get(rt["precision"])
+                    tail = f" ({gb / bb['gmacs_mm2']:.2f}x BOS)" if bb and gb else ""
+                    rows.append([f"  GMAC/s/mm2 {g}", f0(ga), f0(gb) + tail, pct(gb, ga)])
+        L += [f"{SHAPE_LABEL[t.shape]}: {t.route.name} (in-tile chain) vs {d.route.name} (drain register)", ""]
+        L += table(["", "in-tile chain", "drain register", "change"], rows, "lrrr") + [""]
     return L
 
 
@@ -513,14 +566,14 @@ def main() -> int:
     S = list(merged.values())
     if not S:
         raise SystemExit("no measurement with results")
-    S.sort(key=lambda s: (s.shape != "k16m8", s.route.name))
+    S.sort(key=lambda s: (s.shape != "k16m8", s.drain, s.route.name))
     bos = load_bos([p.resolve() for p in a.bos_results])
     L = ["# PaYN results", "",
          "Generated by `flow/report.py` from the run directories listed under Sources; do not edit by hand (rerun "
          "`python3 flow/report.py` after new measurements).  Every number below is read from a qualified route, "
          "its qualification evidence and its gated measurements.", ""]
     L += block_route(S) + block_area(S) + block_sc(S) + block_int(S) + block_bos(S, bos) + block_lut(S, bos) \
-         + block_sources(S)
+         + block_drain(S, bos) + block_sources(S)
     a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_text("\n".join(L) + "\n")
     print(f"wrote {a.out} ({len(S)} measurement sets: {', '.join(s.label for s in S)}; BOS {', '.join(sorted(bos))})")

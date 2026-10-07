@@ -10,7 +10,8 @@ Route gate (before anything runs): the route's qualification evidence (default b
 by flow/route.py) must hold qualification.json (final, setup and hold met) and basin/basin_gate.json (grid basin, pin
 proof PASS); for a flow route its qualify, gate and routed-func stages must have passed.
 
-Points (--points: names or the groups sc, tsweep, bp, abit, ctl, int, all; default sc,int):
+Points (--points: names or the groups sc, tsweep, bp, abit, ctl, int, all; default sc,int; with --drain 1, a
+drain-register route, the bit-plane points are skipped and the INT bench reads the drain register):
   sc_uniform, sc_ladder   designs/payn/power/power_payn_sc.sv: uniform L=128, or the per-row ladder; SC_BATCHES =
                           --sc-columns / K blocks (3,072 columns: 384 blocks at K8/M16, 192 at K16/M8; the same window
                           of 3,072 edges at L=128 and the same 196,608 kernel MACs at either shape)
@@ -96,14 +97,14 @@ class Point:
         rows_pe = 8 if self.kind == "abit" else 8 // self.ba
         return (self.mrows // rows_pe) * (self.ncols // 8)
 
-    @property
-    def active(self) -> int:
-        """SAIF intervals of the window (the benches' window rules)."""
+    def active(self, drain: int = 0) -> int:
+        """SAIF intervals of the window (the benches' window rules; a drain-register block has 2 drain
+        intervals, the in-tile chain 8)."""
         if self.kind == "abit":
             data, laps = self.ba * self.bw * self.nb, self.ba + self.bw - 2
         else:
             data, laps = self.bw * self.nb, self.bw - 1
-        per = {0: data + laps, 1: data, 2: data + laps + 8}[self.mode]
+        per = {0: data + laps, 1: data, 2: data + laps + (2 if drain else 8)}[self.mode]
         return self.blocks * per
 
 
@@ -174,6 +175,7 @@ class Route:
     target: str = TARGET
     approvals: tuple[str, ...] = ()
     sc_columns: int = SC_COLUMNS
+    drain: int = 0                # 1: a drain-register route (PAYN_DRAIN=1)
 
     @property
     def K(self) -> int:
@@ -229,7 +231,7 @@ def gate_route(r: Route, evidence: Path, flow_route: bool) -> dict:
 
 # -------------------------------------------------------------------------------------------- GL settings --
 def vcs_args(r: Route, p: Point) -> str:
-    d = [f"+define+PAYN_M={r.M}"]
+    d = [f"+define+PAYN_M={r.M}", f"+define+PAYN_DRAIN={r.drain}"]
     if r.top != TOP:
         d.append(f"+define+PAYN_DUT={r.top}")
     if p.kind == "sc":
@@ -256,12 +258,14 @@ SC_PASS_RE = (r"^PASS: PaYN SC power bench; workload (?P<wl>uniform L=\d+|ladder
               r"(?P<window>\d+) window edges, drain dumped \(check with sc_trace\.py\)$")
 
 
-def int_pass_line(p: Point) -> str:
+def int_pass_line(p: Point, drain: int = 0) -> str:
+    """The INT power bench's PASS line; a drain-register route reads 2 items per block and has no combiner."""
     head = "PaYN abit INT power bench" if p.kind == "abit" else "PaYN bit-plane INT power bench"
-    line = (f"PASS: {head}; BA={p.ba} BW={p.bw} L={p.L} blocks={p.blocks} mode={p.mode} active={p.active} "
-            f"drained={p.blocks * 8} combined={p.blocks * 8}")
+    drained, combined = (2 * p.blocks, 0) if drain else (8 * p.blocks, 8 * p.blocks)
+    line = (f"PASS: {head}; BA={p.ba} BW={p.bw} L={p.L} blocks={p.blocks} mode={p.mode} active={p.active(drain)} "
+            f"drained={drained} combined={combined}")
     if p.kind == "abit":
-        return line + f" block_len={p.ba * p.bw * p.nb + p.ba + p.bw - 2 + 8}"
+        return line + f" block_len={p.ba * p.bw * p.nb + p.ba + p.bw - 2 + (2 if drain else 8)}"
     return line + " lap_ring_only=1"
 
 
@@ -269,8 +273,10 @@ def sc_workload_name(p: Point) -> str:
     return {"uniform": "uniform L=128", "ladder": "ladder"}.get(p.workload, f"uniform L={p.workload[1:]}")
 
 
-def bench_supports(p: Point) -> str | None:
+def bench_supports(p: Point, drain: int = 0) -> str | None:
     """None if the bench can run this point, else why not."""
+    if drain and p.kind == "bp":
+        return "the bit-plane schedule reads the in-tile chain (combiner); a drain-register route runs sc and abit"
     if p.kind == "sc" and p.workload.startswith("T"):
         if not re.search(r"`ifndef SC_UNIFORM_L\b", text(REPO / SC_TB)):
             return f"{SC_TB} has no uniform-L workload (no SC_UNIFORM_L define)"
@@ -337,7 +343,7 @@ class PointRun:
 
     def do_gl(self, log: Log) -> None:
         r, p = self.r, self.p
-        why = bench_supports(p)
+        why = bench_supports(p, r.drain)
         require(why is None, f"{p.name}: {why}")
         run, run_dir = gl_run_dir(r, p)
         if not r.native:
@@ -364,7 +370,7 @@ class PointRun:
             if p.workload == "uniform":
                 require(window == r.sc_batches * 128 // r.M, f"uniform window {window} edges")
         else:
-            line = int_pass_line(p)
+            line = int_pass_line(p, r.drain)
             require(re.search(rf"^{re.escape(line)}$", body, re.M), f"bench PASS line missing: {line} (make rc {rc})")
         (self.gl / "expected_pass.txt").write_text(line + "\n")
         require("sdf corner = max" in body and "[INFO] $sdf_annotate(" in body, "no max-corner SDF annotation")
@@ -375,7 +381,7 @@ class PointRun:
             require(chk["window_edges"] == window and chk["blocks"] == r.sc_batches and not chk["errors"],
                     f"trace window/blocks {chk['window_edges']}/{chk['blocks']} vs PASS line {window}/{r.sc_batches}")
         else:
-            require(chk["status"] == "PASS" and chk["saif_window"]["active"] == p.active,
+            require(chk["status"] == "PASS" and chk["saif_window"]["active"] == p.active(r.drain),
                     f"INT trace check {chk['status']}, window {chk['saif_window']}")
         log(text(self.gl / "trace_check.log").strip().splitlines()[-1])
         rc = qualify("sdf-clock", r.file("apr.sdf"), "--period-ns", PERIOD_NS, "--sim-log", simlog,
@@ -479,7 +485,7 @@ class PointRun:
                 *([f"operands  {quote(self.stim_cmd())}"] if p.kind != "sc" else []),
                 f"GL on    {gl_where}",
                 f"sim      {quote(self.gl_cmd())}",
-                f"expect   {int_pass_line(p) if p.kind != 'sc' else 'PASS: PaYN SC power bench; workload ' + sc_workload_name(p) + f', {r.sc_batches} blocks, ...'}",
+                f"expect   {int_pass_line(p, r.drain) if p.kind != 'sc' else 'PASS: PaYN SC power bench; workload ' + sc_workload_name(p) + f', {r.sc_batches} blocks, ...'}",
                 f"check    {quote(self.check_cmd())}",
                 f"gate     qualify.py sdf-clock {r.file('apr.sdf')} --sim-log gl/simulation.log"]),
             Stage("audit", self.gl / "timing_qualification.json", self.do_audit,
@@ -506,9 +512,10 @@ def total(power_rpt: Path, name: str) -> float:
     return float(m[1]) * 1e3
 
 
-def hierarchy(power_dir: Path) -> dict[str, float]:
+def hierarchy(power_dir: Path, drain: int = 0) -> dict[str, float]:
     """First-level hierarchy power (mW) from cell_power.rpt (7 significant digits), cross-checked against
-    power_hier.rpt (3 significant digits)."""
+    power_hier.rpt (3 significant digits).  A drain-register route has no u_combiner (synthesis removes it): 0."""
+    names = tuple(h for h in HIER if not (drain and h == "u_combiner"))
     precise: dict[str, float] = {}
     for line in text(power_dir / "cell_power.rpt").splitlines():
         f = line.split()
@@ -520,11 +527,11 @@ def hierarchy(power_dir: Path) -> dict[str, float]:
         m = re.match(r"  (\S+) \(\S+\)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)", line)
         if m and m[1] in HIER and m[1] not in coarse:
             coarse[m[1]] = float(m[5]) * 1e3
-    require(set(precise) == set(HIER) == set(coarse), f"hierarchy powers incomplete: {sorted(precise)}")
-    for name in HIER:
+    require(set(precise) == set(names) == set(coarse), f"hierarchy powers incomplete: {sorted(precise)}")
+    for name in names:
         require(abs(precise[name] - coarse[name]) <= 0.0051 * abs(coarse[name]) + 1e-6,
                 f"{name}: cell_power {precise[name]} mW vs power_hier {coarse[name]} mW")
-    return precise
+    return {h: precise.get(h, 0.0) for h in HIER}
 
 
 def common_row(pr: PointRun) -> tuple[dict, dict]:
@@ -533,8 +540,8 @@ def common_row(pr: PointRun) -> tuple[dict, dict]:
     sdfc = json.loads((pr.gl / "sdf_clock_audit.json").read_text())
     power_dir = pr.dir / "power"
     p_tot = total(power_dir / "power.rpt", "Total Power")
-    hier = hierarchy(power_dir)
-    base = dict(point=pr.p.name, kind=pr.p.kind, shape=pr.r.shape, route=pr.r.run, top=pr.r.top,
+    hier = hierarchy(power_dir, pr.r.drain)
+    base = dict(point=pr.p.name, kind=pr.p.kind, shape=pr.r.shape, route=pr.r.run, top=pr.r.top, drain=pr.r.drain,
                 power_mW=p_tot, internal_mW=total(power_dir / "power.rpt", "Cell Internal Power"),
                 switching_mW=total(power_dir / "power.rpt", "Net Switching Power"),
                 leakage_mW=total(power_dir / "power.rpt", "Cell Leakage Power"),
@@ -578,7 +585,7 @@ def int_row(pr: PointRun) -> dict:
     mpc = chk["macs"] / win["active"]
     sched = chk.get("schedule", "bp")
     nb = chk["L"] // 128
-    period = (ba * bw * nb + ba + bw - 2 + 8) if sched == "abit" else (bw * nb + bw - 1 + 8)
+    period = (ba * bw * nb + ba + bw - 2 + (2 if pr.r.drain else 8)) if sched == "abit" else (bw * nb + bw - 1 + 8)
     row = dict(base, schedule=sched, precision=chk["precision"], ba=ba, bw=bw, L=chk["L"], mrows=chk["mrows"],
                ncols=chk["ncols"], blocks=chk["blocks"], saif_mode=chk["saif_mode"], window=pr.p.window,
                active_cycles=win["active"], data_cycles=win["data"], lap_cycles=win["ring"],
@@ -595,6 +602,7 @@ def summarize_classes(log_path: Path) -> dict:
     """Block rows (mW and um2) from pt_power_classes.tcl's output; the rows sum to PT's Total Power (checked) and,
     as cell area, to the leaf total.
       u_pe            tiles + pe_pipes_glue (core_seq + core_glue + pe_local) + dbl_mux + dbl_sel + pe_clk_buf
+                      + drain_reg (dr_seq + dr_mux; drain-register routes)
       a_edge          a_regs + ka_enc + ka_in_buf + therm_byp (thermometer + A INT bypass: a_logic + byp_a + sel_a)
       w_edge          w_regs + w_cmp_byp (W comparators + W INT bypass: w_logic + byp_w + sel_w)
       sel_shared      bypass select buffering feeding both bit cones
@@ -628,7 +636,8 @@ def summarize_classes(log_path: Path) -> dict:
     def build(field: str, scale: float, tot: float | None, port: float) -> dict:
         def c(s, k):
             return (d["class"].get((s, k), {}).get(field) or 0.0) * scale
-        r = dict(tiles=c("u_pe", "tiles"), pe_core_seq=c("u_pe", "core_seq"), pe_core_glue=c("u_pe", "core_glue"),
+        r = dict(tiles=c("u_pe", "tiles"), dr_seq=c("u_pe", "dr_seq"), dr_mux=c("u_pe", "dr_mux"),
+                 pe_core_seq=c("u_pe", "core_seq"), pe_core_glue=c("u_pe", "core_glue"),
                  pe_local=c("u_pe", "pe_local"), dbl_mux=c("u_pe", "dbl_mux"), dbl_sel=c("u_pe", "dbl_sel"),
                  pe_clk_buf=c("u_pe", "clk_buf"), a_regs=c("u_peripheral", "a_regs"),
                  ka_enc=c("u_peripheral", "ka_enc"), ka_in_buf=c("u_peripheral", "ka_in_buf"),
@@ -643,7 +652,8 @@ def summarize_classes(log_path: Path) -> dict:
                  port_nets=port, u_peripheral_leaf_sum=c("u_peripheral", "ALL"), u_pe_leaf_sum=c("u_pe", "ALL"),
                  clock_buffers_all=c("top", "CLOCK_BUFFERS_ALL"))
         r["pe_pipes_glue"] = r["pe_core_seq"] + r["pe_core_glue"] + r["pe_local"]
-        r["u_pe"] = r["tiles"] + r["pe_pipes_glue"] + r["dbl_mux"] + r["dbl_sel"] + r["pe_clk_buf"]
+        r["drain_reg"] = r["dr_seq"] + r["dr_mux"]
+        r["u_pe"] = r["tiles"] + r["pe_pipes_glue"] + r["dbl_mux"] + r["dbl_sel"] + r["pe_clk_buf"] + r["drain_reg"]
         r["therm_byp"] = r["therm"] + r["byp_a"] + r["sel_a"]
         r["a_edge"] = r["a_regs"] + r["ka_enc"] + r["ka_in_buf"] + r["therm_byp"]
         r["w_cmp_byp"] = r["w_cmp"] + r["byp_w"] + r["sel_w"]
@@ -663,7 +673,7 @@ def summarize_classes(log_path: Path) -> dict:
     pk = ["ka_enc", "a_regs", "w_regs", "clk_buf", "ka_in_buf", "byp_a", "byp_w", "sel_a", "sel_w", "sel_both",
           "a_logic", "w_logic", "p_other"]
     require(sum(n("u_peripheral", k) for k in pk) == n("u_peripheral", "ALL"), "u_peripheral classes do not partition")
-    ek = ["tiles", "clk_buf", "core_seq", "dbl_mux", "dbl_sel", "core_glue", "pe_local"]
+    ek = ["tiles", "clk_buf", "dr_seq", "dr_mux", "core_seq", "dbl_mux", "dbl_sel", "core_glue", "pe_local"]
     require(sum(n("u_pe", k) for k in ek) == n("u_pe", "ALL"), "u_pe classes do not partition")
     return dict(rows_mW=rows, rows_area_um2=area, hier_attr_mW={k: v["tot"] * 1e3 for k, v in d["hier"].items()},
                 cells={f"{s}/{k}": v["cells"] for (s, k), v in d["class"].items()}, info=d["info"],
@@ -671,7 +681,7 @@ def summarize_classes(log_path: Path) -> dict:
 
 
 CLASS_ORDER = ["total", "u_pe", "tiles", "pe_pipes_glue", "pe_core_seq", "pe_core_glue", "pe_local", "dbl_mux",
-               "dbl_sel", "pe_clk_buf", "a_edge", "a_regs", "ka_enc", "ka_in_buf", "therm_byp", "therm", "byp_a",
+               "dbl_sel", "pe_clk_buf", "drain_reg", "dr_seq", "dr_mux", "a_edge", "a_regs", "ka_enc", "ka_in_buf", "therm_byp", "therm", "byp_a",
                "sel_a", "w_edge", "w_regs", "w_cmp_byp", "w_cmp", "byp_w", "sel_w", "sel_shared", "w_bank",
                "rng_words", "rng_ctrl", "rng_clk_buf", "combiner", "combiner_clk_buf", "periph_clk_buf", "other",
                "periph_other", "top_glue", "top_clk_buf", "port_nets", "u_peripheral_leaf_sum", "clock_buffers_all",
@@ -709,7 +719,7 @@ def collect(out: Path) -> None:
 
 def manifest(r: Route, evidence: Path) -> list[str]:
     lines = [f"route={r.route}", f"top={r.top}", f"target={r.target}", f"shape={r.shape} K={r.K} M={r.M}",
-             f"evidence={evidence}", f"sc_columns={r.sc_columns} sc_batches={r.sc_batches}",
+             f"evidence={evidence}", f"sc_columns={r.sc_columns} sc_batches={r.sc_batches}", f"drain={r.drain}",
              f"approvals={' '.join(r.approvals) or '(none)'}"]
     lines += [f"{sha256(f)}  {f.relative_to(r.route)}" for f in (r.file("apr.v"), r.file("apr.sdf"), r.file("spef"),
                                                                  r.sdc)]
@@ -733,6 +743,8 @@ def main() -> int:
     ap.add_argument("--gl-approve", default="", help="gl-audit approvals, used only after a strict failure and only "
                                                     "with OUT/gl_validator_args_rationale.txt citing them")
     ap.add_argument("--jobs", type=int, default=4)
+    ap.add_argument("--drain", type=int, choices=(0, 1), default=0,
+                    help="1: a drain-register route (PAYN_DRAIN=1): benches built with it; bit-plane points refused")
     ap.add_argument("--retry-failed", action="store_true", default=os.environ.get("RETRY_FAILED") == "1")
     ap.add_argument("--dry-run", action="store_true", default=os.environ.get("DRY_RUN") == "1")
     a = ap.parse_args()
@@ -749,7 +761,7 @@ def main() -> int:
     for tok in approvals:
         if not (tok.startswith("--approve-") or re.fullmatch(r"[0-9]+(\.[0-9]+)?", tok)):
             ap.error(f"--gl-approve takes only qualify.py --approve-* flags (got {tok})")
-    r = Route(shape, route, a.top, out, a.target, approvals, a.sc_columns)
+    r = Route(shape, route, a.top, out, a.target, approvals, a.sc_columns, a.drain)
     require(r.sc_columns % (8 * r.K) == 0, "--sc-columns must be a multiple of 8 K")
     names = select(a.points)
     classes = set(select(a.classes)) if a.classes else set()
@@ -770,7 +782,12 @@ def main() -> int:
     if not a.dry_run:
         out.mkdir(parents=True, exist_ok=True)
         write_manifest(out / "inputs.txt", manifest(r, evidence))
-    blocked = {n: bench_supports(POINTS[n]) for n in names if bench_supports(POINTS[n])}
+    if r.drain:                                # the default groups include bit-plane points
+        dropped = [n for n in names if POINTS[n].kind == "bp"]
+        names = [n for n in names if POINTS[n].kind != "bp"]
+        if dropped:
+            print(f"drain-register route: {len(dropped)} bit-plane points skipped ({', '.join(dropped[:4])}...)")
+    blocked = {n: bench_supports(POINTS[n], r.drain) for n in names if bench_supports(POINTS[n], r.drain)}
 
     def one(name: str) -> tuple[str, str]:
         pr = PointRun(r, POINTS[name], name in classes)

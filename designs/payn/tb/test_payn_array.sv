@@ -136,6 +136,25 @@
 //   +NEG_ABIT_OVERLAP      tightness: next block one edge early (its first MAC
 //                          lands on the last drain edge)
 //
+// ------------------------------------------- drain register (PAYN_DRAIN=1) --
+// With +define+PAYN_DRAIN=1 the DUT reads out through its drain register
+// (payn_array.sv [DR]); +MODE=sc and +MODE=abit run, +MODE=int and
+// +MODE=switch (bit-plane, combiner) need PAYN_DRAIN=0.
+//   SC: a drain scheduled at D0 (the first drain edge above) drives drain_in
+//   on D0-1 and reads dr_out after D0 (tile rows 0-3) and after D0+1 (rows
+//   4-7; read DRAIN_SAMPLE_LATE_PS before the next edge when given); the next
+//   slice may load on D0 (NEG_NEXT_EARLY: D0-1, its first MAC on the half-1
+//   read edge); NEG_DRAIN_EARLY reads half 0 on the last MAC edge.  The bench
+//   also counts the dr_out_valid edges: exactly two per drain ([DRVALID]).
+//   RNG_LOW_END applies to blocks without a drain only (a slice's last advance
+//   edge needs rng_en high: payn_array.sv [DR]); +NEG_RNG_LOW_END_DRAIN
+//   applies it to slice-ending blocks too (must FAIL: CHECK + CONTRACT).
+//   abit: drain_in on the bubble capture edge, half 0 read on the bubble's MAC
+//   edge, half 1 on the next block's first capture: block period
+//   BA*BW*NB + (BA+BW-2) + 2.  The trace logs the read edges as "X e blk h"
+//   and every valid dr_out as "Q 0 e v0..v31" (loaded on segment edge e); the
+//   ABITCFG header gains DRAIN.  shift_in stays low.
+//
 // Needs DesignWare for the tile heap (VCS -y $SYNOPSYS/dw/sim_ver).  GL runs:
 // +define+GL_SIM, +define+PAYN_DUT=<netlist top> if it is not payn_array.
 
@@ -157,6 +176,9 @@
 `endif
 `ifndef PAYN_M
 `define PAYN_M 8                      // positions per lane: 8 (K16/M8) or 16 (K8/M16)
+`endif
+`ifndef PAYN_DRAIN
+`define PAYN_DRAIN 0                  // drain: 0 in-tile chain, 1 drain register (payn_array.sv)
 `endif
 `ifndef PAYN_DUT
 `define PAYN_DUT payn_array           // netlist top name (GL_SIM)
@@ -199,6 +221,14 @@ module Top;
     logic [N_H*K*M-1:0] a_raw_in = '0;
     logic [N_W*K*M-1:0] w_raw_in = '0;
     logic [63:0] int_out;
+    // Drain register ports (DRAIN = 1 builds; unused and 0 with the in-tile chain).
+    localparam int DRAIN = `PAYN_DRAIN;
+    localparam int DRW = (N_H / 2) * N_W * OWIDTH;
+    logic drain_in = 1'b0;
+    logic [DRW-1:0] dr_out;
+    logic dr_out_valid;
+    logic [DRW-1:0] dr_in_east = '0;           // one PE: no east neighbour
+    logic dr_in_east_valid = 1'b0;
     logic int_out_valid;
 
     ClkUtils #(.TIMEOUT(`TB_TIMEOUT)) clk_utils (.clk, .reset, .timeout);
@@ -210,7 +240,7 @@ module Top;
 `else
     payn_array #(
         .K(K), .M(M), .N_H(N_H), .N_W(N_W), .WIDTH(WIDTH),
-        .OWIDTH(OWIDTH), .LOW_W(LOW_W)
+        .OWIDTH(OWIDTH), .LOW_W(LOW_W), .DRAIN(DRAIN)
     ) dut (.*);
 `endif
 
@@ -417,6 +447,30 @@ module Top;
             wait (drain_q.size() > 0);
             dr = drain_q.pop_front();
             drain_busy = 1'b1;
+            if (DRAIN == 1) begin
+                // drain_in on D0-1: half 0 (tile rows 0-3) loaded into dr_out
+                // on D0, half 1 on D0+1.  The case ends one edge later: half 1
+                // is read up to just before D0+2 (DRAIN_SAMPLE_LATE_PS), and the
+                // compare must finish before the next case loads its expected
+                // values.
+                drain_last_edge = dr.d0 + 2;
+                while (edge_n + 1 < dr.d0 - 1) @(negedge clk);
+                drain_in = 1'b1;
+                @(negedge clk);
+                drain_in = 1'b0;
+                for (int hf = 0; hf < 2; hf++) begin
+                    @(negedge clk);              // edge D0 + hf has happened
+                    if (drain_sample_late_ps != 0) #(PERIOD / 2.0 - drain_sample_late_ps / 1000.0);
+                    if (dr_out_valid !== 1'b1) begin
+                        drain_bad++;
+                        $display("[CHECK] %s drain %0d half %0d: dr_out_valid %b after edge %0d",
+                                 case_name, dr.di, hf, dr_out_valid, edge_n);
+                    end
+                    for (int h = 0; h < N_H / 2; h++)
+                        for (int v = 0; v < N_W; v++)
+                            got[hf*(N_H/2) + h][v] = dr_out[(h*N_W + v)*OWIDTH +: OWIDTH];
+                end
+            end else begin
             drain_last_edge = dr.d0 + N_W - 1;
             while (edge_n + 1 < dr.d0) @(negedge clk);
             acc_in_west = '0;
@@ -442,6 +496,7 @@ module Top;
                 @(negedge clk);
             end
             shift_in = 1'b0;
+            end
             for (int h = 0; h < N_H; h++)
                 for (int v = 0; v < N_W; v++) begin
                     logic signed [31:0] exp_v;
@@ -459,8 +514,15 @@ module Top;
         end
     end
 
+    // DRAIN=1: edges with a valid dr_out (pre-edge), every mode.
+    int dr_valid_edges = 0;
+    always @(posedge clk)
+        if (DRAIN == 1 && reset === 1'b0 && dr_out_valid === 1'b1) dr_valid_edges++;
+
     //---------------------------------------------------------- stimulus --
     int unsigned cur_end = 0;          // last advance edge (B+C) of the running block
+    bit cur_drain = 1'b0;              // the running block ends a slice (a drain follows)
+    bit neg_rng_low_end_drain = 1'b0;  // DRAIN=1: RNG_LOW_END on slice-ending blocks too
     bit first_block_of_run = 1'b1;
     bit first_block_after_int = 1'b0;  // NEG_SW_NO_RELOAD
 
@@ -472,7 +534,11 @@ module Top;
         block_start = 1'b0;
         slice_start = 1'b0;
         if (edge_n + 1 <= cur_end)
-            rng_en = !stall_edge.exists(edge_n + 1) && !(opt_rng_low_end && edge_n + 1 == cur_end);
+            // DRAIN=1: RNG_LOW_END skips slice-ending blocks (it would repeat a
+            // live cycle onto the half-0 read edge) unless NEG_RNG_LOW_END_DRAIN.
+            rng_en = !stall_edge.exists(edge_n + 1) &&
+                     !(opt_rng_low_end && edge_n + 1 == cur_end &&
+                       !(DRAIN == 1 && cur_drain && !neg_rng_low_end_drain));
         else if (opt_rng_low_idle)               // RNG_LOW_IDLE: the counter holds after the block
             rng_en = 1'b0;
         else if (!(opt_gaps && opt_rng_gap_low))
@@ -616,13 +682,15 @@ module Top;
             C = C + ns;                          // block span in edges from here on
             for (int unsigned e = B + 2; e <= B + C + 1; e++) mac_edge[e] = 1'b1;
             cur_end = B + C;
+            cur_drain = dr_m[b][0];
             peek_q.push_back('{B + C + 1, b});
             if (dr_m[b][0]) begin
                 D0 = B + C + 2 + (opt_loose ? $urandom_range(0, 3) : 0);
                 if (neg_drain_early) D0 = D0 - 1;
                 drain_q.push_back('{D0, di});
                 di++;
-                next_free = D0 + N_W - 2 + (opt_loose ? $urandom_range(0, 3) : 0);
+                // DRAIN=1: the next slice may load on the half-0 read edge D0.
+                next_free = ((DRAIN == 1) ? D0 : D0 + N_W - 2) + (opt_loose ? $urandom_range(0, 3) : 0);
                 if (neg_next_early) next_free = next_free - 1;
             end else begin
                 next_free = B + C;
@@ -1116,7 +1184,11 @@ module Top;
             sl_kind.push_back(1); sl_pass.push_back(-1); sl_u.push_back(-1); sl_lap.push_back(1'b0);
         end
         AB_D0 = sl_kind.size();                  // first drain slot
-        AB_BLK_NOM = AB_D0 + N_W - 1;            // 8th drain edge = next block's slot 0
+        if (DRAIN == 1) begin
+            AB_BLK_NOM = AB_D0 + 1;              // half-1 read edge = next block's slot 0
+            AB_FORMULA = BA*BW*NB + (BA + BW - 2) + 2;
+        end else
+            AB_BLK_NOM = AB_D0 + N_W - 1;        // 8th drain edge = next block's slot 0
         AB_BLK_LEN = AB_BLK_NOM - (ab_neg_overlap ? 1 : 0);
         AB_E_END = E0 + (AB_NBLK - 1)*AB_BLK_LEN + AB_BLK_NOM;
         AB_N = AB_E_END + 8;
@@ -1136,7 +1208,7 @@ module Top;
                     if (sl_u[s] == 0) ab_start_pass[e] = sl_pass[s];
                 end
             end
-            for (int t = 0; t < N_W; t++) begin
+            for (int t = 0; t < ((DRAIN == 1) ? 2 : N_W); t++) begin   // DRAIN=1: t = half
                 e = base + AB_D0 + t;
                 if (ab_drn_blk[e] >= 0) $fatal(1, "[BENCH] two drains on edge %0d", e);
                 ab_drn_blk[e] = b; ab_drn_t[e] = t;
@@ -1147,6 +1219,25 @@ module Top;
     function automatic bit abit_drain_at(input int e);
         return e >= 0 && e < AB_N && ab_drn_blk[e] >= 0;
     endfunction
+
+    // DRAIN=1: segment edge e is a half-0 read edge.
+    function automatic bit abit_rd0_at(input int e);
+        return abit_drain_at(e) && ab_drn_t[e] == 0;
+    endfunction
+
+    // DRAIN=1: every valid dr_out of an abit segment, "Q 0 e v0..v31" (loaded
+    // on segment edge e, read pre-edge at P_{e+1}).
+    int ab_q_seg = -1, ab_items = 0;
+    always @(posedge clk)
+        if (DRAIN == 1 && ab_q_seg >= 0 && dr_out_valid === 1'b1) begin
+            if ($isunknown(dr_out))
+                $fatal(1, "[X-FAIL] dr_out X at edge %0d", edge_n);
+            $fwrite(seg_trace[ab_q_seg], "Q 0 %0d", int'(edge_n) - seg_base[ab_q_seg]);
+            for (int n = 0; n < (N_H/2)*N_W; n++)
+                $fwrite(seg_trace[ab_q_seg], " %0d", $signed(dr_out[n*OWIDTH +: OWIDTH]));
+            $fwrite(seg_trace[ab_q_seg], "\n");
+            ab_items++;
+        end
 
     function automatic bit abit_lap_at(input int e);
         return e >= 0 && e < AB_N && ab_lap[e];
@@ -1236,13 +1327,14 @@ module Top;
         if (seg_trace[seg] == 0) $fatal(1, "cannot open abit_trace.txt");
         seg_sched[seg] = $fopen("abit_sched.txt", "w");
         if (seg_sched[seg] == 0) $fatal(1, "cannot open abit_sched.txt");
-        $fwrite(seg_trace[seg], "ABITCFG %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d\n",
+        $fwrite(seg_trace[seg], "ABITCFG %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d\n",
                 BA, BW, L, MROWS, NCOLS, AB_NBLK, NB, E0, AB_E_END, AB_BLK_LEN, AB_D0, AB_FORMULA, AB_NLEV,
                 junk, MODE_AT, ab_neg_no_lap, ab_neg_extra_lap, ab_neg_sign, ab_neg_order,
-                ab_neg_no_bubble, ab_neg_drain_early, ab_neg_overlap, park_cyc0);
+                ab_neg_no_bubble, ab_neg_drain_early, ab_neg_overlap, park_cyc0, DRAIN);
         $fwrite(seg_sched[seg], "SCHED abit=1 blk_len=%0d d0=%0d nb=%0d ba=%0d bw=%0d nblk=%0d formula=%0d\n",
                 AB_BLK_LEN, AB_D0, NB, BA, BW, AB_NBLK, AB_FORMULA);
         seg_base[seg] = int'(edge_n) + 1;
+        ab_q_seg = seg;
         for (int e = 0; e <= AB_E_END + tail; e++) begin
             if (e == MODE_AT) int_mode = 1'b1;
             abit_set_raw(e);
@@ -1254,7 +1346,11 @@ module Top;
                 else for (int n = 0; n < N_H*OWIDTH; n++) acc_in_west[n] = $urandom & 1;
             end
             ring_in = abit_lap_at(e + 1);
-            shift_in = abit_drain_at(e);
+            if (DRAIN == 1) begin
+                drain_in = abit_rd0_at(e + 1);   // one edge ahead of the half-0 read edge
+                shift_in = 1'b0;
+            end else
+                shift_in = abit_drain_at(e);
             mac_en = (e > E0);                   // first MAC at P_{E0+1}
             if (e == E0 + 1) $fwrite(seg_trace[seg], "M %0d\n", e);
             if (e < AB_N && ab_start_pass[e] >= 0)
@@ -1268,7 +1364,7 @@ module Top;
                 c.seg = seg;
                 c.blk = ab_drn_blk[e];
                 c.t = ab_drn_t[e];
-                drain_expect[edge_n + 1] = c;
+                if (DRAIN != 1) drain_expect[edge_n + 1] = c;   // DRAIN=1: the Q monitor reads dr_out
             end
             @(posedge clk);                      // P_e
             @(negedge clk);
@@ -1359,6 +1455,9 @@ module Top;
         neg_sw_no_reload = $test$plusargs("NEG_SW_NO_RELOAD");
         void'($value$plusargs("SW_GAP=%d", sw_gap));
         opt_rng_low_idle = $test$plusargs("RNG_LOW_IDLE");
+        neg_rng_low_end_drain = $test$plusargs("NEG_RNG_LOW_END_DRAIN");
+        if (neg_rng_low_end_drain && !(DRAIN == 1 && $test$plusargs("RNG_LOW_END")))
+            $fatal(1, "[BENCH] NEG_RNG_LOW_END_DRAIN needs RNG_LOW_END and PAYN_DRAIN=1");
         void'($value$plusargs("NEG_SHORT_LAST=%d", neg_short_last));
         void'($value$plusargs("DRAIN_SAMPLE_LATE_PS=%d", drain_sample_late_ps));
         if (drain_sample_late_ps < 0 || drain_sample_late_ps >= int'(PERIOD * 500.0))
@@ -1387,6 +1486,10 @@ module Top;
         junk_scstrobe = $test$plusargs("JUNK_SCSTROBE");
         if (!$value$plusargs("SEED=%d", seed)) seed = 1;
         if (!$value$plusargs("RESET_SETTLE=%d", reset_settle)) reset_settle = `TB_RESET_SETTLE;
+
+        if (DRAIN == 1 && (bench_mode == "int" || bench_mode == "switch"))
+            $fatal(1, "[BENCH] +MODE=%s uses the bit-plane combiner on the in-tile chain: build with PAYN_DRAIN=0",
+                   bench_mode);
 
         if (bench_mode == "sc") begin
             //----------------------------------------------------- SC --
@@ -1433,6 +1536,10 @@ module Top;
             finish_sc_result(dirs.size());
             contract = dut_contract();
             ok = drain_bad == 0 && blk_bad == 0 && ka_bad == 0 && ph_bad == 0 && contract == 0 && drain_vals > 0;
+            if (DRAIN == 1 && dr_valid_edges != 2*total_drains) begin
+                $display("[DRVALID] %0d dr_out_valid edges, expected %0d (two per drain)", dr_valid_edges, 2*total_drains);
+                ok = 1'b0;
+            end
             if (ok)
                 $display("PASS: PaYN array bench, %0d cases, %0d blocks, %0d drained accumulators bit-exact",
                          dirs.size(), total_blocks, drain_vals);
@@ -1598,9 +1705,13 @@ module Top;
             shift_in = 1'b0;
             ring_in = 1'b0;
             @(negedge clk);                      // monitor reads the last combiner word at E_END+2
-            if (seg_ndrain[0] != AB_NBLK*N_W || seg_ncomb[0] != AB_NBLK*N_W)
+            if (DRAIN == 1 && (ab_items != 2*AB_NBLK || seg_ndrain[0] != 0 || seg_ncomb[0] != 0))
+                $fatal(1, "read %0d drain-register items (expected %0d), %0d acc_out_east columns and %0d combiner outputs (expected 0)",
+                       ab_items, 2*AB_NBLK, seg_ndrain[0], seg_ncomb[0]);
+            if (DRAIN != 1 && (seg_ndrain[0] != AB_NBLK*N_W || seg_ncomb[0] != AB_NBLK*N_W))
                 $fatal(1, "drained %0d columns and %0d combiner outputs, expected %0d each",
                        seg_ndrain[0], seg_ncomb[0], AB_NBLK*N_W);
+            ab_q_seg = -1;
             $fclose(seg_trace[0]);
             $fclose(seg_sched[0]);
             contract = dut_contract();
@@ -1609,10 +1720,10 @@ module Top;
                      cov_lap_edges, cov_tile_laps, cov_pending_carry, cov_pending_borrow);
             $display("INT_SILENT_MAC_SAMPLES %0d", int_mac_samples);
 `endif
-            $display("PASS: PaYN abit INT bench BA=%0d BW=%0d L=%0d MROWS=%0d NCOLS=%0d blocks=%0d block_len=%0d formula=%0d edges=%0d junk=%0d mode_at=%0d sc_contract=%0d park_cyc0=%0d neg=%0d/%0d/%0d/%0d/%0d/%0d/%0d",
+            $display("PASS: PaYN abit INT bench BA=%0d BW=%0d L=%0d MROWS=%0d NCOLS=%0d blocks=%0d block_len=%0d formula=%0d edges=%0d junk=%0d mode_at=%0d sc_contract=%0d park_cyc0=%0d neg=%0d/%0d/%0d/%0d/%0d/%0d/%0d drain=%0d",
                      BA, BW, L, MROWS, NCOLS, AB_NBLK, AB_BLK_LEN, AB_FORMULA, AB_E_END + 3, junk, MODE_AT,
                      contract, park_cyc0, ab_neg_no_lap, ab_neg_extra_lap, ab_neg_sign, ab_neg_order,
-                     ab_neg_no_bubble, ab_neg_drain_early, ab_neg_overlap);
+                     ab_neg_no_bubble, ab_neg_drain_early, ab_neg_overlap, DRAIN);
             $finish;
         end
         $fatal(1, "[BENCH] unknown +MODE=%s (sc | int | switch | abit)", bench_mode);

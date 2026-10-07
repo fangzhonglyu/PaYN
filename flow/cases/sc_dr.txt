@@ -1,0 +1,8 @@
+# SC rows for the drain-register build only (regress.py --drain 1), run in addition to sc.txt.  Columns as sc.txt.
+# RNG_LOW_END on a slice-ending block repeats its last live cycle onto the half-0 read edge (payn_array.sv [DR]).
+# label  cases  flags  expect
+neg_dr_rng_low_end_drain        @golden   RNG_LOW_END,NEG_RNG_LOW_END_DRAIN,INT_JUNK                  fail:CHECK+CONTRACT
+dr_rng_low_end_drain_mac_exact  @all      RNG_LOW_END,NEG_RNG_LOW_END_DRAIN,MAC_EXACT,SEED=31,INT_JUNK pass
+# The drain read at the SDC output-delay point (what gate-level apr runs use), chained without reset.
+dr_chain_all_late               @all      DRAIN_SAMPLE_LATE_PS=50,INT_JUNK                             pass
+dr_chain_all_late_combo_s10     @all      NO_SLICE_START,STALL,JUNK_BUS,GAPS,RNG_GAP_LOW,MAC_EXACT,LOOSE_DRAIN,FULL_CYCLES,DRAIN_SAMPLE_LATE_PS=50,SEED=10,INT_JUNK pass

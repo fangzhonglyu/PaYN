@@ -264,7 +264,8 @@ def approve_annotated_interconnect(text: str, sdf: SdfLines, reasons: list[str])
     approved = []
     for block in warning_blocks(text, "SDFCOM_IWSBA"):
         where = SDF_CITE_RE.search(block)
-        pins = re.search(r"INTERCONNECT from\s+(\S+)\s+to\s+(\S+)\s+has (Continuous Assignment|Instance) at"
+        # VCS wraps the message by length, so any whitespace (a line break included) may separate its words.
+        pins = re.search(r"INTERCONNECT from\s+(\S+)\s+to\s+(\S+)\s+has\s+(Continuous\s+Assignment|Instance)\s+at"
                          r"\s+(\S+?):(\d+)", block)
         if "INTERCONNECT will still be annotated" not in block or not where or not pins:
             reasons.append("SDFCOM_IWSBA diagnostic lacks the annotated-interconnect statement, SDF line or pins")
@@ -279,7 +280,7 @@ def approve_annotated_interconnect(text: str, sdf: SdfLines, reasons: list[str])
             reasons.append(f"SDFCOM_IWSBA at {path}:{line_no} is not a non-negative INTERCONNECT entry")
             continue
         approved.append({"sdf": path, "line": line_no, "entry": " ".join(line.split()),
-                         "source": pins[1], "destination": pins[2], "netlist_object": pins[3],
+                         "source": pins[1], "destination": pins[2], "netlist_object": " ".join(pins[3].split()),
                          "netlist": f"{pins[4]}:{pins[5]}"})
     return approved
 

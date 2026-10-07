@@ -1,0 +1,23 @@
+# PE-grid all-bits-in-time rows for the drain-register build only (regress.py --drain 1), run in addition to
+# grid_abit.txt: the 4x8 target grid, the chain's busy rule (block period max(BA*BW*NB + BA+BW-2 + 2, 2*P_C)) and the
+# drain-wave controls.  Columns as grid_abit.txt; expect pass | caught | fail:DRCONTRACT ([DR-CONTRACT] stops the run:
+# a lost item, both halves on one edge, or a read on a lap edge, e.g. a row-skew error at L = 128).
+# label  shape  BA BW L MROWS NCOLS DIST SEED  flags  expect
+dr8_int8_uniform_L384_m32n64          4x8 8 8  384  32  64 uniform    101 -                     pass
+dr8_int8_uniform_L256_m64n128_junk    4x8 8 8  256  64 128 uniform    102 JUNK                  pass
+dr8_int8_allmin_L384_m32n64           4x8 8 8  384  32  64 allmin       0 -                     pass
+dr8_int7_uniform_L1024_m32n64         4x8 7 7 1024  32  64 uniform    103 ABIT_RANGE_DATA       pass
+dr8_int6_uniform_L1024_m64n64         4x8 6 6 1024  64  64 uniform    104 -                     pass
+dr8_int4_uniform_L1024_m32n128_junk   4x8 4 4 1024  32 128 uniform    105 JUNK                  pass
+dr8_w4a8_uniform_L512_m32n64          4x8 8 4  512  32  64 uniform    106 -                     pass
+dr8_int2_uniform_L128_m64n128_busy    4x8 2 2  128  64 128 uniform    107 -                     pass
+dr8_int2_uniform_L256_m32n128_busy    4x8 2 2  256  32 128 uniform    108 JUNK                  pass
+dr4_int2_uniform_L128_m64n64_tight    4x4 2 2  128  64  64 uniform    109 -                     pass
+dr2_w2a3_uniform_L128_m32n32          2x2 3 2  128  32  32 uniform    110 -                     pass
+drneg8_int8_drainearly_L128           4x8 8 8  128  32  64 uniform    111 NEG_DRAIN_EARLY       caught
+drneg8_int8_overlap_L128              4x8 8 8  128  32 128 uniform    112 NEG_BLOCK_OVERLAP     caught
+drneg8_int8_drrowskew_L128            4x8 8 8  128  32  64 uniform    113 NEG_DR_NO_ROW_SKEW    fail:DRCONTRACT
+drneg4_int6_drrowskew_L1024           4x4 6 6 1024  32  32 uniform    114 NEG_DR_NO_ROW_SKEW    caught
+drneg8_int8_drcolskew_L128            4x8 8 8  128  32  64 uniform    115 NEG_DR_NO_COL_SKEW    fail:DRCONTRACT
+drneg8_int2_busy_L128                 4x8 2 2  128  32 128 uniform    116 NEG_DR_BUSY           fail:DRCONTRACT
+drneg8_int8_ringrowskew_L128          4x8 8 8  128  32  64 uniform    117 NEG_RING_NO_ROW_SKEW  caught

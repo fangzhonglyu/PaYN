@@ -8,11 +8,13 @@
 #                 cells in the fanout of int_mode: bypass select buffering), a_logic (thermometers), w_logic
 #                 (W comparators), p_other
 #   u_rng         rng_words, clk_buf, rng_ctrl (block clock)
-#   u_pe          tiles, clk_buf (CTS), core_seq (bit/sign pipes, core clock gates), dbl_mux (cells in the fanin of
-#                 the tile acc_in pins and the fanout of a tile acc_out pin: the per-tile doubling muxes), dbl_sel
-#                 (the other cells in the fanin of acc_in: the lap select tree), core_glue, pe_local (ring_q flop,
-#                 shift_in | ring_q)
-#   u_combiner    clk_buf, logic
+#   u_pe          tiles, clk_buf (CTS), dr_seq (drain-register flops and their clock gate, g_dr*: PAYN_DRAIN = 1
+#                 netlists, empty otherwise), dr_mux (the other core cells in the fanin of dr_seq's data and enable
+#                 pins: the drain register's 3:1 mux and load enable), core_seq (bit/sign pipes, core clock gates),
+#                 dbl_mux (cells in the fanin of the tile acc_in pins and the fanout of a tile acc_out pin: the
+#                 per-tile doubling muxes), dbl_sel (the other cells in the fanin of acc_in: the lap select tree),
+#                 core_glue, pe_local (ring_q flop, shift_in | ring_q; drain_q / drain_q2)
+#   u_combiner    clk_buf, logic (absent in PAYN_DRAIN = 1 netlists: synthesis removes it)
 #   top           clk_buf, glue (int_mode_q, MAC guard, ring and capture gates)
 # Output lines: PWR_TOTAL, PWR_HIER, PWR_CLASS <scope> <class> <cells> int sw leak tot area, PWR_CHECK, PWR_INFO,
 # PWR_OTHER.  Env: ROUTE_DIR, TOP, SAIF_FILE, REF_TOTAL_W (empty: no total check), TSMC22_*.
@@ -207,8 +209,22 @@ set pe_rest [minus $pe_all $tiles]
 set pe_clk [within $pe_rest $clk_comb]
 emit u_pe clk_buf $pe_clk
 set core_loc [minus [minus $core_all $tiles] $pe_clk]
+set dr_seq ""
+if {$core_loc ne "" && [sizeof_collection $core_loc] > 0} {
+    set dr_seq [filter_collection $core_loc "full_name=~${core}/g_dr_* || full_name=~${core}/*clk_gate_g_dr_*"]
+}
+set core_loc [minus $core_loc $dr_seq]
 set core_seq [filter_collection $core_loc "is_sequential==true || full_name=~*clk_gate_*"]
 set core_comb [minus $core_loc $core_seq]
+set dr_mux ""
+if {$dr_seq ne "" && [sizeof_collection $dr_seq] > 0} {
+    set dr_in [get_pins -quiet -of_objects $dr_seq -filter "direction==in && is_clock_pin==false"]
+    set dr_mux [within [cone_to $dr_in] $core_comb]
+    set core_comb [minus $core_comb $dr_mux]
+}
+puts "PWR_INFO drain_register_cells [ncells $dr_seq] seq [ncells $dr_mux] mux"
+emit u_pe dr_seq $dr_seq
+emit u_pe dr_mux $dr_mux
 emit u_pe core_seq $core_seq
 set acc_in_pins [get_pins -quiet "${core}/g_row_*__g_col_*__u_inner/acc_in*"]
 set acc_out_pins [get_pins -quiet "${core}/g_row_*__g_col_*__u_inner/acc_out*"]

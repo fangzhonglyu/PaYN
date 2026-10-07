@@ -5,6 +5,8 @@
 #   modes   comma list of syn-unit, syn-sdf, apr; in apr every run also reads the drain at the SDC output-delay
 #           point (+DRAIN_SAMPLE_LATE_PS=50, GL and RTL alike)
 # The GL RESULT fields (cases calls blocks drains edges, drain values / bad, stalls, stray loads) must equal RTL's.
+# Full-SDF modes (syn-sdf, apr) run only rows of at most a few thousand edges: the 43-case @all chains (57k edges)
+# run at unit delay; chained cases with NO_SLICE_START / INT_JUNK are covered at SDF by chain_golden_combo_s10.
 plain_u128               plain_u128      -                     - pass syn-unit,syn-sdf
 plain_u97                plain_u97       -                     - pass syn-unit
 plain_ladder             plain_ladder    -                     - pass syn-unit,syn-sdf,apr
@@ -34,7 +36,7 @@ settle0_chunked_rung     chunked_rung    -                     0 pass apr
 settle0_calls_av257      calls_av257     -                     0 pass apr
 calls_prot_intjunk       calls_prot      INT_JUNK              - pass apr
 chain_all_no_ss          @all            NO_SLICE_START        - pass syn-unit
-chain_all_no_ss_intjunk  @all            NO_SLICE_START,INT_JUNK - pass syn-unit,syn-sdf,apr
+chain_all_no_ss_intjunk  @all            NO_SLICE_START,INT_JUNK - pass syn-unit
 chain_all_combo_s10      @all            NO_SLICE_START,STALL,JUNK_BUS,MID_RESET,GAPS,RNG_GAP_LOW,MAC_EXACT,LOOSE_DRAIN,FULL_CYCLES,INT_JUNK,SEED=10 - pass syn-unit
 chain_golden_combo_s10   @golden         NO_SLICE_START,STALL,JUNK_BUS,GAPS,RNG_GAP_LOW,MAC_EXACT,LOOSE_DRAIN,FULL_CYCLES,INT_JUNK,SEED=10 - pass syn-sdf,apr
 chain_golden_idle_s4     @golden         RNG_LOW_IDLE,INT_JUNK,SEED=4 - pass syn-unit

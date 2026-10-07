@@ -11,14 +11,19 @@ carry-save counter and a segmented accumulator.
   1-edge lap). Two schedules: bit-plane (A bits in space, W bits in time) and all bits in time (one pass per bit
   pair, grouped by significance level).
 - **Shapes:** K16/M8 (default) or K8/M16, chosen by the `PAYN_M` define (8 or 16).
+- **Drain:** `PAYN_DRAIN` (build time). 0 (default, the qualified hardware): the tile accumulators are the drain
+  chain, west to east, 8 values per PE row per edge, global `shift_in`. 1: one 32-value drain register per PE and a
+  per-PE drain wave: a PE reads its two halves on the two edges after its own last MAC and the registers shift west
+  against the operand wave, so the array keeps computing while a slice leaves at 32 values per PE row per edge
+  (`doc/column_sort_drain.md`). The bit-plane INT schedule needs 0; SC and all bits in time run on both.
 
 ## Layout
 
 | path | contents |
 |---|---|
 | `rtl/payn_array.sv` | top `payn_array`: block clock, edge, mode register and MAC guard, one PE, INT combiner; the full SC / INT / mode-switch contract and its simulation checks are in the header |
-| `rtl/payn_pe_grid.sv` | `PaynPeGrid`: P_R x P_C PEs with skewed operand and lap waves (no edges) |
-| `rtl/payn_pe.sv` | `PaynPeCore` (tiles, operand / sign pipes, in-place doubling mux) and `PaynPe` (packed ports, lap enable) |
+| `rtl/payn_pe_grid.sv` | `PaynPeGrid`: P_R x P_C PEs with skewed operand and lap waves (no edges); with `DRAIN` = 1 the drain wave (east) and the drain-register links (west) |
+| `rtl/payn_pe.sv` | `PaynPeCore` (tiles, operand / sign pipes, in-place doubling mux, the drain register when `DRAIN` = 1) and `PaynPe` (packed ports, lap enable, drain wave) |
 | `rtl/payn_tile.sv` | `PaynTile`, `PaynCount16`, `PaynCount8`, `PaynFA` |
 | `rtl/payn_edge.sv` | `PaynEdge` (operand registers, kA encoders + thermometers, W comparators, INT bypass) and `PaynKaEncoder` |
 | `rtl/payn_stream_gen.sv` | `PaynStreamGen`: block cycle counter, block phase with the slice restart, W lane words |

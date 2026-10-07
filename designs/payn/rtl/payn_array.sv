@@ -26,9 +26,26 @@
 //   u_pe          PaynPe: registered lap enable ring_in -> ring_q, tile shift =
 //                 shift_in | ring_q, core u_pe/u_array_core.
 //   u_combiner    PaynIntCombiner: east-edge plane shift-add for the bit-plane
-//                 INT schedule, int_out / int_out_valid.
+//                 INT schedule, int_out / int_out_valid (DRAIN = 0 only).
 // With int_mode = 0 the INT inputs a_raw_in, w_raw_in, int_prec and ring_in
 // are don't-cares.
+//
+// Drain (DRAIN = `PAYN_DRAIN, a build-time choice):
+//   0  in-tile chain (default): shift_in shifts the tile accumulators east,
+//      read on acc_out_east; drain_in is ignored, dr_out / dr_out_valid are 0.
+//   1  drain register: the PE's 32-value drain register (PaynPe), read on
+//      dr_out / dr_out_valid.  drain_in high on edge P makes P+1 the half-0
+//      and P+2 the half-1 read edge: the half (tile rows 0-3, then 4-7) is
+//      loaded into dr_out on its read edge and its tiles clear; dr_out value
+//      n = (h mod 4)*N_W + v.  dr_in_east / dr_in_east_valid are the drain
+//      register's east input (an east neighbour's DR in a grid; hold valid low
+//      on one PE), ports so that a single-PE route carries the grid PE's whole
+//      chain stage, as acc_in_west does for the in-tile chain.  drain_in also
+//      arms the slice restart, as a shift_in edge does.  acc_out_east is 0, acc_in_west is ignored,
+//      shift_in only clears every tile, and the bit-plane INT schedule (its
+//      combiner reads the in-tile chain) is not available: the combiner never
+//      captures, int_out and int_out_valid stay 0.  The drain rules of
+//      DRAIN = 1 are marked [DR] below.
 //
 // ============================================================== SC mode ==
 // int_mode = 0.
@@ -52,6 +69,17 @@
 //   * Drain: shift_in for N_W edges with acc_in_west = 0, the first no earlier
 //     than B+C+2; the next slice may load on the drain's second-to-last shift
 //     edge.  Range: exact to 65,535 columns per slice at OWIDTH = 24.
+//   * [DR] Drain: drain_in high on one edge no earlier than B+C+1 (the
+//     slice's last MAC edge), so half 0 is read on B+C+2 at the earliest and
+//     half 1 one edge later; the next slice's first block_start no earlier
+//     than the half-0 read edge (its first MAC lands after the half-1 read
+//     edge).  Until then the last block's counter has run past its C cycles
+//     (or holds there), so the samples consumed on the two read edges are
+//     zero.  This needs rng_en high on the slice's last advance edge B+C (the
+//     in-tile chain tolerates it low, its drain drops the repeated cycle): a
+//     read edge consuming a sample with A ones is an [SC-CONTRACT] error (one
+//     half drops it, the other accumulates it).  The read-out arms the slice
+//     restart (drain_in on an edge in Bprev+2 .. B).
 //
 // ============================================================= INT mode ==
 // int_mode = 1.  Lane k, position m of data cycle b carries reduction element
@@ -72,6 +100,9 @@
 //     row values from acc_out_east on the drain; the combiner is unused.
 //     Single-PE block: BA*BW*NB + (BA+BW-2) + N_W edges.  Range: INT8
 //     L <= 511 worst case, INT6 L <= 8,191, INT4 L <= 131,071.
+//     [DR] drain_in on the edge after the last capture (the bubble capture),
+//     so half 0 is read on the bubble's MAC edge and half 1 on the next block's
+//     first capture edge: single-PE block BA*BW*NB + (BA+BW-2) + 2 edges.
 // Common rules:
 //   * int_mode is registered before the 2,048-pin select: a raw plane is
 //     captured by the bit pipes at edge P only if int_mode was high at P-1.
@@ -93,7 +124,8 @@
 //     Lower int_mode only after the last ring_in edge.
 //   * Drain: shift_in with ring_q low and acc_in_west = 0.  The combiner
 //     captures on exactly those edges (int_mode & shift_in & ~ring_q) and
-//     emits int_out / int_out_valid two edges later.
+//     emits int_out / int_out_valid two edges later.  [DR] the read-out above;
+//     no combiner, and a read edge must not be a lap edge ([DR-CONTRACT]).
 //
 // ======================================================== mode switches ==
 // Calls of either mode run back to back with no reset:
@@ -146,6 +178,9 @@
 `ifndef PAYN_LOW_W
 `define PAYN_LOW_W 9
 `endif
+`ifndef PAYN_DRAIN
+`define PAYN_DRAIN 0
+`endif
 
 module payn_array #(
     parameter int M = `PAYN_M,
@@ -154,7 +189,9 @@ module payn_array #(
     parameter int N_W = `PAYN_NW,
     parameter int WIDTH = 8,
     parameter int OWIDTH = 24,
-    parameter int LOW_W = `PAYN_LOW_W
+    parameter int LOW_W = `PAYN_LOW_W,
+    parameter int DRAIN = `PAYN_DRAIN,
+    parameter int DRW = (N_H / 2) * N_W * OWIDTH  // drain register bits (derived)
 ) (
     input logic clk,
     input logic reset,
@@ -171,6 +208,12 @@ module payn_array #(
     input logic [N_W*K-1:0] w_signs_in,
     input  logic [N_H*OWIDTH-1:0] acc_in_west,
     output logic [N_H*OWIDTH-1:0] acc_out_east,
+    // drain register (DRAIN = 1)
+    input  logic drain_in,
+    output logic [DRW-1:0] dr_out,
+    output logic dr_out_valid,
+    input  logic [DRW-1:0] dr_in_east,
+    input  logic dr_in_east_valid,
     // SC mode
     input logic [N_H*WIDTH-1:0] a_len_in,
     input logic block_start,
@@ -199,10 +242,14 @@ module payn_array #(
     logic [PB-1:0] phase;
     logic [M*(WIDTH-1)-1:0] w_words;
 
+    // The read-out ends a slice like a drain does: it arms the slice restart.
+    logic rng_drain;
+    assign rng_drain = shift_in | ((DRAIN == 1) & drain_in);
+
     PaynStreamGen #(
         .M(M), .WIDTH(WIDTH)
     ) u_rng (
-        .clk, .reset, .rng_en, .block_start, .slice_start, .shift_in,
+        .clk, .reset, .rng_en, .block_start, .slice_start, .shift_in(rng_drain),
         .cyc, .phase, .w_words
     );
 
@@ -251,13 +298,17 @@ module payn_array #(
     logic [N_W*K-1:0]   w_signs_out_nc;
     logic load_a_sign_out_nc, load_w_sign_out_nc;
     logic ring_q;
+    logic drain_out_nc;
 
     PaynPe #(
         .K(K), .M(M), .N_H(N_H), .N_W(N_W),
-        .OWIDTH(OWIDTH), .LOW_W(LOW_W)
+        .OWIDTH(OWIDTH), .LOW_W(LOW_W), .DRAIN(DRAIN)
     ) u_pe (
         .clk, .reset, .mac_en(mac_core), .shift_in,
         .ring_in(ring_in & int_mode),
+        .drain_in, .drain_out(drain_out_nc),
+        .dr_east_in(dr_in_east), .dr_east_valid_in(dr_in_east_valid),
+        .dr_west_out(dr_out), .dr_west_valid_out(dr_out_valid),
         .a_bits_in(a_bits), .a_signs_in(a_signs),
         .w_bits_in(w_bits), .w_signs_in(w_signs),
         .load_a_sign_in(load_a_sign), .load_w_sign_in(load_w_sign),
@@ -272,11 +323,13 @@ module payn_array #(
     //--------------------------------------------------------- combiner --
     // Drain edges (shift_in with ring_q low in INT mode) sample the east
     // column before it shifts; lap edges (ring_q high) do not.
+    // DRAIN = 1: never captures (acc_out_east is 0 there), so synthesis keeps
+    // nothing of it; the instance stays for the power-class hierarchy.
     PaynIntCombiner #(
         .N_H(N_H), .OWIDTH(OWIDTH), .OUT_W(32)
     ) u_combiner (
         .clk, .reset,
-        .capture(int_mode & shift_in & ~ring_q),
+        .capture((DRAIN == 0) & int_mode & shift_in & ~ring_q),
         .int_prec,
         .acc_east(acc_out_east),
         .out(int_out),
@@ -308,7 +361,10 @@ module payn_array #(
     // falls strictly between the previous block's first MAC edge and its own;
     // evaluated on its own first MAC edge against the phase the block loaded
     // on B.  Reset counts as a drain; so do INT drains (their shift_in edges
-    // arm the hardware restart as SC drains do).
+    // arm the hardware restart as SC drains do).  [DR] drain_in edges and the
+    // two read edges count as drain edges; a read edge drops the MAC of the
+    // half it reads, so the accounting treats it like a shift edge (the
+    // sample it consumes must have no A ones).
     typedef struct { int unsigned at; bit ss; bit dseen; logic [2:0] ph; int unsigned prev; } slice_ck_t;
     int contract_errors = 0;
     int unsigned ck_edge = 0;         // posedges since reset
@@ -320,6 +376,8 @@ module payn_array #(
     bit held_d1, held_d2;             // the counter held on the previous edge / two edges ago
     bit run_ones, run_counted, run_shift;
     bit smp_ones, smp_counted;
+    bit drain_d1, drain_d2;           // [DR] drain_in one / two edges ago
+    bit rd_edge, mac_drop;            // [DR] a read edge; any edge that drops the MAC
     bit sc_edge;                      // int_mode low on this edge
     bit smp_int, prev_smp_int;        // sample captured under the INT select
     bit a_stale, w_stale;             // edge registers loaded in INT mode since the last SC load
@@ -342,6 +400,8 @@ module payn_array #(
             run_ones = 1'b0;
             run_counted = 1'b0;
             run_shift = 1'b0;
+            drain_d1 = 1'b0;
+            drain_d2 = 1'b0;
             prev_smp_int = 1'b0;
             a_stale = 1'b0;
             w_stale = 1'b0;
@@ -371,32 +431,43 @@ module payn_array #(
             // SC run before it and is not accounted.
             smp_int = (int_mode_q2 === 1'b1);
             smp_ones = !smp_int && ((|a_bits_out_nc) === 1'b1);
-            smp_counted = (mac_core === 1'b1) && (shift_in !== 1'b1) && (ring_q !== 1'b1);
+            rd_edge = (DRAIN == 1) && (drain_d1 || drain_d2);
+            mac_drop = (shift_in === 1'b1) || rd_edge;
+            smp_counted = (mac_core === 1'b1) && !mac_drop && (ring_q !== 1'b1);
+            // [DR] one half drops the MAC of a read edge and the other half
+            // takes it, so a live sample there is always wrong (a repeated
+            // last cycle double-counts in the other half).
+            if (rd_edge && smp_ones && mac_core === 1'b1) begin
+                contract_errors++;
+                $error("[SC-CONTRACT] read-out edge consumed a sample with A ones (one half drops it, the other accumulates it): the counter had not run past the slice's last block");
+            end
             if (!smp_int && held_d2 && !prev_smp_int) begin
                 if (smp_ones && smp_counted && run_counted) begin
                     contract_errors++;
                     $error("[SC-CONTRACT] stalled cycle accumulated twice: rng_en low two edges ago repeated a sample with A ones and mac_en is high on both of its MAC edges");
                 end
                 run_counted = run_counted || smp_counted;
-                run_shift = run_shift || (shift_in === 1'b1);
+                run_shift = run_shift || mac_drop;
             end else begin
                 if (run_ones && !run_counted) begin
                     contract_errors++;
                     if (run_shift)
-                        $error("[SC-CONTRACT] shift_in on the MAC edge of a sample with A ones: that cycle is dropped (drain or next slice overlaps live MACs)");
+                        $error("[SC-CONTRACT] drain edge (shift_in or a read-out edge) on the MAC edge of a sample with A ones: that cycle is dropped (drain or next slice overlaps live MACs)");
                     else
                         $error("[SC-CONTRACT] mac_en low (or the int_mode MAC guard) on the MAC edge of a sample with A ones: that cycle is dropped");
                 end
                 run_ones = smp_ones;
                 run_counted = smp_counted;
-                run_shift = (shift_in === 1'b1);
+                run_shift = mac_drop;
             end
             prev_smp_int = smp_int;
             held_d2 = held_d1;
             held_d1 = (block_start !== 1'b1) && (rng_en !== 1'b1) && (cyc < CYCLES);
 
-            if (shift_in === 1'b1)
+            if (mac_drop || (DRAIN == 1 && drain_in === 1'b1))
                 last_shift = ck_edge;
+            drain_d2 = drain_d1;
+            drain_d1 = (DRAIN == 1) && (drain_in === 1'b1);
             if (!sc_edge) begin
                 // INT mode: the loads carry plane signs (zero magnitudes,
                 // [INT-CONTRACT]); the SC block strobes must stay low.

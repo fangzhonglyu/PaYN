@@ -20,6 +20,12 @@ A negative control passes when the bench or checker catches it the way its table
   python3 flow/regress.py --shape both --suite sc,int  # both shapes, two suites
 Run dirs: <out>/<shape>/<suite>/<label>/.  Summary: <out>/<shape>/summary.txt.  Exit 0 iff all pass.
 
+Drain register (--drain 1): every bench compiled with +define+PAYN_DRAIN=1 (designs/payn/rtl, the drain-register
+chain instead of the in-tile chain), suites cases, units, sc, abit and grid-abit (the bit-plane suites int, switch,
+grid-bp and power read the in-tile chain); sc adds cases/sc_dr.txt and grid-abit cases/grid_abit_dr.txt (4x8, the
+chain's busy rule, the drain-wave controls).  Run dirs <out>/<shape>_dr/...
+  python3 flow/regress.py --drain 1 --shape both
+
 Gate-level mode (--gl MODES): the same functional bench on a netlist and on RTL, the same inputs on both, for the
 rows of cases/gl_sc.txt, gl_int.txt, gl_switch.txt and gl_abit.txt whose modes column names the mode:
   syn-unit   synthesis netlist (--synth-run), unit delay, timing checks off (ARM_UD_MODEL + ARM_EN_X_SQUASH):
@@ -30,7 +36,9 @@ rows of cases/gl_sc.txt, gl_int.txt, gl_switch.txt and gl_abit.txt whose modes c
              first; --gl-approve flags only after a strict failure, with <out>/<shape>/apr/
              gl_validator_args_rationale.txt citing them); SC and switch drains read at the SDC output-delay point
 Pass criteria: the GL RESULT fields equal RTL's (SC), GL traces byte-identical to RTL's (INT, abit, switch
-segments), the model checkers pass (or catch the negative control), the audit passes.
+segments), the model checkers pass (or catch the negative control), the audit passes.  With --drain 1 (a
+drain-register netlist) the netlist and the RTL reference are compiled with PAYN_DRAIN=1 and only the sc and abit
+kinds run.
   python3 flow/regress.py --shape k16m8 --gl syn-unit,syn-sdf --synth-run payn_k16m8_20261006 --out DIR
   python3 flow/regress.py --shape k16m8 --gl apr --route apr/build/TSMC22/PAYN/payn_k16m8_20261006_final --out DIR
 Run dirs: <out>/<shape>/<mode>/<kind>/<label>/ (GL sim.log, rtl/sim.log); summary <out>/<shape>/summary.txt.
@@ -55,6 +63,7 @@ TB = REPO / "designs/payn/tb"
 PWR = REPO / "designs/payn/power"
 SHAPES = {"k16m8": 8, "k8m16": 16}          # shape -> PAYN_M
 SUITES = ["cases", "units", "sc", "int", "switch", "abit", "grid-bp", "grid-abit", "power"]
+DR_SUITES = ["cases", "units", "sc", "abit", "grid-abit"]   # --drain 1
 DW = "/usr/caen/synopsys-synth-2021.06-SP1/dw/sim_ver"
 
 
@@ -109,8 +118,9 @@ def contract_count(log: str, pass_prefix: str) -> int:
 
 
 class Ctx:
-    def __init__(self, shape: str, out: Path, jobs: int):
-        self.shape, self.m, self.out, self.jobs = shape, SHAPES[shape], (out / shape).resolve(), jobs
+    def __init__(self, shape: str, out: Path, jobs: int, drain: int = 0):
+        self.shape, self.m, self.jobs, self.drain = shape, SHAPES[shape], jobs, drain
+        self.out = (out / (f"{shape}_dr" if drain else shape)).resolve()
         self.builds: dict[str, Path] = {}
 
     def simv(self, key: str, tb: Path, defines: list[str] = (), top: str = "Top") -> Path:
@@ -120,7 +130,7 @@ class Ctx:
         b = fresh_dir(self.out / "build" / key)
         cmd = ["vcs", "-sverilog", "+vc", "-Mupdate", "-line", "-full64", "-xprop=tmerge", "-lca",
                "-debug_access+pp", f"+incdir+{REPO / 'designs'}", "-assert", "svaext",
-               "-timescale=1ns/1ps", f"+define+PAYN_M={self.m}", *defines,
+               "-timescale=1ns/1ps", f"+define+PAYN_M={self.m}", f"+define+PAYN_DRAIN={self.drain}", *defines,
                "-o", str(b / "simv"), f"-Mdir={b / 'obj'}", "-y", DW, "+libext+.v+",
                f"+incdir+{DW}", str(tb), "-top", top]
         if sh(cmd, b, b / "compile.log") != 0 or not (b / "simv").is_file():
@@ -196,7 +206,7 @@ def suite_sc(c: Ctx) -> list[tuple[bool, str]]:
     rows = [[f"{s}_{d.name}", d.name, "INT_JUNK", "pass"]
             for s in CASE_SETS for d in sorted((c.out / "cases" / s).iterdir())
             if d.is_dir() and selected(f"{s}_{d.name}")]
-    rows += table("sc.txt")
+    rows += table("sc.txt") + (table("sc_dr.txt") if c.drain else [])
     c.simv("array", TB / "test_payn_array.sv")
     return c.run_all(lambda *r: sc_case(c, *r), rows)
 
@@ -381,6 +391,9 @@ def grid_case(c: Ctx, mode, label, shape, ba, bw, L, mrows, ncols, dist, seed, f
     rc = sh([str(grid_simv(c, shape)), f"+MODE={mode}", f"+BA={ba}", f"+BW={bw}", f"+L={L}",
              f"+MROWS={mrows}", f"+NCOLS={ncols}", *plusargs(flags)], d, d / "sim.log")
     log = (d / "sim.log").read_text(errors="replace")
+    if expect == "fail:DRCONTRACT":
+        ok = "[DR-CONTRACT]" in log and not re.search(r"^PASS: PaYN .*grid bench", log, re.M)
+        return ok, f"{label}: {'PASS (caught by [DR-CONTRACT])' if ok else 'FAIL (expected [DR-CONTRACT])'}"
     if rc != 0 or not re.search(r"^PASS: PaYN .*grid bench", log, re.M):
         return False, f"{label}: FAIL (simulation error, {d / 'sim.log'})"
     kind = "bp-grid" if mode == "bp" else "abit-grid"
@@ -403,7 +416,7 @@ def suite_grid(c: Ctx, mode: str) -> list[tuple[bool, str]]:
             rows.append([label, shape, ba, bw, L, pr * (8 // int(ba)) * int(nig), 8 * pc * int(njg),
                          dist, seed, flags, expect])
     else:
-        rows = table("grid_abit.txt")
+        rows = table("grid_abit.txt") + (table("grid_abit_dr.txt") if c.drain else [])
     for shape in sorted({r[1] for r in rows}):
         grid_simv(c, shape)
     return c.run_all(lambda *r: grid_case(c, mode, *r), rows)
@@ -527,7 +540,8 @@ class Gl:
         run_dir = b / GL_TB
         run_dir.mkdir(parents=True)
         (run_dir / "cases.txt").write_text(resolve(self.c, "plain_u128") + "\n")
-        defs = [f"+define+PAYN_M={self.c.m}"] + ([f"+define+PAYN_DUT={self.top}"] if self.top != "payn_array" else [])
+        defs = [f"+define+PAYN_M={self.c.m}", f"+define+PAYN_DRAIN={self.c.drain}"] + \
+            ([f"+define+PAYN_DUT={self.top}"] if self.top != "payn_array" else [])
         if self.mode == "syn-unit":
             args, vargs = ["GL=syn", f"RUN={self.synth}", "NO_SDF=1"], defs + [GL_UNIT, "+define+TB_RESET_SETTLE=0"]
         elif self.mode == "syn-sdf":
@@ -735,6 +749,9 @@ def gl_mode(c: Ctx, mode: str, a) -> list[tuple[str, list[tuple[bool, str]]]]:
             "switch": [(gl_sw_case, [lab, fl, ex, allseq if it == "@ALL" else it])
                        for lab, fl, ex, it in gl_rows("gl_switch.txt", mode, "|")],
             "abit": [(gl_abit_case, r) for r in gl_rows("gl_abit.txt", mode)]}
+    if c.drain:                                # the bit-plane kinds read the in-tile chain
+        jobs.pop("int")
+        jobs.pop("switch")
     flat = [(kind, fn, row) for kind, rows in jobs.items() for fn, row in rows]
 
     def one(job):
@@ -768,11 +785,12 @@ def main_gl(a) -> int:
     sys.path.insert(0, str(REPO / "flow"))
     from flowlib import tool_env
     os.environ.update(tool_env())               # VCS, licenses, the libraries' environment for every run
-    c = Ctx(a.shape, a.out, a.jobs)
+    c = Ctx(a.shape, a.out, a.jobs, a.drain)
     c.out.mkdir(parents=True, exist_ok=True)
     where = ", ".join(x for x in (f"synthesis {a.synth_run}" if a.synth_run else "",
                                   f"route {a.route}" if a.route else "") if x)
-    lines = [f"PaYN gate-level checks, shape {a.shape}, modes {','.join(modes)}, {where}, top {a.top}"]
+    lines = [f"PaYN gate-level checks, shape {a.shape}, modes {','.join(modes)}, {where}, top {a.top}"
+             f"{', drain register (sc and abit kinds)' if a.drain else ''}"]
     status = 0
     groups = [("cases", suite_cases(c))]
     if all(r[0] for r in groups[0][1]):
@@ -802,7 +820,10 @@ RUNNERS = {
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--shape", choices=[*SHAPES, "both"], default="k16m8")
-    ap.add_argument("--suite", default=",".join(SUITES), help="comma list of " + ", ".join(SUITES))
+    ap.add_argument("--suite", help="comma list of " + ", ".join(SUITES) + " (default: all; with --drain 1: "
+                    + ", ".join(DR_SUITES) + ")")
+    ap.add_argument("--drain", type=int, choices=(0, 1), default=0,
+                    help="0: in-tile chain (default); 1: drain-register chain (+define+PAYN_DRAIN=1)")
     ap.add_argument("--jobs", type=int, default=12)
     ap.add_argument("--out", type=Path, default=REPO / "build/regress")
     ap.add_argument("--gl", help="gate-level mode: comma list of " + ", ".join(GL_MODES) + " (replaces --suite)")
@@ -817,17 +838,20 @@ def main() -> int:
     ONLY = re.compile(a.only) if a.only else None
     if a.gl:
         return main_gl(a)
-    suites = a.suite.split(",")
+    suites = (a.suite or ",".join(DR_SUITES if a.drain else SUITES)).split(",")
     for s in suites:
         if s not in RUNNERS:
             ap.error(f"unknown suite {s}")
+        if a.drain and s not in DR_SUITES:
+            ap.error(f"suite {s} reads the in-tile chain (bit-plane combiner); --drain 1 runs {', '.join(DR_SUITES)}")
     if any(s in suites for s in ("sc", "switch")) and "cases" not in suites:
         print("note: sc/switch use the case sets from the last `cases` run")
     status = 0
     for shape in (SHAPES if a.shape == "both" else [a.shape]):
-        c = Ctx(shape, a.out, a.jobs)
+        c = Ctx(shape, a.out, a.jobs, a.drain)
         c.out.mkdir(parents=True, exist_ok=True)
-        lines = [f"PaYN regression, shape {shape}, suites {','.join(suites)}"]
+        lines = [f"PaYN regression, shape {shape}, drain {'register' if a.drain else 'in-tile chain'}, "
+                 f"suites {','.join(suites)}"]
         for s in [x for x in SUITES if x in suites]:
             try:
                 res = RUNNERS[s](c)
@@ -838,7 +862,7 @@ def main() -> int:
             lines += [f"== {s}: {'PASS' if ok else 'FAIL'} ({sum(r[0] for r in res)}/{len(res)})"]
             lines += ["  " + r[1] for r in sorted(res, key=lambda r: (r[0], r[1]))]
             print(lines[-len(res) - 1], flush=True)
-        lines.append(f"PaYN regression {shape}: {'PASS' if not status else 'FAIL'}")
+        lines.append(f"PaYN regression {shape}{' drain register' if a.drain else ''}: {'PASS' if not status else 'FAIL'}")
         (c.out / "summary.txt").write_text("\n".join(lines) + "\n")
         print(f"{lines[-1]}  ({c.out / 'summary.txt'})")
     return status

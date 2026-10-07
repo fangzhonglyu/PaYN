@@ -23,6 +23,14 @@ steps of one, passes of a level contiguous with no lap, one bubble and one lap (
 per level step, drain S = P_R+P_C-2 edges after the edge following the last capture, the last drain edge being the
 next block's first capture.  Block period BA*BW*NB + (BA+BW-2) + (P_R+P_C-2) + 8*P_C.
 
+Drain register (DRAIN = 1 builds, header field "drain"; abit only).  Each PE reads half h (tile rows 4h..4h+3)
+into its 32-value drain register: PE (0,0) on virtual edge RD + h, RD = the edge after the bubble that follows the
+last capture, PE (r, c) r+c edges later; the registers shift west one PE per edge, so the item of PE (r, c) half h
+is loaded into the west register of PE row r on RD + h + r + 2c ("Q r e v0..v31", value n = tile (4h + n//8,
+n%8)).  The next block's first capture is the half-1 read edge unless the chain is still busy: block period
+max(BA*BW*NB + (BA+BW-2) + 2, 2*P_C).  The schedule logs the virtual read edges as "X e blk h", the grid bench the
+per-PE drain-wave runs as "W r c e len" (drain_q high: the half-0 read edge, r+c after RD).
+
 Subcommands (RUN_DIR holds the bench's trace and bpt_a.hex / bpt_w.hex):
   bp          single-PE functional bench (+MODE=int, and each INT segment of +MODE=switch), bpt_trace.txt: every
               drained tile and combiner word bit-exact, every (block, step) exactly once
@@ -64,10 +72,12 @@ GRID_MODES = {0: "per_pe_laps", 1: "global_lap_wait", 2: "neg_ring_no_row_skew",
               8: "oldc_unforced"}
 ABIT_FIELDS = ("ba", "bw", "L", "mrows", "ncols", "nblk", "nb", "e0", "e_end", "blk_len", "d0", "formula_bench",
                "nlev", "junk", "mode_at", "neg_no_lap", "neg_extra_lap", "neg_sign", "neg_order", "neg_no_bubble",
-               "neg_drain_early", "neg_overlap", "park_cyc0")
+               "neg_drain_early", "neg_overlap", "park_cyc0", "drain")
 ABITG_FIELDS = ("pr", "pc", "ba", "bw", "L", "mrows", "ncols", "nblk", "nb", "e0", "e_end", "blk_len", "d0", "ds",
                 "formula_bench", "nlev", "junk", "neg_row", "neg_col", "neg_no_bubble", "neg_drain_early",
-                "neg_overlap", "neg_no_lap", "neg_extra_lap", "neg_sign", "neg_order")
+                "neg_overlap", "neg_no_lap", "neg_extra_lap", "neg_sign", "neg_order", "drain", "neg_dr_row",
+                "neg_dr_col", "neg_dr_busy")
+DRN = 32                                         # values per drain register (4 tile rows x 8 columns)
 
 
 # ----------------------------------------------------------------------------------------------- shared model --
@@ -80,7 +90,10 @@ def bp_period(bw: int, nb: int, pr: int = 1, pc: int = 1, lap_len: int = 1) -> i
     return bw * nb + lap_len * (bw - 1) + (pr + pc - 2) + 8 * pc
 
 
-def abit_period(ba: int, bw: int, nb: int, pr: int = 1, pc: int = 1) -> int:
+def abit_period(ba: int, bw: int, nb: int, pr: int = 1, pc: int = 1, drain: int = 0) -> int:
+    """drain 0: in-tile chain (skew + 8*P_C drain per block); 1: drain register (2 read edges, chain busy 2*P_C)."""
+    if drain:
+        return max(ba * bw * nb + (ba + bw - 2) + 2, 2 * pc)
     return ba * bw * nb + (ba + bw - 2) + (pr + pc - 2) + 8 * pc
 
 
@@ -427,8 +440,9 @@ def bp_grid_verdict(r: dict) -> tuple[bool, str]:
 
 # ------------------------------------------------------------------------------------ all-bits-in-time model --
 def parse_abit_records(lines: list[str]) -> dict:
-    """P (e blk j p q sign), K (e blk j u), L e, X (e blk t), M e, D blk t [e] v0..v7, C blk t lo hi."""
-    rec = dict(P=[], K=[], L=[], X=[], M=[], D={}, C={}, Dedge={}, dup=[])
+    """P (e blk j p q sign), K (e blk j u), L e, X (e blk t), M e, D blk t [e] v0..v7, C blk t lo hi,
+    Q r e v0..v31 (drain register items), W r c e len (drain-wave runs)."""
+    rec = dict(P=[], K=[], L=[], X=[], M=[], D={}, C={}, Dedge={}, Q={}, W={}, dup=[])
     for line in lines:
         f = line.split()
         if not f:
@@ -453,6 +467,15 @@ def parse_abit_records(lines: list[str]) -> dict:
             if key in rec["C"]:
                 rec["dup"].append(("C",) + key)
             rec["C"][key] = (int(f[3]), int(f[4]))
+        elif t == "Q":
+            key, vals = (int(f[1]), int(f[2])), [int(x) for x in f[3:]]
+            if len(vals) != DRN:
+                raise SystemExit(f"Q line with {len(vals)} values")
+            if key in rec["Q"]:
+                rec["dup"].append(("Q",) + key)
+            rec["Q"][key] = vals
+        elif t == "W":
+            rec["W"].setdefault((int(f[1]), int(f[2])), []).append((int(f[3]), int(f[4])))
         else:
             raise SystemExit(f"unknown trace record {t!r}")
     return rec
@@ -472,12 +495,47 @@ def abit_gemm_tiles(A: np.ndarray, W: np.ndarray, nblk: int, njg: int, pr: int =
     return out, C
 
 
+def dr_expected(C: np.ndarray, rec: dict, njg: int, pr: int = 1, pc: int = 1) -> tuple[dict, list]:
+    """Drain register: {(r, e): (blk, c, h, 32 expected values)} from the logged virtual read edges ("X e blk h"):
+    PE (r, c)'s half h item is loaded into PE row r's west register on e + r + 2c; and the (r, e) slots that two
+    items would share (a schedule that breaks the chain's busy rule)."""
+    out, clash = {}, []
+    for e, blk, h in rec["X"]:
+        ig, jg = divmod(blk, njg)
+        for r in range(pr):
+            for c in range(pc):
+                key = (r, e + r + 2 * c)
+                vals = [int(C[(ig * pr + r) * 8 + 4 * h + n // 8, (jg * pc + c) * 8 + n % 8]) for n in range(DRN)]
+                if key in out:
+                    clash.append(key)
+                out[key] = (blk, c, h, vals)
+    return out, clash
+
+
+def check_dr_items(C: np.ndarray, rec: dict, njg: int, pr: int = 1, pc: int = 1) -> dict:
+    """Every logged drain-register item on its predicted edge with its predicted values, and nothing else."""
+    exp, clash = dr_expected(C, rec, njg, pr, pc)
+    got = rec["Q"]
+    missing = sorted(set(exp) - set(got))
+    extra = sorted(set(got) - set(exp))
+    mism = [dict(row=r, edge=e, block=exp[(r, e)][0], pe_col=exp[(r, e)][1], half=exp[(r, e)][2], n=n,
+                 got=got[(r, e)][n], exp=exp[(r, e)][3][n])
+            for (r, e) in sorted(set(exp) & set(got)) for n in range(DRN) if got[(r, e)][n] != exp[(r, e)][3][n]]
+    return dict(n_items=len(got), n_expected=len(exp), missing=missing[:8], n_missing=len(missing),
+                extra=extra[:8], n_extra=len(extra), clash=clash[:8], n_clash=len(clash),
+                mismatches=mism, coverage_ok=not missing and not extra and not clash and not rec["dup"])
+
+
 def check_abit_schedule(cfg: dict, rec: dict, pr: int = 1, pc: int = 1) -> dict:
     """The schedule rules on the logged stimulus (PE (0,0) time for a grid); measured period of a block = next
-    block's first capture - its first capture (the last block: its last drain edge - its first capture)."""
+    block's first capture - its first capture (the last block: its last drain edge - its first capture; with the
+    drain register at least 2*P_C, the chain's busy time).  In-tile chain: 8*P_C drain edges from S = P_R+P_C-2
+    after the bubble, the last one the next block's first capture.  Drain register: 2 read edges right after the
+    bubble (PE (0,0) time), the next block no earlier than the second."""
     ba, bw, nb, nblk, e0 = cfg["ba"], cfg["bw"], cfg["nb"], cfg["nblk"], cfg["e0"]
-    S, nd = pr + pc - 2, 8 * pc
-    want_formula = abit_period(ba, bw, nb, pr, pc)
+    drain = cfg.get("drain", 0)
+    S, nd = (0, 2) if drain else (pr + pc - 2, 8 * pc)
+    want_formula = abit_period(ba, bw, nb, pr, pc, drain)
     errors: list[str] = []
     passes, caps, drains = defaultdict(list), defaultdict(list), defaultdict(list)
     for e, blk, j, p, q, s in rec["P"]:
@@ -539,10 +597,16 @@ def check_abit_schedule(cfg: dict, rec: dict, pr: int = 1, pc: int = 1) -> dict:
         for blk in range(nblk):
             if blk not in starts:
                 continue
-            end = starts[blk + 1] if blk + 1 in starts else last_drain[blk]
-            if blk + 1 in starts and starts[blk + 1] != last_drain[blk]:
-                errors.append(f"block {blk + 1} starts at {starts[blk + 1]}, not on block {blk}'s last drain edge "
-                              f"{last_drain[blk]}")
+            if blk + 1 in starts:
+                end = starts[blk + 1]
+                if not drain and starts[blk + 1] != last_drain[blk]:
+                    errors.append(f"block {blk + 1} starts at {starts[blk + 1]}, not on block {blk}'s last drain "
+                                  f"edge {last_drain[blk]}")
+                if drain and starts[blk + 1] < last_drain[blk]:
+                    errors.append(f"block {blk + 1} starts at {starts[blk + 1]}, before block {blk}'s half-1 read "
+                                  f"edge {last_drain[blk]}")
+            else:
+                end = max(last_drain[blk], starts[blk] + 2 * pc) if drain else last_drain[blk]
             periods.append(end - starts[blk])
     if rec["M"] != [e0 + 1]:
         errors.append(f"first MAC edge {rec['M']}, expected [{e0 + 1}]")
@@ -556,7 +620,11 @@ def check_abit_schedule(cfg: dict, rec: dict, pr: int = 1, pc: int = 1) -> dict:
 def abit_replay(cfg: dict, rec: dict, A: np.ndarray, W: np.ndarray, dc: int = 128) -> dict:
     """Single-PE edge model of the LOGGED stimulus -> {(blk, t): 8 drained values}: a lap edge doubles every tile
     (mod 2^24), a drain edge reads the east column and shifts east with 0 entering, otherwise (mac_en) the data
-    cycle captured on the previous edge is added with the W sign in force at its capture."""
+    cycle captured on the previous edge is added with the W sign in force at its capture.  Drain register
+    (cfg drain = 1): -> {(e,): 32 values}, a read edge of half h (X e blk h) reads tile rows 4h..4h+3 and clears
+    them; the other half still takes that edge's MAC."""
+    if cfg.get("drain", 0):
+        return abit_replay_dr(cfg, rec, A, W, dc)
     ba, bw, njg = cfg["ba"], cfg["bw"], cfg["ncols"] // 8
     a_pl, w_pl = bit_planes(A, ba), bit_planes(W, bw)
     pq = {(blk, j): (p, q) for e, blk, j, p, q, s in rec["P"]}
@@ -587,6 +655,44 @@ def abit_replay(cfg: dict, rec: dict, A: np.ndarray, W: np.ndarray, dc: int = 12
     return out
 
 
+def abit_replay_dr(cfg: dict, rec: dict, A: np.ndarray, W: np.ndarray, dc: int = 128) -> dict:
+    ba, bw, njg = cfg["ba"], cfg["bw"], cfg["ncols"] // 8
+    a_pl, w_pl = bit_planes(A, ba), bit_planes(W, bw)
+    pq = {(blk, j): (p, q) for e, blk, j, p, q, s in rec["P"]}
+    sign_at = {e: s for e, blk, j, p, q, s in rec["P"]}
+    cap = {e: (blk, j, u) for e, blk, j, u in rec["K"]}
+    lap = set(rec["L"])
+    rd = {e: h for e, blk, h in rec["X"]}
+    mac0 = rec["M"][0] if rec["M"] else 1 << 62
+    T = np.zeros((8, 8), dtype=np.int64)
+    sign, sample_sign, out = 0, {}, {}
+    for e in range(max([0] + list(cap) + list(lap) + list(rd)) + 1):
+        add = np.zeros((8, 8), dtype=np.int64)
+        if e >= mac0 and (e - 1) in cap:
+            blk, j, u = cap[e - 1]
+            ig, jg = divmod(blk, njg)
+            p, q = pq[(blk, j)]
+            xs = slice(u * dc, (u + 1) * dc)
+            cnt = a_pl[p][ig * 8:(ig + 1) * 8, xs] @ w_pl[q][xs, jg * 8:(jg + 1) * 8]
+            add = -cnt if sample_sign[e - 1] else cnt
+        if e in lap:
+            T = wrap(2 * T)
+        elif e in rd:
+            h = rd[e]
+            rows = slice(4 * h, 4 * h + 4)
+            out[(e,)] = [int(x) for x in wrap(T[rows]).reshape(-1)]
+            keep = T.copy()
+            keep[rows] = 0
+            add[rows] = 0
+            T = wrap(keep + add)
+        else:
+            T = wrap(T + add)
+        if e in sign_at:
+            sign = sign_at[e]
+        sample_sign[e] = sign
+    return out
+
+
 # ---------------------------------------------------------------------------------- all-bits-in-time checks --
 def check_abit(run_dir: Path, dc: int = 128) -> tuple[dict, dict]:
     vals, body = header(run_dir / "abit_trace.txt", "ABITCFG")
@@ -602,17 +708,24 @@ def check_abit(run_dir: Path, dc: int = 128) -> tuple[dict, dict]:
     exp, C = abit_gemm_tiles(A, W, nblk, njg)
     if abs(C).max() >= (1 << (OWIDTH - 1)):
         raise SystemExit("GEMM output exceeds the 24-bit tile; workload invalid")
-    want = {(b, t) for b in range(nblk) for t in range(8)}
-    coverage_ok = set(rec["D"]) == want and set(rec["C"]) == want and not rec["dup"]
-    mism = [dict(block=b, step=t, h=h, v=7 - t, got=got[h], exp=exp[(b, 0, t)][h])
-            for (b, t), got in sorted(rec["D"].items()) if (b, 0, t) in exp
-            for h in range(8) if got[h] != exp[(b, 0, t)][h]]
+    drain = cfg.get("drain", 0)
+    if drain:
+        dr = check_dr_items(C, rec, njg)
+        coverage_ok = dr["coverage_ok"] and not rec["D"] and not rec["C"]
+        mism = dr["mismatches"]
+        got_out = {(e,): v for (r, e), v in rec["Q"].items()}
+    else:
+        want = {(b, t) for b in range(nblk) for t in range(8)}
+        coverage_ok = set(rec["D"]) == want and set(rec["C"]) == want and not rec["dup"]
+        mism = [dict(block=b, step=t, h=h, v=7 - t, got=got[h], exp=exp[(b, 0, t)][h])
+                for (b, t), got in sorted(rec["D"].items()) if (b, 0, t) in exp
+                for h in range(8) if got[h] != exp[(b, 0, t)][h]]
+        got_out = rec["D"]
     sched = check_abit_schedule(cfg, rec)
     rep = abit_replay(cfg, rec, A, W, dc)
-    rep_mism = [dict(block=b, step=t, got=rec["D"][(b, t)], replay=rep.get((b, t)))
-                for (b, t) in sorted(rec["D"]) if rep.get((b, t)) != rec["D"][(b, t)]]
-    if set(rep) != set(rec["D"]):
-        rep_mism.append(dict(note=f"replay drained {len(rep)} columns, RTL {len(rec['D'])}"))
+    rep_mism = [dict(key=k, got=got_out[k], replay=rep.get(k)) for k in sorted(got_out) if rep.get(k) != got_out[k]]
+    if set(rep) != set(got_out):
+        rep_mism.append(dict(note=f"replay drained {len(rep)} items, RTL {len(got_out)}"))
     status = "PASS" if (not mism and coverage_ok and not sched["errors"] and not rep_mism) else "FAIL"
     negs = {k: cfg.get(k, 0) for k in ABIT_FIELDS[15:22]}
     result = dict(
@@ -621,7 +734,9 @@ def check_abit(run_dir: Path, dc: int = 128) -> tuple[dict, dict]:
         negative_controls=negs, negative_run=any(v not in (0, -1) for v in negs.values()),
         negative_caught=status == "FAIL" and bool(mism) and not rep_mism,
         coverage_ok=coverage_ok, duplicates=rec["dup"][:8],
-        values_checked=len(rec["D"]) * 8, outputs_checked=nblk * 64, macs=nblk * 64 * L,
+        drain="register" if drain else "in-tile chain",
+        values_checked=len(rec["Q"]) * DRN if drain else len(rec["D"]) * 8, outputs_checked=nblk * 64,
+        macs=nblk * 64 * L,
         max_abs_output=int(abs(C).max()),
         n_mismatch=len(mism), mismatches=mism[:16],
         n_replay_mismatch=len(rep_mism), replay_mismatches=rep_mism[:4],
@@ -663,6 +778,7 @@ def check_abit_grid(run_dir: Path, dc: int = 128) -> dict:
     njg = ncols // (pc * 8)
     if nblk != (mrows // (pr * 8)) * njg or nb != L // dc:
         raise SystemExit("ABITGCFG shape fields are inconsistent")
+    drain = cfg.get("drain", 0)
     body, runs, drains, dup = [], {}, {}, []
     for line in lines:
         f = line.split()
@@ -680,14 +796,31 @@ def check_abit_grid(run_dir: Path, dc: int = 128) -> dict:
     exp, C = abit_gemm_tiles(A, W, nblk, njg, pr, pc)
     if abs(C).max() >= (1 << (OWIDTH - 1)):
         raise SystemExit("GEMM output exceeds the 24-bit tile; workload invalid")
-    coverage_ok = set(drains) == set(exp) and not dup
-    mism = [dict(block=key[0], pe_row=key[1], step=key[2], h=h, got=got[h], exp=exp[key][h])
-            for key, (e, got) in sorted(drains.items()) if key in exp and len(got) == 8
-            for h in range(8) if got[h] != exp[key][h]]
     sched = check_abit_schedule(cfg, rec, pr, pc)
-    xedge = {(b, t): e for e, b, t in rec["X"]}
-    edge_err = [dict(block=b, row=r, step=t, edge=e, scheduled=xedge.get((b, t)))
-                for (b, r, t), (e, _) in sorted(drains.items()) if xedge.get((b, t)) != e]
+    wave_err = []
+    if drain:
+        # Items: each on its predicted west-register edge (the edge check) with its values; drain wave per PE.
+        dr = check_dr_items(C, rec, njg, pr, pc)
+        coverage_ok = dr["coverage_ok"] and not drains
+        mism = dr["mismatches"]
+        edge_err = [dict(missing=dr["missing"], extra=dr["extra"], clash=dr["clash"])] \
+            if dr["n_missing"] or dr["n_extra"] or dr["n_clash"] else []
+        vrd = sorted(e for e, b, h in rec["X"] if h == 0)
+        for r in range(pr):
+            for c in range(pc):
+                want_w, got_w = [(x + r + c, 1) for x in vrd], sorted(rec["W"].get((r, c), []))
+                if got_w != want_w:
+                    wave_err.append(dict(pe=[r, c], got=got_w[:4], exp=want_w[:4]))
+        values_checked = DRN * len(rec["Q"])
+    else:
+        coverage_ok = set(drains) == set(exp) and not dup
+        mism = [dict(block=key[0], pe_row=key[1], step=key[2], h=h, got=got[h], exp=exp[key][h])
+                for key, (e, got) in sorted(drains.items()) if key in exp and len(got) == 8
+                for h in range(8) if got[h] != exp[key][h]]
+        xedge = {(b, t): e for e, b, t in rec["X"]}
+        edge_err = [dict(block=b, row=r, step=t, edge=e, scheduled=xedge.get((b, t)))
+                    for (b, r, t), (e, _) in sorted(drains.items()) if xedge.get((b, t)) != e]
+        values_checked = 8 * len(drains)
     lap_err, vlaps = [], sorted(rec["L"])
     for r in range(pr):
         for c in range(pc):
@@ -695,12 +828,13 @@ def check_abit_grid(run_dir: Path, dc: int = 128) -> dict:
             if got_runs != want_runs:
                 lap_err.append(dict(pe=[r, c], got=got_runs[:4], exp=want_runs[:4], n_got=len(got_runs),
                                     n_exp=len(want_runs)))
-    ok = not mism and coverage_ok and not sched["errors"] and not edge_err and not lap_err
+    ok = not mism and coverage_ok and not sched["errors"] and not edge_err and not lap_err and not wave_err
     return dict(status="PASS" if ok else "FAIL", grid=f"{pr}x{pc}", precision=precision_name(ba, bw), ba=ba,
                 bw=bw, L=L, mrows=mrows, ncols=ncols, blocks=nblk, nb=nb, junk=cfg["junk"],
-                negative_controls={k: cfg[k] for k in ABITG_FIELDS[17:]},
-                coverage_ok=coverage_ok, duplicates=[list(d) for d in dup[:8]],
-                values_checked=8 * len(drains), outputs_checked=nblk * pr * pc * 64, macs=nblk * pr * pc * 64 * L,
+                drain="register" if drain else "in-tile chain",
+                negative_controls={k: cfg.get(k, 0) for k in ABITG_FIELDS[17:] if k != "drain"},
+                coverage_ok=coverage_ok, duplicates=[list(d) for d in (dup + rec["dup"])[:8]],
+                values_checked=values_checked, outputs_checked=nblk * pr * pc * 64, macs=nblk * pr * pc * 64 * L,
                 max_abs_output=int(abs(C).max()), n_mismatch=len(mism), mismatches=mism[:16],
                 n_schedule_errors=len(sched["errors"]), schedule_errors=sched["errors"][:16],
                 formula=sched["formula"], measured_periods=sorted(set(sched["periods"])),
@@ -708,6 +842,8 @@ def check_abit_grid(run_dir: Path, dc: int = 128) -> dict:
                 n_drain_edge_errors=len(edge_err), drain_edge_errors=edge_err[:8],
                 n_lap_errors=len(lap_err), lap_errors=lap_err[:8],
                 lap_runs_checked=sum(len(v) for v in runs.values()),
+                n_wave_errors=len(wave_err), wave_errors=wave_err[:8],
+                wave_runs_checked=sum(len(v) for v in rec["W"].values()),
                 data_utilization=round(ba * bw * nb / sched["formula"], 4))
 
 
@@ -722,10 +858,13 @@ def abit_grid_verdict(r: dict, expect_fail: bool) -> tuple[bool, str]:
     if r["status"] != "PASS":
         return False, (f"[FAIL] {tag}: {r['n_mismatch']} mismatches, coverage_ok={r['coverage_ok']}, "
                        f"{r['n_schedule_errors']} schedule errors, {r['n_drain_edge_errors']} drain-edge errors, "
-                       f"{r['n_lap_errors']} lap errors, periods {r['measured_periods']} vs {r['formula']}")
+                       f"{r['n_lap_errors']} lap errors, {r['n_wave_errors']} drain-wave errors, "
+                       f"periods {r['measured_periods']} vs {r['formula']}")
+    dr = (f"; drain register: every item on its predicted edge, {r['wave_runs_checked']} drain-wave runs"
+          if r["drain"] == "register" else "")
     return True, (f"[PASS] {tag}: {r['values_checked']} drained values = {r['outputs_checked']} GEMM outputs "
                   f"bit-exact ({r['macs']} MACs, max|out| {r['max_abs_output']}); {r['lap_runs_checked']} lap runs "
-                  f"on the per-PE wave; measured block period {r['measured_periods']} = formula {r['formula']} "
+                  f"on the per-PE wave{dr}; measured block period {r['measured_periods']} = formula {r['formula']} "
                   f"(data utilization {r['data_utilization']:.1%})")
 
 
@@ -733,7 +872,9 @@ def check_abit_power(run_dir: Path, dc: int = 128) -> tuple[dict, list[str]]:
     """abit on the trace (negative-control, junk and park fields at their defaults, every D record on its X edge),
     then abit_saif.txt: data = blocks*BA*BW*NB (every mode), lap = blocks*(BA+BW-2) (modes 0, 2), drain =
     blocks*8 (mode 2), segments blocks / blocks*(BA+BW-1) / 1 (modes 0 / 1 / 2), E_END = E0 + blocks*period,
-    N_EDGES = E_END + 3.  The JSON carries what the energy row writer reads (saif_window "ring" = laps, lap_len 1)."""
+    N_EDGES = E_END + 3.  The JSON carries what the energy row writer reads (saif_window "ring" = laps, lap_len 1).
+    Drain register (trace header drain = 1): drain = blocks*2 (the final bubble and the half-0 read interval),
+    N_EDGES = E_END + 2, the drain-register items checked by abit (each on its read edge)."""
     reasons: list[str] = []
     inner, rec = check_abit(run_dir, dc)
     if inner["status"] != "PASS":
@@ -742,6 +883,7 @@ def check_abit_power(run_dir: Path, dc: int = 128) -> tuple[dict, list[str]]:
                        f"coverage_ok={inner['coverage_ok']}")
     if inner["negative_run"] or inner["junk"] or inner["park_cyc0"]:
         reasons.append("trace header has negative-control / junk / park fields set; an energy run must have none")
+    drain = inner.get("drain") == "register"
     xedge = {(b, t): e for e, b, t in rec["X"]}
     bad_edges = [k for k, e in rec["Dedge"].items() if xedge.get(k) != e]
     if bad_edges or len(rec["Dedge"]) != len(rec["D"]):
@@ -756,14 +898,15 @@ def check_abit_power(run_dir: Path, dc: int = 128) -> tuple[dict, list[str]]:
                      ("nb", nb), ("mode_at", mode_at)):
         if inner.get(key) != val:
             reasons.append(f"abit_saif.txt {key}={val} disagrees with the trace header ({inner.get(key)})")
-    blk = abit_period(ba, bw, nb)
-    if blk_len != blk or e_end != e0 + nblk * blk or n_edges != e_end + 3:
+    blk = abit_period(ba, bw, nb, drain=int(drain))
+    tail = 2 if drain else 3
+    if blk_len != blk or e_end != e0 + nblk * blk or n_edges != e_end + tail:
         reasons.append(f"edge bookkeeping BLK_LEN={blk_len} E_END={e_end} N_EDGES={n_edges}, expected {blk} / "
-                       f"{e0 + nblk * blk} / {e0 + nblk * blk + 3}")
+                       f"{e0 + nblk * blk} / {e0 + nblk * blk + tail}")
     if mode not in (0, 1, 2):
         reasons.append(f"SAIF mode {mode} is not 0, 1 or 2")
     exp = dict(data=nblk * ba * bw * nb, lap=nblk * (ba + bw - 2) if mode in (0, 2) else 0,
-               drain=nblk * 8 if mode == 2 else 0)
+               drain=nblk * (2 if drain else 8) if mode == 2 else 0)
     exp["active"] = exp["data"] + exp["lap"] + exp["drain"]
     exp["segments"] = {0: nblk, 1: nblk * (ba + bw - 1), 2: 1}.get(mode, -1)
     for key, val in exp.items():
@@ -774,6 +917,7 @@ def check_abit_power(run_dir: Path, dc: int = 128) -> tuple[dict, list[str]]:
         reasons.append(f"window data cycles {win['data']} x {64 * dc}/(BA*BW) != {macs} MACs")
     result = dict(
         status="FAIL" if reasons else "PASS", rejection_reasons=reasons, schedule="abit",
+        drain="register" if drain else "in-tile chain",
         precision=precision_name(ba, bw), ba=ba, bw=bw, L=L, mrows=mrows, ncols=ncols,
         blocks=nblk, nb=nb, saif_mode=mode, mode_at=mode_at, e0=e0, e_end=e_end, n_edges=n_edges,
         lap_ring_only=1, lap_len=1, block_period=blk, formula=inner["formula"],

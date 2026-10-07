@@ -118,6 +118,19 @@
 // Checker: designs/payn/model/int_trace.py abit-power.  Last line PASS: PaYN
 // abit INT power bench ...
 //
+// Drain register (+define+PAYN_DRAIN=1, +MODE=abit only): the read-out replaces
+// the drain.  drain_in on the final bubble's capture edge, half 0 read on the
+// bubble's MAC edge (D0), half 1 on the next block's first capture (D0+1), so
+// BLK_LEN = D0 + 1 = BA*BW*NB + (BA+BW-2) + 2; shift_in stays low, no combiner
+// (int_out_valid must stay 0).  Window classes: DRAIN = the final bubble and
+// the half-0 read interval (2 per block); the trace logs the read edges as
+// "X e blk h" and every valid dr_out as "Q 0 e v0..v31" (loaded on edge e);
+// the ABITCFG header gains DRAIN; N_EDGES = E_END + 2.  The drain register's
+// data flops have no reset, so before the window the bench reads out the
+// reset (zero) tiles once (drain_in on edge 0, read edges 1 and 2, before the
+// first capture at E0): the register holds known values when the window opens
+// (no X resolving inside it).  That priming read-out is not logged.
+//
 // Configuration: compile-time defines (make sim passes no runtime arguments),
 // each overridable at run time by the plusarg of the same name without the
 // INT_ prefix:
@@ -143,6 +156,9 @@
 
 `ifndef PAYN_M
 `define PAYN_M 8                      // positions per lane: 8 (K16/M8) or 16 (K8/M16)
+`endif
+`ifndef PAYN_DRAIN
+`define PAYN_DRAIN 0                  // drain: 0 in-tile chain, 1 drain register (payn_array.sv)
 `endif
 `ifndef PAYN_DUT
 `define PAYN_DUT payn_array           // netlist top name (GL_SIM)
@@ -226,6 +242,14 @@ module Top;
     logic [N_H*K*M-1:0] a_raw_in = '0;
     logic [N_W*K*M-1:0] w_raw_in = '0;
     logic [63:0] int_out;
+    // Drain register ports (DRAIN = 1 builds; unused and 0 with the in-tile chain).
+    localparam int DRAIN = `PAYN_DRAIN;
+    localparam int DRW = (N_H / 2) * N_W * OWIDTH;
+    logic drain_in = 1'b0;
+    logic [DRW-1:0] dr_out;
+    logic dr_out_valid;
+    logic [DRW-1:0] dr_in_east = '0;           // one PE: no east neighbour
+    logic dr_in_east_valid = 1'b0;
     logic int_out_valid;
 
     logic [7:0] a_mem [];             // a_mem[i*L + x] = A[i, x]
@@ -245,7 +269,7 @@ module Top;
 `else
     payn_array #(
         .K(K), .M(M), .N_H(N_H), .N_W(N_W), .WIDTH(WIDTH), .OWIDTH(OWIDTH),
-        .LOW_W(LOW_W)
+        .LOW_W(LOW_W), .DRAIN(DRAIN)
     ) dut (.*);
 `endif
 
@@ -489,9 +513,9 @@ module Top;
         end
         sl_kind.push_back(2); sl_pass.push_back(-1); sl_u.push_back(-1); sl_lap.push_back(1'b0);
         D0 = sl_kind.size();
-        BLK_LEN = D0 + N_W - 1;
-        E_END = E0 + NBLK*BLK_LEN;               // final drain edge
-        N_EDGES = E_END + 3;                     // + combiner latency
+        BLK_LEN = (DRAIN == 1) ? D0 + 1 : D0 + N_W - 1;
+        E_END = E0 + NBLK*BLK_LEN;               // final drain (DRAIN=1: half-1 read) edge
+        N_EDGES = E_END + ((DRAIN == 1) ? 2 : 3);    // + combiner latency / the last read-out's pre-edge look
         NV = N_EDGES + 2;
         cap_blk = new[NV]; cap_pass = new[NV]; cap_u = new[NV]; start_pass = new[NV];
         drn_blk = new[NV]; drn_t = new[NV]; cls = new[NV]; lap_e = new[NV];
@@ -510,16 +534,22 @@ module Top;
                     if (sl_u[s] == 0) start_pass[e] = sl_pass[s];
                 end
             end
-            for (int t = 0; t < N_W; t++) begin
+            // DRAIN=1: two read edges (t = half), the second the next block's first capture.
+            for (int t = 0; t < ((DRAIN == 1) ? 2 : N_W); t++) begin
                 e = base + D0 + t;
                 drn_blk[e] = b; drn_t[e] = t;
-                if (t < N_W - 1) cls[e] = 2;     // the 8th is the next block's first capture (DATA)
+                if (t < ((DRAIN == 1) ? 1 : N_W - 1)) cls[e] = 2;   // the last is the next block's first capture (DATA)
             end
         end
     endtask
 
     function automatic bit abit_drain_at(input int e);
         return e >= 0 && e < NV && drn_blk[e] >= 0;
+    endfunction
+
+    // DRAIN=1: edge e is a half-0 read edge.
+    function automatic bit abit_rd0_at(input int e);
+        return abit_drain_at(e) && drn_t[e] == 0;
     endfunction
 
     function automatic bit abit_lap_at(input int e);
@@ -634,9 +664,30 @@ module Top;
         end
     endfunction
 
+    // DRAIN=1: a valid dr_out read pre-edge at P_e was loaded on e-1.
+    int n_items = 0;
+    task automatic read_dr(input int e);
+        if (dr_out_valid === 1'b1 && e - 1 < E0) begin
+            // the priming read-out of the reset tiles (edges 1, 2): known zeros, not data
+            if (dr_out !== '0) $fatal(1, "[X-FAIL] priming read-out not zero at edge %0d", e - 1);
+        end else if (dr_out_valid === 1'b1) begin
+            if ($isunknown(dr_out)) $fatal(1, "[X-FAIL] dr_out X at edge %0d", e);
+            $fwrite(trace_file, "Q 0 %0d", e - 1);
+            for (int n = 0; n < (N_H/2)*N_W; n++)
+                $fwrite(trace_file, " %0d", $signed(dr_out[n*OWIDTH +: OWIDTH]));
+            $fwrite(trace_file, "\n");
+            n_items++;
+        end else if (dr_out_valid !== 1'b0 && e >= E0)
+            $fatal(1, "[X-FAIL] dr_out_valid X at edge %0d", e);
+    endtask
+
     // Pre-edge acc_out_east on a drain edge (the abit record carries the edge).
     task automatic read_drain(input int e);
         int bd, t;
+        if (DRAIN == 1) begin
+            read_dr(e);
+            return;
+        end
         if (!drain_at(e)) return;
         drain_slot(e, bd, t);
         if ($isunknown(acc_out_east))
@@ -657,7 +708,7 @@ module Top;
         bit expect_valid;
         if ($isunknown(int_out_valid))
             $fatal(1, "[X-FAIL] int_out_valid X at edge %0d", e);
-        expect_valid = (e >= 2) && drain_at(e - 2);
+        expect_valid = (DRAIN != 1) && (e >= 2) && drain_at(e - 2);   // DRAIN=1: no combiner
         if (int_out_valid !== expect_valid)
             $fatal(1, "[TIMING-FAIL] int_out_valid=%0b at edge %0d, expected %0b",
                    int_out_valid, e, expect_valid);
@@ -707,6 +758,8 @@ module Top;
         void'($value$plusargs("MODE=%s", sched));
         if (sched != "bp" && sched != "abit") $fatal(1, "[BENCH] unknown +MODE=%s (bp | abit)", sched);
         abit = (sched == "abit");
+        if (DRAIN == 1 && !abit)
+            $fatal(1, "[BENCH] +MODE=bp reads the in-tile chain: build with PAYN_DRAIN=0 (DRAIN=1 runs +MODE=abit)");
         void'($value$plusargs("BA=%d", BA));
         void'($value$plusargs("BW=%d", BW));
         void'($value$plusargs("L=%d", L));
@@ -737,9 +790,9 @@ module Top;
             trace_file = $fopen("abit_trace.txt", "w");
             if (trace_file == 0) $fatal(1, "cannot open abit_trace.txt");
             // The functional bench's 23-field header; negative controls at their defaults, junk 0, park_cyc0 0.
-            $fwrite(trace_file, "ABITCFG %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d 0 %0d -1 -1 0 0 0 0 0 0\n",
+            $fwrite(trace_file, "ABITCFG %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d 0 %0d -1 -1 0 0 0 0 0 0 %0d\n",
                     BA, BW, L, MROWS, NCOLS, NBLK, NB, E0, E_END, BLK_LEN, D0,
-                    BA*BW*NB + (BA + BW - 2) + N_W, NLEV, MODE_AT);
+                    BA*BW*NB + (BA + BW - 2) + ((DRAIN == 1) ? 2 : N_W), NLEV, MODE_AT, DRAIN);
         end else begin
             trace_file = $fopen("bpt_trace.txt", "w");
             if (trace_file == 0) $fatal(1, "cannot open bpt_trace.txt");
@@ -764,7 +817,12 @@ module Top;
                 abit_set_raw(e);
                 abit_set_signs(e);
                 ring_in = abit_lap_at(e + 1);
-                shift_in = abit_drain_at(e);
+                if (DRAIN == 1) begin
+                    // one edge ahead of the half-0 read edge; edge 0: the priming read-out
+                    drain_in = abit_rd0_at(e + 1) || (e == 0);
+                    shift_in = 1'b0;
+                end else
+                    shift_in = abit_drain_at(e);
             end else begin
                 bp_set_raw(e);
                 bp_set_signs(e);
@@ -800,7 +858,10 @@ module Top;
         ring_in = 1'b0;
         $toggle_report("dut.saif", 1.0e-12, "Top.dut");
 
-        if (n_drain != NBLK*N_W || n_comb != NBLK*N_W)
+        if (DRAIN == 1 && (n_items != 2*NBLK || n_drain != 0 || n_comb != 0))
+            $fatal(1, "read %0d drain-register items (expected %0d), %0d drained columns, %0d combiner outputs",
+                   n_items, 2*NBLK, n_drain, n_comb);
+        if (DRAIN != 1 && (n_drain != NBLK*N_W || n_comb != NBLK*N_W))
             $fatal(1, "drained %0d columns and %0d combiner outputs, expected %0d each",
                    n_drain, n_comb, NBLK*N_W);
         $fclose(trace_file);
@@ -825,7 +886,7 @@ module Top;
             $fatal(1, "[CONTRACT] %0d [SC-CONTRACT] errors in the INT energy schedule", dut_contract());
         if (abit)
             $display("PASS: PaYN abit INT power bench; BA=%0d BW=%0d L=%0d blocks=%0d mode=%0d active=%0d drained=%0d combined=%0d block_len=%0d",
-                     BA, BW, L, NBLK, SAIF_MODE, n_active, n_drain, n_comb, BLK_LEN);
+                     BA, BW, L, NBLK, SAIF_MODE, n_active, (DRAIN == 1) ? n_items : n_drain, n_comb, BLK_LEN);
         else
             $display("PASS: PaYN bit-plane INT power bench; BA=%0d BW=%0d L=%0d blocks=%0d mode=%0d active=%0d drained=%0d combined=%0d lap_ring_only=%0d",
                      BA, BW, L, NBLK, SAIF_MODE, n_active, n_drain, n_comb, LAP_RING_ONLY);

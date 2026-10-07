@@ -12,6 +12,8 @@
 //   W bits / signs and load_w_sign   wave south across PE rows
 //   ring (lap enable)                waves east across PE columns
 //   accumulators                     chain west -> east through every PE column
+//                                    (DRAIN = 0, default)
+//   drain wave / drain registers     wave east / shift west (DRAIN = 1, below)
 //
 // Every PE re-registers what it forwards, so each wave advances one PE per
 // edge.  The west-edge ring inputs are gated by int_mode, so in SC mode no lap
@@ -34,6 +36,28 @@
 //   bit-plane schedule (A bits in space)    BW*NB + (BW-1) + (P_ROWS+P_COLS-2) + 8*P_COLS
 //   all-bits-in-time schedule               BA*BW*NB + (BA+BW-2) + (P_ROWS+P_COLS-2) + 8*P_COLS
 //
+// Drain register chain (DRAIN = 1, a build-time choice; default 0 is the
+// in-tile chain above).  Each PE has one drain register (DR) of 32 values
+// (N_H/2 x N_W; PaynPe).  A drain wave runs like the ring: drain_in[r] is
+// injected for one edge with row r's A skew, one edge ahead of PE (r,0)'s
+// half-0 read edge, and moves one PE east per edge, so PE (r,c) reads half 0
+// on its own slice-end edge t_r + c and half 1 on the next (it clears those
+// tiles).  The DRs shift west one PE per edge against the wave, so PE
+// column c's half h leaves the west edge (dr_out_west[r], dr_valid_west[r])
+// loaded on edge t_r + 2c + h: 2*P_COLS consecutive edges per PE row, never
+// two items in one register.  Every PE row's DR chain is busy 2*P_COLS edges
+// per slice, so the next slice's half-0 read edge must come at least
+// 2*P_COLS edges after this one ([DR-CONTRACT] in PaynPeCore stops the run
+// otherwise).  INT block period with the per-PE drain (all bits in time):
+//     max(BA*BW*NB + (BA+BW-2) + 2, 2*P_COLS)
+// (one bubble before the read-out and one on the half-1 read edge; the next
+// block follows in the same wavefront, so neither the skew nor the drain is
+// paid per block).  With DRAIN = 1 the in-tile chain does not exist:
+// acc_out_east is 0, acc_in_west is ignored and shift_in only clears (it
+// loads 0 into every tile), and the bit-plane schedule is not available (it
+// reads the in-tile chain).  With DRAIN = 0, drain_in is ignored and the DR
+// outputs are 0.
+//
 // Reset: the operand bit pipes are not reset, so the first MAC after a reset
 // must come at least min(P_ROWS,P_COLS) edges after the reset starts.
 // ring_out[r] is PE (r, P_COLS-1)'s ring_q, for an east-edge combiner per PE
@@ -47,7 +71,9 @@ module PaynPeGrid #(
     parameter int N_H = 8,
     parameter int N_W = 8,
     parameter int OWIDTH = 24,
-    parameter int LOW_W = 9
+    parameter int LOW_W = 9,
+    parameter int DRAIN = 0,
+    parameter int DRW = (N_H / 2) * N_W * OWIDTH  // one DR (derived)
 ) (
     input  logic clk,
     input  logic reset,
@@ -55,6 +81,7 @@ module PaynPeGrid #(
     input  logic shift_in,
     input  logic int_mode,
     input  logic [P_ROWS-1:0] ring_in,
+    input  logic [P_ROWS-1:0] drain_in,
 
     input  logic [P_ROWS*N_H*K*M-1:0] a_bits_in,
     input  logic [P_ROWS*N_H*K-1:0]   a_signs_in,
@@ -72,7 +99,9 @@ module PaynPeGrid #(
     output logic [P_ROWS-1:0]         ring_out,
 
     input  logic [P_ROWS*N_H*OWIDTH-1:0] acc_in_west,
-    output logic [P_ROWS*N_H*OWIDTH-1:0] acc_out_east
+    output logic [P_ROWS*N_H*OWIDTH-1:0] acc_out_east,
+    output logic [P_ROWS*DRW-1:0]        dr_out_west,
+    output logic [P_ROWS-1:0]            dr_valid_west
 );
     localparam int AB = N_H*K*M;     // one PE row's A bits
     localparam int AS = N_H*K;
@@ -90,6 +119,9 @@ module PaynPeGrid #(
     logic          load_a_link  [P_ROWS][P_COLS+1];
     logic          ring_link    [P_ROWS][P_COLS+1];
     logic [AW-1:0] acc_link     [P_ROWS][P_COLS+1];
+    logic          drain_link   [P_ROWS][P_COLS+1];   // drain wave, east
+    logic [DRW-1:0] dr_link     [P_ROWS][P_COLS+1];   // dr_link[r][c]: PE (r,c)'s DR, moving west
+    logic          dr_vlink     [P_ROWS][P_COLS+1];
     logic [WB-1:0] w_bits_link  [P_COLS][P_ROWS+1];
     logic [WS-1:0] w_signs_link [P_COLS][P_ROWS+1];
     logic          load_w_link  [P_COLS][P_ROWS+1];
@@ -100,6 +132,11 @@ module PaynPeGrid #(
         assign load_a_link[r][0] = load_a_sign_in[r];
         assign ring_link[r][0] = ring_in[r] & int_mode;
         assign acc_link[r][0] = acc_in_west[r*AW +: AW];
+        assign drain_link[r][0] = drain_in[r];
+        assign dr_link[r][P_COLS] = '0;
+        assign dr_vlink[r][P_COLS] = 1'b0;
+        assign dr_out_west[r*DRW +: DRW] = dr_link[r][0];
+        assign dr_valid_west[r] = dr_vlink[r][0];
         assign a_bits_out[r*AB +: AB] = a_bits_link[r][P_COLS];
         assign a_signs_out[r*AS +: AS] = a_signs_link[r][P_COLS];
         assign load_a_sign_out[r] = load_a_link[r][P_COLS];
@@ -120,13 +157,19 @@ module PaynPeGrid #(
         for (genvar c = 0; c < P_COLS; c++) begin : g_pe_col
             PaynPe #(
                 .K(K), .M(M), .N_H(N_H), .N_W(N_W),
-                .OWIDTH(OWIDTH), .LOW_W(LOW_W)
+                .OWIDTH(OWIDTH), .LOW_W(LOW_W), .DRAIN(DRAIN)
             ) u_pe (
                 .clk,
                 .reset,
                 .mac_en,
                 .shift_in,
                 .ring_in(ring_link[r][c]),
+                .drain_in(drain_link[r][c]),
+                .drain_out(drain_link[r][c+1]),
+                .dr_east_in(dr_link[r][c+1]),
+                .dr_east_valid_in(dr_vlink[r][c+1]),
+                .dr_west_out(dr_link[r][c]),
+                .dr_west_valid_out(dr_vlink[r][c]),
                 .a_bits_in(a_bits_link[r][c]),
                 .a_signs_in(a_signs_link[r][c]),
                 .w_bits_in(w_bits_link[c][r]),

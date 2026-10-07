@@ -5,7 +5,8 @@
   python3 flow/route.py k16m8 payn_k16m8_20261006 --dry-run   # the plan, with each stage's state
   python3 flow/route.py k16m8 payn_k16m8_20261006 --retry-failed
   python3 flow/route.py k16m8 payn_k16m8_20261006 --stages syn-gl   # one stage (its needs must have passed)
-SHAPE is k16m8 or k8m16 (PAYN_M = 8 / 16).  Runs: synthesis syn/build/TSMC22/PAYN/<SYNTH_RUN>, bootstrap route
+SHAPE is k16m8 or k8m16 (PAYN_M = 8 / 16); --drain 1 builds the drain-register hardware (PAYN_DRAIN=1: synthesis
+define, the GL suites' --drain 1, the drain-register power bench).  Runs: synthesis syn/build/TSMC22/PAYN/<SYNTH_RUN>, bootstrap route
 apr/build/TSMC22/PAYN/<SYNTH_RUN>_distguide, final route .../<SYNTH_RUN>_final.  Stage markers, attempt logs and
 evidence: build/flow/<SYNTH_RUN>/route/; post-synthesis GL: build/flow/<SYNTH_RUN>/syn_gl/; routed functional GL:
 build/flow/<SYNTH_RUN>/routed_func/.  Every tool command runs in flow/env.sh's environment.
@@ -68,8 +69,10 @@ MAX_REPAIR_MARKERS = 1000
 
 
 class Flow:
-    def __init__(self, shape: str, synth: str, approvals: tuple[str, ...], jobs: int, retry: bool = False):
+    def __init__(self, shape: str, synth: str, approvals: tuple[str, ...], jobs: int, retry: bool = False,
+                 drain: int = 0):
         self.shape, self.synth, self.approvals, self.jobs, self.retry = shape, synth, approvals, jobs, retry
+        self.drain = drain
         self.K, self.M = SHAPES[shape]
         self.syn = syn_dir() / synth
         self.boot_run, self.final_run = f"{synth}_distguide", f"{synth}_final"
@@ -81,7 +84,7 @@ class Flow:
 
     # ------------------------------------------------------------------------------------------- synth --
     def syn_defines(self) -> str:
-        return f"PAYN_M={self.M} PAYN_NH=8 PAYN_NW=8 PAYN_LOW_W=9"
+        return f"PAYN_M={self.M} PAYN_NH=8 PAYN_NW=8 PAYN_LOW_W=9" + (" PAYN_DRAIN=1" if self.drain else "")
 
     def synth_cmd(self) -> list[str]:
         return make_cmd("synth", f"TARGET={TARGET}")
@@ -107,6 +110,11 @@ class Flow:
         k = width("a_signs_in") // 8
         m = width("a_raw_in") // (8 * k)
         require((k, m) == (self.K, self.M), f"netlist is K{k}/M{m}, shape {self.shape} is K{self.K}/M{self.M}")
+        if self.drain:
+            require(width("dr_out") == 32 * 24 and width("dr_in_east") == 32 * 24,
+                    "drain-register netlist lacks the 768-bit dr_out / dr_in_east ports")
+        require(bool(re.search(r"^\s*input\b[^;\[]*\bdrain_in\b[^;]*;", body, re.M)) == bool(self.drain),
+                f"netlist drain_in port {'missing' if self.drain else 'present'} for --drain {self.drain}")
         area = first_match(self.syn / "area.rpt", r"Total cell area:\s*([0-9.]+)")
         log(f"synthesis {self.syn}: setup slack {min(slacks):+.3f} ns, K{k}/M{m}, area {area[1] if area else '?'} um2")
 
@@ -116,24 +124,35 @@ class Flow:
         self.check_synth(log)
 
     # ---------------------------------------------------------------------------------------- GL suites --
+    def port_width(self, port: str) -> int:
+        m = re.search(rf"^\s*(?:input|output)\s*\[(\d+):(\d+)\]\s+{port}\s*;", netlist_modules(self.netlist)[TOP], re.M)
+        require(m, f"netlist port {port} missing")
+        return abs(int(m[1]) - int(m[2])) + 1
+
+    @property
+    def gl_dir(self) -> str:
+        return f"{self.shape}_dr" if self.drain else self.shape
+
     def syn_gl_cmd(self) -> list[str]:
         return [sys.executable, str(REPO / "flow/regress.py"), "--shape", self.shape, "--gl", "syn-unit,syn-sdf",
-                "--synth-run", self.synth, "--out", str(self.base / "syn_gl"), "--jobs", str(self.jobs)]
+                "--synth-run", self.synth, "--out", str(self.base / "syn_gl"), "--jobs", str(self.jobs),
+                "--drain", str(self.drain)]
 
     def do_syn_gl(self, log: Log) -> None:
         rc = sh(self.syn_gl_cmd(), log)
-        log(text(self.base / "syn_gl" / self.shape / "summary.txt"))
-        require(rc == 0, f"post-synthesis GL checks failed ({self.base / 'syn_gl' / self.shape / 'summary.txt'})")
+        log(text(self.base / "syn_gl" / self.gl_dir / "summary.txt"))
+        require(rc == 0, f"post-synthesis GL checks failed ({self.base / 'syn_gl' / self.gl_dir / 'summary.txt'})")
 
     def routed_func_cmd(self) -> list[str]:
         cmd = [sys.executable, str(REPO / "flow/regress.py"), "--shape", self.shape, "--gl", "apr",
-               "--route", str(self.final), "--out", str(self.base / "routed_func"), "--jobs", str(self.jobs)]
+               "--route", str(self.final), "--out", str(self.base / "routed_func"), "--jobs", str(self.jobs),
+               "--drain", str(self.drain)]
         return cmd + ([f"--gl-approve={' '.join(self.approvals)}"] if self.approvals else [])
 
     def do_routed_func(self, log: Log) -> None:
         rc = sh(self.routed_func_cmd(), log)
-        log(text(self.base / "routed_func" / self.shape / "summary.txt"))
-        require(rc == 0, f"routed functional GL failed ({self.base / 'routed_func' / self.shape / 'summary.txt'})")
+        log(text(self.base / "routed_func" / self.gl_dir / "summary.txt"))
+        require(rc == 0, f"routed functional GL failed ({self.base / 'routed_func' / self.gl_dir / 'summary.txt'})")
 
     # ------------------------------------------------------------------------------------ bootstrap APR --
     def boot_env(self) -> dict:
@@ -175,7 +194,8 @@ class Flow:
 
     # ------------------------------------------------------------------------------------ bootstrap SAIF --
     def boot_point(self) -> measure.PointRun:
-        r = measure.Route(self.shape, self.boot, TOP, self.work / "bootstrap", TARGET, self.approvals)
+        r = measure.Route(self.shape, self.boot, TOP, self.work / "bootstrap", TARGET, self.approvals,
+                          drain=self.drain)
         return measure.PointRun(r, measure.POINTS["sc_uniform"], classes=False)
 
     def do_boot_sim(self, log: Log) -> None:
@@ -222,7 +242,11 @@ class Flow:
         require(not first_match(apr_log, r"^(ERROR|WARNING): SC_PIN_PLACEMENT"), "pin script error or warning")
         m = first_match(apr_log, r"^SC_PIN_PLACEMENT: fixed=(\d+) .* len_bus=a_len_in LEN_W=8$")
         require(m and int(m[1]) == pins, f"pin plan fixed {m[1] if m else None} pins, the netlist has {pins}")
-        require(first_match(apr_log, rf"#fixedPin={pins}, #floatPin=0\b"), "GigaPlace did not see every pin fixed")
+        # GigaPlace counts only pins whose net reaches a cell.  With PAYN_DRAIN=1 two inputs drive nothing:
+        # acc_in_west (no in-tile chain) and int_prec (it fed only the combiner, which synthesis removes).
+        dangling = self.port_width("acc_in_west") + 1 if self.drain else 0
+        require(first_match(apr_log, rf"#fixedPin={pins - dangling}, #floatPin=0\b"),
+                f"GigaPlace did not see every pin fixed (expected #fixedPin={pins - dangling}, #floatPin=0)")
         require(not first_match(apr_log, r"#floatPin=[1-9]"), "GigaPlace saw floating pins")
         require(first_match(apr_log, r"Illegally Assigned Pins\s*:\s*0"), "illegally assigned pins")
         for f in ("sc_pin_plan.tsv", "sc_pin_plan.checkPin.rpt"):
@@ -286,7 +310,7 @@ class Flow:
             Stage("synth", self.syn, self.do_synth, lambda: [
                 f"env      SYN_DEFINES='{self.syn_defines()}' RUN_NAME={self.synth}",
                 f"run      {quote(self.synth_cmd())}"], adopt=self.adopt_synth),
-            Stage("syn-gl", self.base / "syn_gl" / self.shape / "summary.txt", self.do_syn_gl,
+            Stage("syn-gl", self.base / "syn_gl" / self.gl_dir / "summary.txt", self.do_syn_gl,
                   lambda: [f"run      {quote(self.syn_gl_cmd())}"], needs=("synth",)),
             Stage("boot-apr", self.boot, self.do_boot_apr, lambda: [
                 "env      " + " ".join(f"{k}={v}" for k, v in self.boot_env().items()),
@@ -312,7 +336,7 @@ class Flow:
                   needs=("final-apr",)),
             Stage("gate", self.work / "basin/basin_gate.json", self.do_gate,
                   lambda: [f"gate     {quote(self.gate_cmd())}"], needs=("qualify",)),
-            Stage("routed-func", self.base / "routed_func" / self.shape / "summary.txt", self.do_routed_func,
+            Stage("routed-func", self.base / "routed_func" / self.gl_dir / "summary.txt", self.do_routed_func,
                   lambda: [f"run      {quote(self.routed_func_cmd())}"], needs=("gate",)),
         ]
 
@@ -441,11 +465,13 @@ def main() -> int:
     ap.add_argument("--gl-approve", default="", help="gl-audit approvals (only after a strict failure, with the "
                                                     "rationale file the stage names)")
     ap.add_argument("--jobs", type=int, default=12, help="parallel GL runs in syn-gl / routed-func")
+    ap.add_argument("--drain", type=int, choices=(0, 1), default=0,
+                    help="1: the drain-register hardware (PAYN_DRAIN=1); 0: the in-tile chain (default)")
     ap.add_argument("--retry-failed", action="store_true", default=os.environ.get("RETRY_FAILED") == "1")
     ap.add_argument("--dry-run", action="store_true", default=os.environ.get("DRY_RUN") == "1")
     a = ap.parse_args()
     require(re.fullmatch(r"[A-Za-z0-9_]+", a.synth), "SYNTH_RUN must match [A-Za-z0-9_]+")
-    flow = Flow(a.shape, a.synth, tuple(a.gl_approve.split()), a.jobs, a.retry_failed)
+    flow = Flow(a.shape, a.synth, tuple(a.gl_approve.split()), a.jobs, a.retry_failed, a.drain)
     runner = Runner(flow.work, retry=a.retry_failed, dry=a.dry_run, allow_adopt=a.adopt, label=f"[{a.synth}] ")
     if a.dry_run:
         print(f"DRY RUN: {a.shape} (K{flow.K}/M{flow.M}), synthesis {flow.syn}")
@@ -455,7 +481,7 @@ def main() -> int:
     else:
         flow.work.mkdir(parents=True, exist_ok=True)
         write_manifest(flow.work / "inputs.txt", [
-            f"shape={a.shape} K={flow.K} M={flow.M}", f"target={TARGET} top={TOP}", f"synthesis={flow.syn}",
+            f"shape={a.shape} K={flow.K} M={flow.M} drain={a.drain}", f"target={TARGET} top={TOP}", f"synthesis={flow.syn}",
             f"bootstrap_route={flow.boot}", f"final_route={flow.final}", f"astraea={tool_env()['ASTRAEA_FLOW']}",
             f"apr.tcl sha256={sha256(Path(tool_env()['ASTRAEA_FLOW']) / 'apr/scripts/apr.tcl')}",
             *(f"{sha256(REPO / f)}  {f}" for f in (f"apr/targets/{TARGET}", PRE_PLACE, GUIDES, POSTFILL,

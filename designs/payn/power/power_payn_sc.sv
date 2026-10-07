@@ -51,7 +51,13 @@
 // model) and asserts a bit-exact match.  In RTL the [SC-CONTRACT] count must
 // stay 0.  Last line PASS: PaYN SC power bench ...
 //
-// Defines: PAYN_M, SC_NH, SC_NW, SC_OWIDTH (24), SC_BATCHES (256), SC_SEED,
+// Drain register (+define+PAYN_DRAIN=1): the post-window drain is the
+// read-out instead: drain_in for one edge, then dr_out after each of the two
+// read edges (tile rows 0-3, then 4-7; at the negedge, or with
+// DRAIN_SAMPLE_LATE_PS that many ps before the next edge), dr_out_valid high
+// on both; the DRAIN line is the same.  dr_in_east is held at 0 (one PE).
+//
+// Defines: PAYN_M, PAYN_DRAIN (0), SC_NH, SC_NW, SC_OWIDTH (24), SC_BATCHES (256), SC_SEED,
 // SC_UNIFORM_L (128), SC_LADDER, SC_INT_JUNK, SC_DRAIN_SAMPLE_LATE_PS (0; or the
 // plusarg +DRAIN_SAMPLE_LATE_PS=n, for routed netlists, see the drain below),
 // ASTRAEA_CLK_PERIOD_NS.  Needs DesignWare for the RTL
@@ -64,6 +70,9 @@
 
 `ifndef PAYN_M
 `define PAYN_M 8                      // positions per lane: 8 (K16/M8) or 16 (K8/M16)
+`endif
+`ifndef PAYN_DRAIN
+`define PAYN_DRAIN 0                  // drain: 0 in-tile chain, 1 drain register (payn_array.sv)
 `endif
 `ifndef PAYN_DUT
 `define PAYN_DUT payn_array           // netlist top name (GL_SIM)
@@ -133,6 +142,14 @@ module Top;
     logic [N_H*K*M-1:0] a_raw_in = '0;
     logic [N_W*K*M-1:0] w_raw_in = '0;
     logic [63:0] int_out;
+    // Drain register ports (DRAIN = 1 builds; unused and 0 with the in-tile chain).
+    localparam int DRAIN = `PAYN_DRAIN;
+    localparam int DRW = (N_H / 2) * N_W * OWIDTH;
+    logic drain_in = 1'b0;
+    logic [DRW-1:0] dr_out;
+    logic dr_out_valid;
+    logic [DRW-1:0] dr_in_east = '0;           // one PE: no east neighbour
+    logic dr_in_east_valid = 1'b0;
     logic int_out_valid;
     bit int_reset_seen = 1'b0;
 
@@ -183,7 +200,7 @@ module Top;
     `PAYN_DUT dut (.*);
 `else
     payn_array #(
-        .K(K), .M(M), .N_H(N_H), .N_W(N_W), .WIDTH(WIDTH), .OWIDTH(OWIDTH)
+        .K(K), .M(M), .N_H(N_H), .N_W(N_W), .WIDTH(WIDTH), .OWIDTH(OWIDTH), .DRAIN(DRAIN)
     ) dut (.*);
 `endif
 
@@ -369,6 +386,24 @@ module Top;
         // instead of at the negedge: a routed drain rail settles up to ~1.45 ns
         // after the edge.  The drain is outside the window, so the SAIF and the
         // energy do not depend on it.
+        if (DRAIN == 1) begin
+            // Read-out: drain_in on the next edge P, half 0 loaded into dr_out
+            // on P+1, half 1 on P+2.  mac_en is low, so neither half moves.
+            drain_in = 1'b1;
+            @(posedge clk);
+            @(negedge clk);
+            drain_in = 1'b0;
+            for (int hf = 0; hf < 2; hf++) begin
+                @(posedge clk);
+                @(negedge clk);
+                if (drain_sample_late_ps > 0) #(PERIOD / 2.0 - drain_sample_late_ps / 1000.0);
+                if (dr_out_valid !== 1'b1)
+                    $fatal(1, "[X-FAIL] dr_out_valid %b after read edge %0d", dr_out_valid, hf);
+                for (int h = 0; h < N_H / 2; h++)
+                    for (int v = 0; v < N_W; v++)
+                        drain[hf*(N_H/2) + h][v] = $signed(dr_out[(h*N_W + v)*OWIDTH +: OWIDTH]);
+            end
+        end else begin
         acc_in_west = '0;
         for (int s = 0; s < N_W; s++) begin
             if (drain_sample_late_ps > 0) begin
@@ -382,6 +417,7 @@ module Top;
             @(negedge clk);
         end
         shift_in = 1'b0;
+        end
 
         $fwrite(trace_file, "WINDOW %0d\n", window_edges);
         $fwrite(trace_file, "DRAIN");

@@ -84,7 +84,7 @@ traces are the same for K16/M8 and K8/M16; `--shape` only validates and labels.
 | file | what it is |
 |---|---|
 | `int_workload.py` | `{bp,abit,energy}`: the operands the benches read (bpt_a.hex row-major A, bpt_w.hex column-major W, bpt_meta.json; `energy` writes intb_* with plane densities and toggle rates). |
-| `int_trace.py` | `{bp,bp-grid,bp-power,abit,abit-grid,abit-power} RUN_DIR`: checks a bench run against an independent numpy int64 GEMM (abit also: schedule rules and an edge replay of the logged stimulus; power: SAIF window counts). Prints JSON plus one [PASS]/[FAIL] line. |
+| `int_trace.py` | `{bp,bp-grid,bp-power,abit,abit-grid,abit-power} RUN_DIR`: checks a bench run against an independent numpy int64 GEMM (abit also: schedule rules and an edge replay of the logged stimulus; power: SAIF window counts). For a drain-register build (trace header field `drain` = 1) abit and abit-grid check every drain-register item on its predicted edge with its predicted values, the per-PE drain-wave runs and the block period max(BA*BW*NB + (BA+BW-2) + 2, 2*P_C). Prints JSON plus one [PASS]/[FAIL] line. |
 
 ```sh
 python3 designs/payn/model/int_workload.py bp --ba 8 --bw 8 --L 1024 --mrows 2 --ncols 16 --dist uniform --seed 3 --out-dir RUN [--shape k16m8]

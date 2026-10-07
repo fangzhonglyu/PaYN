@@ -24,6 +24,12 @@
 #                 block_start, slice_start, int_mode, int_prec, ring_in)
 #                 centred; int_out[*] and int_out_valid on the east half.  Any
 #                 other port is an ERROR (fail closed).
+#   Drain register (PAYN_DRAIN = 1 netlists, optional): the DRN = |dr_out|/OW
+#   values split into N_H bands of DRN/N_H values, band h = values
+#   h*DRN/N_H ..: dr_out on WEST row h after acc_in_west (the register moves
+#   items west), dr_in_east on EAST row h at the end of the row's list;
+#   drain_in and dr_in_east_valid in the south control, dr_out_valid in the
+#   south outputs.
 # Shape parameters come from the port widths: K = |a_signs_in|/N_H,
 # WIDTH = |a_binary_in|/(N_H K), M = |a_raw_in|/(N_H K), OW = |acc_in_west|/N_H,
 # with N_H/N_W from SC_NH/SC_NW cross-checked against the g_row_*__g_col_*
@@ -116,6 +122,15 @@ foreach sc_pin_base [array names sc_pin_bits] {
 foreach sc_pin_req {a_binary_in a_signs_in w_binary_in w_signs_in acc_in_west acc_out_east} {
     if {![dict exists $sc_pin_width_of $sc_pin_req]} { sc_pin_fail "required bus $sc_pin_req not found" }
 }
+set sc_pin_has_dr [dict exists $sc_pin_width_of dr_out]
+if {$sc_pin_has_dr != [dict exists $sc_pin_width_of dr_in_east]} {
+    sc_pin_fail "dr_out and dr_in_east must both exist or both be absent"
+}
+if {$sc_pin_has_dr} {
+    foreach sc_pin_req {drain_in dr_out_valid dr_in_east_valid} {
+        if {![info exists sc_pin_scalar($sc_pin_req)]} { sc_pin_fail "drain-register netlist without $sc_pin_req" }
+    }
+}
 set sc_pin_has_raw [expr {[dict exists $sc_pin_width_of a_raw_in] || [dict exists $sc_pin_width_of w_raw_in]}]
 if {$sc_pin_has_raw && !([dict exists $sc_pin_width_of a_raw_in] && [dict exists $sc_pin_width_of w_raw_in])} {
     sc_pin_fail "a_raw_in and w_raw_in must both exist or both be absent"
@@ -128,6 +143,15 @@ proc sc_pin_div {num den what} {
 set sc_pin_k  [sc_pin_div [dict get $sc_pin_width_of a_signs_in] $sc_pin_nh "K from a_signs_in"]
 set sc_pin_bw [sc_pin_div [dict get $sc_pin_width_of a_binary_in] [expr {$sc_pin_nh*$sc_pin_k}] "WIDTH from a_binary_in"]
 set sc_pin_ow [sc_pin_div [dict get $sc_pin_width_of acc_in_west] $sc_pin_nh "OWIDTH from acc_in_west"]
+set sc_pin_drn 0
+set sc_pin_drb 0
+if {$sc_pin_has_dr} {
+    set sc_pin_drn [sc_pin_div [dict get $sc_pin_width_of dr_out] $sc_pin_ow "DR values from dr_out"]
+    set sc_pin_drb [sc_pin_div $sc_pin_drn $sc_pin_nh "DR values per row band"]
+    if {[dict get $sc_pin_width_of dr_in_east] != [dict get $sc_pin_width_of dr_out]} {
+        sc_pin_fail "dr_in_east width [dict get $sc_pin_width_of dr_in_east] != dr_out width"
+    }
+}
 set sc_pin_m 0
 if {$sc_pin_has_raw} {
     set sc_pin_m [sc_pin_div [dict get $sc_pin_width_of a_raw_in] [expr {$sc_pin_nh*$sc_pin_k}] "M from a_raw_in"]
@@ -202,11 +226,16 @@ for {set h 0} {$h < $sc_pin_nh} {incr h} {
             lappend row_pins [sc_pin_take "a_raw_in\[[expr {$g*$sc_pin_m+$m}]\]"]
         }
     }
-    dict set sc_pin_east $h $row_pins
     set west_pins {}
     for {set i 0} {$i < $sc_pin_ow} {incr i} {
         lappend west_pins [sc_pin_take "acc_in_west\[[expr {$h*$sc_pin_ow+$i}]\]"]
     }
+    # Drain register: band h = values h*DRB .. h*DRB+DRB-1.
+    for {set i [expr {$h*$sc_pin_drb*$sc_pin_ow}]} {$i < ($h+1)*$sc_pin_drb*$sc_pin_ow} {incr i} {
+        lappend row_pins [sc_pin_take "dr_in_east\[$i\]"]
+        lappend west_pins [sc_pin_take "dr_out\[$i\]"]
+    }
+    dict set sc_pin_east $h $row_pins
     dict set sc_pin_west $h $west_pins
 }
 for {set v 0} {$v < $sc_pin_nw} {incr v} {
@@ -225,7 +254,7 @@ for {set v 0} {$v < $sc_pin_nw} {incr v} {
 }
 # South: known scalar control first (in a fixed order), then other scalars,
 # then int_out / int_out_valid, then any unrecognised bus bits.
-set sc_pin_ctrl_order {clk reset rng_en load_a load_w load_a_sign load_w_sign mac_en shift_in block_start slice_start int_mode int_prec ring_in}
+set sc_pin_ctrl_order {clk reset rng_en load_a load_w load_a_sign load_w_sign mac_en shift_in block_start slice_start int_mode int_prec ring_in drain_in dr_in_east_valid}
 set sc_pin_south_ctrl {}
 set sc_pin_south_out {}
 set sc_pin_unknown {}
@@ -233,7 +262,7 @@ foreach sc_pin_name $sc_pin_ctrl_order {
     if {[info exists sc_pin_scalar($sc_pin_name)]} { lappend sc_pin_south_ctrl [sc_pin_take $sc_pin_name] }
 }
 foreach sc_pin_name [lsort [array names sc_pin_scalar]] {
-    if {[info exists sc_pin_used($sc_pin_name)] || $sc_pin_name eq "int_out_valid"} { continue }
+    if {[info exists sc_pin_used($sc_pin_name)] || $sc_pin_name in {int_out_valid dr_out_valid}} { continue }
     lappend sc_pin_south_ctrl [sc_pin_take $sc_pin_name]
     lappend sc_pin_unknown $sc_pin_name
 }
@@ -243,6 +272,7 @@ if {[dict exists $sc_pin_width_of int_out]} {
     }
 }
 if {[info exists sc_pin_scalar(int_out_valid)]} { lappend sc_pin_south_out [sc_pin_take int_out_valid] }
+if {[info exists sc_pin_scalar(dr_out_valid)]} { lappend sc_pin_south_out [sc_pin_take dr_out_valid] }
 foreach sc_pin_base [lsort [dict keys $sc_pin_width_of]] {
     for {set i 0} {$i < [dict get $sc_pin_width_of $sc_pin_base]} {incr i} {
         set sc_pin_name "$sc_pin_base\[$i\]"
@@ -364,8 +394,8 @@ close $sc_pin_fo
 if {$sc_pin_bad > 0} { sc_pin_fail "$sc_pin_bad pin(s) not at their fixed planned location; see $sc_pin_plan_file" }
 checkPinAssignment -outFile sc_pin_plan.checkPin.rpt
 
-puts [format "SC_PIN_PLACEMENT: fixed=%d east=%d north=%d west=%d south=%d nh=%d nw=%d K=%d WIDTH=%d M=%d OWIDTH=%d raw=%d span=%.2f layersH={%s} layersV={%s} min_same_layer_pitch_um=%.3f max_snap_um=%.3f edit_ms=%d plan=%s len_bus=%s LEN_W=%d" \
+puts [format "SC_PIN_PLACEMENT: fixed=%d east=%d north=%d west=%d south=%d nh=%d nw=%d K=%d WIDTH=%d M=%d OWIDTH=%d raw=%d dr_values=%d span=%.2f layersH={%s} layersV={%s} min_same_layer_pitch_um=%.3f max_snap_um=%.3f edit_ms=%d plan=%s len_bus=%s LEN_W=%d" \
     [llength $sc_pin_plan] $sc_pin_edge_count(E) $sc_pin_edge_count(N) $sc_pin_edge_count(W) $sc_pin_edge_count(S) \
-    $sc_pin_nh $sc_pin_nw $sc_pin_k $sc_pin_bw $sc_pin_m $sc_pin_ow $sc_pin_has_raw $sc_pin_span \
+    $sc_pin_nh $sc_pin_nw $sc_pin_k $sc_pin_bw $sc_pin_m $sc_pin_ow $sc_pin_has_raw $sc_pin_drn $sc_pin_span \
     $sc_pin_layers_h $sc_pin_layers_v $sc_pin_min_pitch $sc_pin_max_shift $sc_pin_ms [file normalize $sc_pin_plan_file] \
     $sc_pin_len_bus $sc_pin_lw]

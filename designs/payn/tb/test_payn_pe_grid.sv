@@ -163,6 +163,27 @@
 // and R records.  Checker: designs/payn/model/int_trace.py abit-grid.  Last
 // line PASS: PaYN abit grid bench ...
 //
+// ------------------------------------------- drain register (PAYN_DRAIN=1) --
+// With +define+PAYN_DRAIN=1 the grid has the drain-register chain
+// (payn_pe_grid.sv) and only +MODE=abit runs.  The read-out replaces the
+// global drain: PE (0,0) reads half 0 on virtual edge RD = the edge after the
+// final bubble capture (the single-PE drain point; no skew wait), half 1 on
+// RD+1, every PE (r,c) r+c edges later; drain_in[r] = 1 at real edge e iff
+// e + 1 - r is an RD edge.  The next block's first capture is the half-1
+// read edge, unless the DR chain is still busy:
+//     BLK_LEN = max(D0 + 1, 2*P_C) = max(BA*BW*NB + (BA+BW-2) + 2, 2*P_C).
+// shift_in stays low.  Monitors: every valid west DR "Q r e v0..v31" (PE row
+// r, loaded on real edge e, value n = tile (h mod 4, v) with n = (h mod 4)*8 +
+// v; read pre-edge at P_{e+1}), and every PE's drain-wave runs "W r c e len"
+// (drain_q high on e .. e+len-1).  The trace logs the virtual read edges as
+// "X e blk h" (h = 0, 1).  Negative controls (DRAIN=1): +NEG_DRAIN_EARLY (RD
+// one edge early: half 0 read on the last MAC), +NEG_BLOCK_OVERLAP (BLK_LEN
+// one short), +NEG_DR_NO_ROW_SKEW (drain_in[r] with row 0's timing),
+// +NEG_DR_NO_COL_SKEW (every PE takes its row's drain_in, forced: the chain
+// collides, [DR-CONTRACT]), +NEG_DR_BUSY (BLK_LEN = 2*P_C - 1 where the busy
+// rule binds: [DR-CONTRACT]), and the lap controls of +MODE=abit.  The
+// ABITGCFG header gains DRAIN NEG_DR_ROW NEG_DR_COL NEG_DR_BUSY.
+//
 // Operands (both modes): bpt_a.hex (A row-major, MROWS x L) and bpt_w.hex (W
 // column-major, W[x, j] at j*L + x), one two's-complement byte per line, in the
 // run directory (designs/payn/model/int_workload.py bp / abit).  A plusarg of
@@ -184,6 +205,9 @@
 `endif
 `ifndef GRID_MAX_EDGES
 `define GRID_MAX_EDGES 400000
+`endif
+`ifndef PAYN_DRAIN
+`define PAYN_DRAIN 0                  // drain: 0 in-tile chain, 1 drain register (payn_pe_grid.sv)
 `endif
 
 module Top;
@@ -240,6 +264,12 @@ module Top;
     logic [P_R-1:0] ring_out;
     logic [P_R*AW-1:0] acc_in_west = '0;
     logic [P_R*AW-1:0] acc_out_east;
+    localparam int DRAIN = `PAYN_DRAIN;
+    localparam int DRN = (N_H / 2) * N_W;      // values per drain register
+    localparam int DRW = DRN * OWIDTH;
+    logic [P_R-1:0] drain_in = '0;
+    logic [P_R*DRW-1:0] dr_out_west;
+    logic [P_R-1:0] dr_valid_west;
 
     logic [7:0] a_mem [];             // a_mem[i*L + x] = A[i, x]
     logic [7:0] w_mem [];             // w_mem[j*L + x] = W[x, j]
@@ -250,12 +280,16 @@ module Top;
     bit force_col = 1'b0;             // every PE takes its row's west ring_in
     bit force_global = 1'b0;          // every PE takes the global ring signal
     bit gate_bypass = 1'b0;           // PE (r,0) takes the raw west ring_in[r]
+    bit neg_dr_row = 1'b0;            // DRAIN=1: drain_in[r] with row 0's timing
+    bit neg_dr_col = 1'b0;            // DRAIN=1: every PE takes its row's west drain_in
+    bit neg_dr_busy = 1'b0;           // DRAIN=1: BLK_LEN = 2*P_C - 1
+    int n_items = 0;                  // DRAIN=1: valid west DR items read
 
     ClkUtils #(.TIMEOUT(`GRID_MAX_EDGES)) clk_utils (.clk, .reset, .timeout);
 
     PaynPeGrid #(
         .P_ROWS(P_R), .P_COLS(P_C), .K(K), .M(M), .N_H(N_H), .N_W(N_W),
-        .OWIDTH(OWIDTH), .LOW_W(LOW_W)
+        .OWIDTH(OWIDTH), .LOW_W(LOW_W), .DRAIN(DRAIN)
     ) dut (.*);
 
     always @(posedge clk)
@@ -272,6 +306,30 @@ module Top;
                     force dut.g_pe_row[r].g_pe_col[c].u_pe.ring_in = ring_global & int_mode;
                 else if (gate_bypass && c == 0)
                     force dut.g_pe_row[r].g_pe_col[c].u_pe.ring_in = ring_in[r];
+            end
+
+            // Drain wave (DRAIN = 1): forced row input, and its runs (drain_q
+            // pre-edge, the half-0 read edges).
+            if (DRAIN == 1) begin : g_dr_mon
+                initial begin
+                    wait (cfg_done);
+                    if (neg_dr_col)
+                        force dut.g_pe_row[r].g_pe_col[c].u_pe.drain_in = drain_in[r];
+                end
+                int dr_start = -1, dr_len = 0;
+                always @(posedge clk) begin
+                    if (cfg_done && trace_file != 0) begin
+                        if (dut.g_pe_row[r].g_pe_col[c].u_pe.g_drain.drain_q === 1'b1) begin
+                            if (dr_len == 0) dr_start = cur_e;
+                            dr_len++;
+                        end else begin
+                            if (dut.g_pe_row[r].g_pe_col[c].u_pe.g_drain.drain_q !== 1'b0)
+                                $fatal(1, "[X-FAIL] PE (%0d,%0d) drain_q X at edge %0d", r, c, cur_e);
+                            if (dr_len != 0) $fwrite(trace_file, "W %0d %0d %0d %0d\n", r, c, dr_start, dr_len);
+                            dr_len = 0;
+                        end
+                    end
+                end
             end
 
             // Lap-run monitor: ring_q as used on each edge (pre-edge value).
@@ -495,6 +553,7 @@ module Top;
     bit neg_row = 1'b0, neg_no_bubble = 1'b0, neg_drain_early = 1'b0, neg_overlap = 1'b0;
     int neg_no_lap = -1, neg_extra_lap = -1, neg_sign = 0, neg_order = 0;
     int NLEV, NP, D0, AB_DS, BLK_NOM, FORMULA, NV;
+    int RD_OFF;                       // DRAIN=1: half-0 read edge (virtual) from the block base
 
     // Passes and the per-virtual-edge schedule.
     int lev_k [$];
@@ -544,10 +603,23 @@ module Top;
         sl_kind.push_back(1); sl_pass.push_back(-1); sl_u.push_back(-1); sl_lap.push_back(1'b0);   // last MAC
         D0 = sl_kind.size();
         AB_DS = neg_drain_early ? S - 1 : S;
-        BLK_NOM = D0 + AB_DS + N_W*P_C - 1;      // last drain edge = next block's first capture
-        BLK_LEN = BLK_NOM - (neg_overlap ? 1 : 0);
-        FORMULA = BA*BW*NB + (BA + BW - 2) + S + N_W*P_C;
-        E_END = E0 + (NBLK - 1)*BLK_LEN + BLK_NOM;
+        if (DRAIN == 1) begin
+            // Per-PE read-out: half 0 on the edge after the bubble capture, half 1
+            // on the next block's first capture, unless the DR chain is busy.
+            RD_OFF = D0 - (neg_drain_early ? 1 : 0);
+            BLK_NOM = (D0 + 1 > 2*P_C) ? D0 + 1 : 2*P_C;
+            FORMULA = (BA*BW*NB + (BA + BW - 2) + 2 > 2*P_C) ? BA*BW*NB + (BA + BW - 2) + 2 : 2*P_C;
+            if (neg_dr_busy && D0 + 1 >= 2*P_C)
+                $fatal(1, "NEG_DR_BUSY needs a block shorter than 2*P_C = %0d edges (D0 + 1 = %0d)", 2*P_C, D0 + 1);
+            BLK_LEN = neg_dr_busy ? 2*P_C - 1 : BLK_NOM - (neg_overlap ? 1 : 0);
+            // The far PE's half-1 item reaches the west DR of its row last.
+            E_END = E0 + (NBLK - 1)*BLK_LEN + RD_OFF + 1 + (P_R - 1) + 2*(P_C - 1);
+        end else begin
+            BLK_NOM = D0 + AB_DS + N_W*P_C - 1;  // last drain edge = next block's first capture
+            BLK_LEN = BLK_NOM - (neg_overlap ? 1 : 0);
+            FORMULA = BA*BW*NB + (BA + BW - 2) + S + N_W*P_C;
+            E_END = E0 + (NBLK - 1)*BLK_LEN + BLK_NOM;
+        end
         N_EDGES = E_END + 2;
         NV = E_END + P_R + P_C + N_W;
         cap_blk = new[NV]; cap_pass = new[NV]; cap_u = new[NV]; start_pass = new[NV];
@@ -566,8 +638,8 @@ module Top;
                     if (sl_u[sl] == 0) start_pass[e] = sl_pass[sl];
                 end
             end
-            for (int t = 0; t < N_W*P_C; t++) begin
-                e = base + D0 + AB_DS + t;
+            for (int t = 0; t < ((DRAIN == 1) ? 2 : N_W*P_C); t++) begin
+                e = (DRAIN == 1) ? base + RD_OFF + t : base + D0 + AB_DS + t;
                 if (drn_blk[e] >= 0) $fatal(1, "two drains on edge %0d", e);
                 drn_blk[e] = b; drn_t[e] = t;
             end
@@ -582,6 +654,11 @@ module Top;
 
     function automatic bit in_v(input int v);
         return v >= 0 && v < NV;
+    endfunction
+
+    // DRAIN=1: virtual edge v is a half-0 read edge of PE (0,0).
+    function automatic bit rd_at(input int v);
+        return in_v(v) && drn_blk[v] >= 0 && drn_t[v] == 0;
     endfunction
 
     task automatic abit_drive(input int e);
@@ -627,7 +704,13 @@ module Top;
         end
         for (int r = 0; r < P_R; r++)
             ring_in[r] = neg_row ? (in_v(e + 1) && lap_v[e + 1]) : (in_v(e + 1 - r) && lap_v[e + 1 - r]);
-        shift_in = in_v(e) && drn_blk[e] >= 0;
+        if (DRAIN == 1) begin
+            // drain_in[r] one edge ahead of PE (r,0)'s half-0 read edge.
+            for (int r = 0; r < P_R; r++)
+                drain_in[r] = neg_dr_row ? rd_at(e + 1) : rd_at(e + 1 - r);
+            shift_in = 1'b0;
+        end else
+            shift_in = in_v(e) && drn_blk[e] >= 0;
         if (shift_in)
             acc_in_west = '0;
         else if (junk)
@@ -656,6 +739,9 @@ module Top;
         void'($value$plusargs("NEG_ABIT_EXTRA_LAP=%d", neg_extra_lap));
         void'($value$plusargs("NEG_ABIT_SIGN=%d", neg_sign));
         void'($value$plusargs("NEG_ABIT_ORDER=%d", neg_order));
+        neg_dr_row = $test$plusargs("NEG_DR_NO_ROW_SKEW");
+        neg_dr_col = $test$plusargs("NEG_DR_NO_COL_SKEW");
+        neg_dr_busy = $test$plusargs("NEG_DR_BUSY");
         if (BA < 2 || BA > 8 || BW < 2 || BW > 8) $fatal(1, "BA, BW must be 2..8");
         if (L < K*M || L % (K*M) != 0) $fatal(1, "L=%0d must be a positive multiple of %0d", L, K*M);
         NB = L / (K*M);
@@ -684,6 +770,22 @@ module Top;
         end
         return bp_drain_at(e, blk, t);
     endfunction
+
+    // DRAIN=1: every valid west DR item, read pre-edge at P_e (loaded on e-1).
+    task automatic read_dr(input int e);
+        for (int r = 0; r < P_R; r++) begin
+            if (dr_valid_west[r] === 1'b1) begin
+                if ($isunknown(dr_out_west[r*DRW +: DRW]))
+                    $fatal(1, "[X-FAIL] west DR item X: row %0d at edge %0d", r, e - 1);
+                $fwrite(trace_file, "Q %0d %0d", r, e - 1);
+                for (int n = 0; n < DRN; n++)
+                    $fwrite(trace_file, " %0d", $signed(dr_out_west[(r*DRN + n)*OWIDTH +: OWIDTH]));
+                $fwrite(trace_file, "\n");
+                n_items++;
+            end else if (dr_valid_west[r] !== 1'b0)
+                $fatal(1, "[X-FAIL] dr_valid_west[%0d] X at edge %0d", r, e);
+        end
+    endtask
 
     // Pre-edge acc_out_east of every PE row on a drain edge.
     task automatic read_drain(input int e);
@@ -728,6 +830,10 @@ module Top;
         void'($value$plusargs("MODE=%s", sched));
         if (sched != "bp" && sched != "abit") $fatal(1, "[BENCH] unknown +MODE=%s (bp | abit)", sched);
         abit = (sched == "abit");
+        if (DRAIN == 1 && !abit)
+            $fatal(1, "[BENCH] +MODE=%s reads the in-tile chain: build with PAYN_DRAIN=0 (DRAIN=1 runs +MODE=abit)", sched);
+        if (DRAIN != 1)
+            reject_plusargs('{"NEG_DR_NO_ROW_SKEW", "NEG_DR_NO_COL_SKEW", "NEG_DR_BUSY"});
         void'($value$plusargs("BA=%d", BA));
         void'($value$plusargs("BW=%d", BW));
         void'($value$plusargs("L=%d", L));
@@ -758,10 +864,10 @@ module Top;
         if (abit) begin
             trace_file = $fopen("abit_grid_trace.txt", "w");
             if (trace_file == 0) $fatal(1, "cannot open abit_grid_trace.txt");
-            $fwrite(trace_file, "ABITGCFG %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d\n",
+            $fwrite(trace_file, "ABITGCFG %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d\n",
                     P_R, P_C, BA, BW, L, MROWS, NCOLS, NBLK, NB, E0, E_END, BLK_LEN, D0, AB_DS, FORMULA, NLEV,
                     junk, neg_row, force_col, neg_no_bubble, neg_drain_early, neg_overlap, neg_no_lap, neg_extra_lap,
-                    neg_sign, neg_order);
+                    neg_sign, neg_order, DRAIN, neg_dr_row, neg_dr_col, neg_dr_busy);
         end else begin
             trace_file = $fopen("bpg_trace.txt", "w");
             if (trace_file == 0) $fatal(1, "cannot open bpg_trace.txt");
@@ -780,24 +886,29 @@ module Top;
                 bp_drive(e);
             end
             @(posedge clk);                      // P_e
-            read_drain(e);
+            if (DRAIN == 1) read_dr(e);
+            else read_drain(e);
             @(negedge clk);
         end
         mac_en = 1'b0;
         shift_in = 1'b0;
         ring_in = '0;
         ring_global = 1'b0;
+        drain_in = '0;
         cur_e = N_EDGES;
         @(posedge clk);                          // flush open lap runs
+        if (DRAIN == 1) read_dr(N_EDGES);
         @(negedge clk);
 
-        if (n_drain != NBLK*P_R*N_W*P_C)
+        if (DRAIN == 1 && n_items != NBLK*P_R*P_C*2)
+            $fatal(1, "read %0d DR items, expected %0d", n_items, NBLK*P_R*P_C*2);
+        if (DRAIN != 1 && n_drain != NBLK*P_R*N_W*P_C)
             $fatal(1, "drained %0d columns, expected %0d", n_drain, NBLK*P_R*N_W*P_C);
         $fclose(trace_file);
         trace_file = 0;
         if (abit)
-            $display("PASS: PaYN abit grid bench P=%0dx%0d BA=%0d BW=%0d L=%0d MROWS=%0d NCOLS=%0d blocks=%0d block_len=%0d formula=%0d edges=%0d junk=%0d",
-                     P_R, P_C, BA, BW, L, MROWS, NCOLS, NBLK, BLK_LEN, FORMULA, N_EDGES, junk);
+            $display("PASS: PaYN abit grid bench P=%0dx%0d BA=%0d BW=%0d L=%0d MROWS=%0d NCOLS=%0d blocks=%0d block_len=%0d formula=%0d edges=%0d junk=%0d drain=%0d",
+                     P_R, P_C, BA, BW, L, MROWS, NCOLS, NBLK, BLK_LEN, FORMULA, N_EDGES, junk, DRAIN);
         else
             $display("PASS: PaYN bit-plane grid bench P=%0dx%0d BA=%0d BW=%0d L=%0d MROWS=%0d NCOLS=%0d blocks=%0d block_len=%0d edges=%0d mode=%0d junk=%0d gate_junk=%0d lap_len=%0d",
                      P_R, P_C, BA, BW, L, MROWS, NCOLS, NBLK, BLK_LEN, N_EDGES, bp_mode, junk, gate_junk, LAP_LEN);
