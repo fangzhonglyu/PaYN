@@ -6,8 +6,10 @@ checked and power-measured on all 27 points (section 4.6; tables in `doc/payn_re
 in-tile chain").  The memory side (section 5), the sorter and the gather are not started. (Revised the same day after review: the wide read-out
 with an edge staging buffer is replaced by a drain-register chain.) Evaluation numbers come from
 PaYN_eval (`layer_energy.py`, `group_trace.py`; scripts and runs under
-`PaYN_eval/runs/grid_colsort/`). Values marked *estimate* are first-order arithmetic, not
-measurements; PaYN_eval's `column_sort` schedule will replace them. Shape and grid throughout:
+`PaYN_eval/runs/grid_colsort/`). Sections 5 (energy) and 6 carry PaYN_eval's evaluation of the
+routed drain-register design with the `column_sort` schedule (2026-10-07, PaYN_eval
+`results/model_tables/14B/`); values marked *estimate* elsewhere are first-order arithmetic, not
+measurements. Shape and grid throughout:
 **K16/M8, 4x8 PEs** (32 mesh rows, 64 mesh columns), 400 MHz.
 
 ## 1. Problem
@@ -185,8 +187,8 @@ This also closes the open "better draining" item (`cbsg_handoff.md` 3b).
 ## 5. Memory side: banked PsumBuffer (outside the array; nothing here exists in this repo)
 
 - **Bandwidth.** The chain delivers up to 128 psums per edge in 16-edge bursts per chunk; each is
-  read and written, 256 psum accesses per edge. Today: one 1,536-bit row (64 psums) per edge.
-  Plan: **4 banks of 32 KiB** single-port, or 2 dual-port (1R + 1W). Banking alone cannot fix the
+  read and written. Today: one 1,536-bit row (64 psums) per edge. The bank count is set by the
+  number of separate addresses per edge, not by psums (next bullet). Banking alone cannot fix the
   drain: the psums cannot leave the array faster than the in-array chain moves them.
 - **Capacity.** Window footprint 512 rows x 64 columns x 24 b = 96 KiB of the 128 KiB.
 - **Bank mapping.** The binding limit is addresses, not psums: each edge delivers 4 items = 16
@@ -198,21 +200,48 @@ This also closes the open "better draining" item (`cbsg_handoff.md` 3b).
   kbit), waits up to 31 / 17 edges (the same address is not touched again until the next chunk). A
   hard bound needs a loose sorter cap (at most a few tokens of one bank per tile) or backpressure.
   Alternative: a one-slice row assembler (49 kbit, flops) feeding 4 banks of 1,536-bit rows.
-- **Energy.** The per-chunk read-modify-write is the largest new energy term: 2.98 pJ per output
-  per chunk for one 128 KiB bank (CACTI, 1,536-bit row: read 68.4 pJ, write 122.2 pJ per row),
-  ~+2.2 J on 14B t48. Smaller banks should lower it (CACTI per word: 32 KiB ~1/3 of 128 KiB).
+- **Energy** (CACTI 22 nm through Accelergy's wrapper, PaYN_eval `tools/cacti_psum_banks.py`; 128 KiB
+  total, 24-bit psums, per psum read-modify-write):
+
+  | PsumBuffer | words per bank | read / write pJ per access | pJ per psum RMW | area (um2) |
+  |---|---:|---:|---:|---:|
+  | 1 bank, 1,536-bit row (the mapping's; reproduces 68.4 / 122.2) | 682 | 68.40 / 122.18 | 2.978 | 131,544 |
+  | 16 banks x 192 b | 341 | 3.12 / 4.33 | 0.930 | 122,493 |
+  | 32 banks x 192 b | 170 | 1.68 / 3.31 | 0.624 | 124,514 |
+  | **64 banks x 192 b** | 85 | 1.45 / 2.24 | **0.461** | 160,804 |
+  | 128 banks x 192 b (below CACTI's 64-row minimum, scaled) | 42 | 1.00 / 1.42 | 0.302 | 180,996 |
+
+  PaYN_eval charges 64 banks: **0.32 J on 14B t48** (347 M slices x 256 pieces), 0.8% of on-chip
+  energy, against ~2.2 J with the single wide bank. The banks cost ~+29k um2 of SRAM area over one
+  bank (+2.4% of the 4x8 array), not charged in the tables; the conflict buffer is not priced.
 - **Collectors.** West edge, beside the A edges: floorplan room for P_R x 768 output bits.
 - Also new: the per-chunk sorter, and GLB gather of A rows in sorted order.
 
-## 6. Expected effect (estimates; 14B t48, 4x8)
+## 6. Effect (PaYN_eval, 14B t48, 4x8)
 
-| | in-order today | this plan (W = 512) |
-|---|---:|---:|
-| SC clock utilization | 0.647 | ~0.925 (2-edge stall included; t32 0.904, t96 0.962) |
-| Latency | 82.2 s | ~59-60 s (-28%) |
-| Array area | 1.158 mm2 | 1.211 mm2 (+4.5%, routed: section 4.6); PsumBuffer banking to be priced in CACTI |
-| On-chip energy | 46.8 J | -7% if idle rows burn until the tile-max (PaYN_eval's current pricing); close to 0 if idle rows burn ~half of that, as the ladder point suggests. The latency gain does not depend on this. |
-| On-chip EDP vs BOS INT8 8x9 (iso-area) | 1.07x | ~0.72-0.78x |
+PaYN_eval `layer_energy.py`, rule mapping, per-group trace 14B_t48 (8,192 tokens, SC + INT layers),
+each design priced from its own route; idle rows burn until the tile-max. SC drain: per-slice
+max(compute + 2, 2*P_C) edges and the grid skew once per GEMM (drain register), skew + 8*P_C per
+slice (in-tile); drain energy at the INT-measured per-PE-edge rate, drain-register hops at a 6 pJ
+*estimate* (never measured: every single-PE bench ties the east input to 0).
+
+| | in-tile chain, in order (today) | drain register, in order | **drain register, column sort (W = 512)** |
+|---|---:|---:|---:|
+| Array area | 1.158 mm2 | 1.211 mm2 (+4.5%) | 1.211 mm2 (+ PsumBuffer banks, section 5) |
+| SC utilization (tiles / incl. drain) | 0.645 / 0.616 | 0.645 / 0.644 | **0.956 / 0.921** |
+| SC drain share of SC array time | 4.4% | 0.1% | 3.7% (2-edge bubble + busy floor) |
+| INT busy time | 10.97 s | 10.14 s | 10.14 s |
+| Latency | 82.2 s | 78.3 s (-4.7%) | **57.8 s (-29.6%)** |
+| On-chip energy | 46.8 J | 46.1 J (-1.6%) | **40.9 J (-12.5%)** |
+|   of it SC drain / PsumBuffer RMW | 0.53 J / - | 0.05 J / - | 1.10 J (0.47 J hops, estimate) / 0.32 J |
+| On-chip EDP | 3,846 J s | 3,606 J s | **2,368 J s (-38%)** |
+| vs BOS INT8 iso-area 8x10 (3,240 J s) | 1.19x | 1.11x | **0.73x** |
+
+Across targets (column sort, drain register): t32 0.895 utilization incl. drain, 44.8 s, 36.5 J,
+EDP 0.50x BOS INT8; t96 0.959, 99.4 s, 52.9 J, 1.62x. The energy gain is larger than the earlier
+-7% estimate because the column sort also cuts the burn of short rows (tile-max L 75.5 -> 50.8 at
+t48). Against the earlier BOS 8x9 baseline (picked iso-area to the in-tile 1.158 mm2) the column-sort
+t48 EDP is 0.66x.
 
 ## 7. Alternatives considered
 
@@ -238,7 +267,10 @@ This also closes the open "better draining" item (`cbsg_handoff.md` 3b).
   is exact because each element's product depends only on (a, w, L, x mod 64).
 - **Gate level**, then area/power of `PAYN_DRAIN` 1 vs 0 (DR flops, mux, clock gating).
 - **APR**: route the DR links and the west read-out; qualify as today.
-- **PaYN_eval**: implement the `column_sort` schedule (per-chunk slices, 2-edge stall, DR-chain
-  busy rule, PsumBuffer read-modify-write priced through the mapping with banking, DR area) to
-  replace the estimates in sections 4.5 and 6. Optional study: hold one row order for R chunks
-  (sorted on their max L) to divide slices, stalls and psum traffic by R.
+- **PaYN_eval (done 2026-10-07)**: the drain-register route is imported as its own design
+  (`--payn-drain dr`, PaYN_eval's K16/M8 default; area, SC/INT energy, block period from this
+  route), and `--schedule column_sort[:W]` runs per-chunk slices with the 2-edge bubble, the busy
+  floor and the 64-bank PsumBuffer read-modify-write (section 6). Open there: the hop energy (a grid
+  power run would measure it), the sorter / gather / conflict buffer, the PsumBuffer bank area.
+  Optional study: hold one row order for R chunks (sorted on their max L) to divide slices, stalls
+  and psum traffic by R.

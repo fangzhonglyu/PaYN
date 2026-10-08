@@ -51,6 +51,7 @@ Routed single PE, PT-PX on the full-timing gate-level SAIF; the drain is outside
 | route | workload | blocks | window edges | power (mW) | pJ/MAC | array pJ/MAC | u_pe (mW) | edge (mW) | cycles/block | GMAC/s/mm2 (1 PE) |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | K16/M8 (payn_k16m8_20261006_final) | uniform L=128 | 192 | 3072 | 12.063 | 0.4712 | 0.4087 | 10.463 | 1.437 | 16.00 | 440.4 |
+| K16/M8 (payn_k16m8_20261006_final) | uniform L=8 | 192 | 192 | 28.645 | 0.0699 | 0.0495 | 20.284 | 8.193 | 1.00 | 7,046.4 |
 | K16/M8 (payn_k16m8_20261006_final) | uniform L=16 | 192 | 384 | 23.956 | 0.1170 | 0.0899 | 18.408 | 5.376 | 2.00 | 3,523.2 |
 | K16/M8 (payn_k16m8_20261006_final) | uniform L=32 | 192 | 768 | 18.589 | 0.1815 | 0.1474 | 15.092 | 3.331 | 4.00 | 1,761.6 |
 | K16/M8 (payn_k16m8_20261006_final) | uniform L=48 | 192 | 1152 | 16.113 | 0.2360 | 0.1927 | 13.156 | 2.793 | 6.00 | 1,174.4 |
@@ -60,6 +61,7 @@ Routed single PE, PT-PX on the full-timing gate-level SAIF; the drain is outside
 | K16/M8 (payn_k16m8_20261006_final) | uniform L=112 | 192 | 2688 | 12.634 | 0.4318 | 0.3653 | 10.687 | 1.786 | 14.00 | 503.3 |
 | K16/M8 (payn_k16m8_20261006_final) | ladder [128, 96, 64, 48, 44, 42, 38] per (row, 128-column chunk) | 192 | 2816 | 10.103 | 0.3618 | 0.2992 | 8.355 | 1.589 | 14.67 | 480.4 |
 | K16/M8 DR (payn_k16m8_dr_20261007_final) | uniform L=128 | 192 | 3072 | 11.865 | 0.4635 | 0.4033 | 10.326 | 1.449 | 16.00 | 429.9 |
+| K16/M8 DR (payn_k16m8_dr_20261007_final) | uniform L=8 | 192 | 192 | 29.187 | 0.0713 | 0.0505 | 20.669 | 8.418 | 1.00 | 6,879.1 |
 | K16/M8 DR (payn_k16m8_dr_20261007_final) | uniform L=16 | 192 | 384 | 24.339 | 0.1188 | 0.0915 | 18.742 | 5.495 | 2.00 | 3,439.6 |
 | K16/M8 DR (payn_k16m8_dr_20261007_final) | uniform L=32 | 192 | 768 | 18.649 | 0.1821 | 0.1479 | 15.150 | 3.404 | 4.00 | 1,719.8 |
 | K16/M8 DR (payn_k16m8_dr_20261007_final) | uniform L=48 | 192 | 1152 | 16.062 | 0.2353 | 0.1923 | 13.127 | 2.842 | 6.00 | 1,146.5 |
@@ -69,6 +71,7 @@ Routed single PE, PT-PX on the full-timing gate-level SAIF; the drain is outside
 | K16/M8 DR (payn_k16m8_dr_20261007_final) | uniform L=112 | 192 | 2688 | 12.462 | 0.4259 | 0.3611 | 10.564 | 1.808 | 14.00 | 491.4 |
 | K16/M8 DR (payn_k16m8_dr_20261007_final) | ladder [128, 96, 64, 48, 44, 42, 38] per (row, 128-column chunk) | 192 | 2816 | 10.017 | 0.3587 | 0.2980 | 8.322 | 1.604 | 14.67 | 469.0 |
 | K8/M16 (cbsg_af_ipd_20261005_distguide_spp_pins_postfill) | uniform L=128 | 384 | 3072 | 12.067 | 0.4714 | 0.4169 | 10.673 | 1.260 | 8.00 | 576.2 |
+| K8/M16 (cbsg_af_ipd_20261005_distguide_spp_pins_postfill) | uniform L=8 | 384 | 384 | 18.237 | 0.0890 | 0.0665 | 13.618 | 4.481 | 1.00 | 4,609.4 |
 | K8/M16 (cbsg_af_ipd_20261005_distguide_spp_pins_postfill) | uniform L=16 | 384 | 384 | 21.578 | 0.1054 | 0.0812 | 16.635 | 4.804 | 1.00 | 4,609.4 |
 | K8/M16 (cbsg_af_ipd_20261005_distguide_spp_pins_postfill) | uniform L=32 | 384 | 768 | 19.596 | 0.1914 | 0.1597 | 16.353 | 3.100 | 2.00 | 2,304.7 |
 | K8/M16 (cbsg_af_ipd_20261005_distguide_spp_pins_postfill) | uniform L=48 | 384 | 1152 | 17.052 | 0.2498 | 0.2089 | 14.259 | 2.654 | 3.00 | 1,536.5 |
@@ -88,11 +91,11 @@ SC throughput at L = 128 (GMAC/s/mm2) and the composite energy:
 
 SC energy vs stream length T (uniform L = T):
 
-| route | T=016 | T=032 | T=048 | T=064 | T=080 | T=096 | T=112 |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| K16/M8 (payn_k16m8_20261006_final) | 0.1170 | 0.1815 | 0.2360 | 0.2797 | 0.3374 | 0.3840 | 0.4318 |
-| K16/M8 DR (payn_k16m8_dr_20261007_final) | 0.1188 | 0.1821 | 0.2353 | 0.2776 | 0.3334 | 0.3790 | 0.4259 |
-| K8/M16 (cbsg_af_ipd_20261005_distguide_spp_pins_postfill) | 0.1054 | 0.1914 | 0.2498 | 0.2920 | 0.3490 | 0.3926 | 0.4338 |
+| route | T=008 | T=016 | T=032 | T=048 | T=064 | T=080 | T=096 | T=112 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| K16/M8 (payn_k16m8_20261006_final) | 0.0699 | 0.1170 | 0.1815 | 0.2360 | 0.2797 | 0.3374 | 0.3840 | 0.4318 |
+| K16/M8 DR (payn_k16m8_dr_20261007_final) | 0.0713 | 0.1188 | 0.1821 | 0.2353 | 0.2776 | 0.3334 | 0.3790 | 0.4259 |
+| K8/M16 (cbsg_af_ipd_20261005_distguide_spp_pins_postfill) | 0.0890 | 0.1054 | 0.1914 | 0.2498 | 0.2920 | 0.3490 | 0.3926 | 0.4338 |
 
 SC power by block (mW, uniform / ladder):
 
@@ -402,6 +405,7 @@ K16/M8: payn_k16m8_20261006_final (in-tile chain) vs payn_k16m8_dr_20261007_fina
 |   drain register (um2) | - | 1,912.1 | - |
 | setup / hold WNS (ns) | +0.055 / +0.153 | +0.051 / +0.170 | - |
 | SC uniform L=128 pJ/MAC | 0.4712 | 0.4635 | -1.6% |
+| SC uniform L=8 pJ/MAC | 0.0699 | 0.0713 | +1.9% |
 | SC uniform L=16 pJ/MAC | 0.1170 | 0.1188 | +1.6% |
 | SC uniform L=32 pJ/MAC | 0.1815 | 0.1821 | +0.3% |
 | SC uniform L=48 pJ/MAC | 0.2360 | 0.2353 | -0.3% |
@@ -453,7 +457,7 @@ K16/M8: payn_k16m8_20261006_final (in-tile chain) vs payn_k16m8_dr_20261007_fina
 
 ## Sources
 
-- K16/M8 (payn_k16m8_20261006_final): route `apr/build/TSMC22/PAYN/payn_k16m8_20261006_final` (top `payn_array`), qualification `build/flow/payn_k16m8_20261006/route`, measurements `build/flow/payn_k16m8_20261006/measure`, `build/flow/payn_k16m8_20261006/measure_int7`, `build/flow/payn_k16m8_20261006/measure_tsweep2` (9 SC + 31 INT points, every one through gl-audit, saif-sc / saif-int, sdf-clock, pt-coverage and its trace checker).
-- K16/M8 DR (payn_k16m8_dr_20261007_final): route `apr/build/TSMC22/PAYN/payn_k16m8_dr_20261007_final` (top `payn_array`), qualification `build/flow/payn_k16m8_dr_20261007/route`, measurements `build/flow/payn_k16m8_dr_20261007/measure`, `build/flow/payn_k16m8_dr_20261007/measure_int` (9 SC + 18 INT points, every one through gl-audit, saif-sc / saif-int, sdf-clock, pt-coverage and its trace checker).
-- K8/M16 (cbsg_af_ipd_20261005_distguide_spp_pins_postfill): route `apr/build/TSMC22/PAYN_SC_CSA_CBSG_AF_IPD/cbsg_af_ipd_20261005_distguide_spp_pins_postfill` (top `payn_array_signed_segmented_csa_cbsg_af_ipd`), qualification `build/power_char/cbsg_20261005/af_ipd/pinned`, measurements `build/flow/cbsg_af_ipd_20261005/measure`, `build/flow/cbsg_af_ipd_20261005/measure_int7`, `build/flow/cbsg_af_ipd_20261005/measure_tsweep2` (9 SC + 31 INT points, every one through gl-audit, saif-sc / saif-int, sdf-clock, pt-coverage and its trace checker).
+- K16/M8 (payn_k16m8_20261006_final): route `apr/build/TSMC22/PAYN/payn_k16m8_20261006_final` (top `payn_array`), qualification `build/flow/payn_k16m8_20261006/route`, measurements `build/flow/payn_k16m8_20261006/measure`, `build/flow/payn_k16m8_20261006/measure_int7`, `build/flow/payn_k16m8_20261006/measure_t008`, `build/flow/payn_k16m8_20261006/measure_tsweep2` (10 SC + 31 INT points, every one through gl-audit, saif-sc / saif-int, sdf-clock, pt-coverage and its trace checker).
+- K16/M8 DR (payn_k16m8_dr_20261007_final): route `apr/build/TSMC22/PAYN/payn_k16m8_dr_20261007_final` (top `payn_array`), qualification `build/flow/payn_k16m8_dr_20261007/route`, measurements `build/flow/payn_k16m8_dr_20261007/measure`, `build/flow/payn_k16m8_dr_20261007/measure_int`, `build/flow/payn_k16m8_dr_20261007/measure_t008` (10 SC + 18 INT points, every one through gl-audit, saif-sc / saif-int, sdf-clock, pt-coverage and its trace checker).
+- K8/M16 (cbsg_af_ipd_20261005_distguide_spp_pins_postfill): route `apr/build/TSMC22/PAYN_SC_CSA_CBSG_AF_IPD/cbsg_af_ipd_20261005_distguide_spp_pins_postfill` (top `payn_array_signed_segmented_csa_cbsg_af_ipd`), qualification `build/power_char/cbsg_20261005/af_ipd/pinned`, measurements `build/flow/cbsg_af_ipd_20261005/measure`, `build/flow/cbsg_af_ipd_20261005/measure_int7`, `build/flow/cbsg_af_ipd_20261005/measure_t008`, `build/flow/cbsg_af_ipd_20261005/measure_tsweep2` (10 SC + 31 INT points, every one through gl-audit, saif-sc / saif-int, sdf-clock, pt-coverage and its trace checker).
 

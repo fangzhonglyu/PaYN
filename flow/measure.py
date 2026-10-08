@@ -15,7 +15,7 @@ drain-register route, the bit-plane points are skipped and the INT bench reads t
   sc_uniform, sc_ladder   designs/payn/power/power_payn_sc.sv: uniform L=128, or the per-row ladder; SC_BATCHES =
                           --sc-columns / K blocks (3,072 columns: 384 blocks at K8/M16, 192 at K16/M8; the same window
                           of 3,072 edges at L=128 and the same 196,608 kernel MACs at either shape)
-  sc_T<L>                 uniform L = T for every row (the stream-length sweep: T in 16..112 by 16; bench define
+  sc_T<L>                 uniform L = T for every row (the stream-length sweep: T = 8, then 16..112 by 16; bench define
                           SC_UNIFORM_L)
   bp_<prec>_L<L>_<win>    designs/payn/power/power_payn_int.sv +MODE=bp (bit-plane), operands int_workload.py energy
   abit_<prec>_L<L>_<win>  the same bench with INT_ABIT (all bits in time), operands int_workload.py abit --dist plain
@@ -60,7 +60,7 @@ SC_TB = "designs/payn/power/power_payn_sc.sv"
 INT_TB = "designs/payn/power/power_payn_int.sv"
 GL_FLAGS = "+neg_tchk +sdfverbose"
 SC_COLUMNS = 3072
-T_POINTS = (16, 32, 48, 64, 80, 96, 112)
+T_POINTS = (8, 16, 32, 48, 64, 80, 96, 112)
 PREC = {"int8": (8, 8), "int7": (7, 7), "int6": (6, 6), "int4": (4, 4), "w4a8": (8, 4), "w6a8": (8, 6)}
 WINDOW = {"dr": 0, "d": 1, "all": 2}
 HIER = ("u_pe", "u_peripheral", "u_combiner", "u_rng")

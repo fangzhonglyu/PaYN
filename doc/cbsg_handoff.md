@@ -194,7 +194,9 @@ Where things are:
    not per bit: 128 kA encoders (16.7k vs 8.4k µm²) and twice the operand registers; bit pipes, W comparators and
    ANDs are unchanged.
    - SC pJ/MAC (K16/M8 vs K8/M16): uniform L=128 0.4712 vs 0.4714; ladder 0.3618 vs 0.3779 (−4.3%); vs T, −0.5% to
-     −5.5% for T = 32..112, +11% at T = 16. SC 4x4 GMAC/s/mm²: 659 vs 761.
+     −5.5% for T = 32..112, +11% at T = 16, −21% at T = 8 (0.0699 vs 0.0890: at L = 8 one K16/M8 cycle holds the
+     whole thermometer, while K8/M16 fills only 8 of its 16 positions per cycle and needs twice the blocks).  SC 4x4
+     GMAC/s/mm²: 659 vs 761.
    - INT pJ/MAC is 5-7% higher at K16/M8 (e.g. abit INT8 L=384 0.411 vs 0.383; INT4 L=4096 0.094 vs 0.090), and
      4x4 GMAC/s/mm² is ~13% lower (area): abit INT8 L=384 1,037, INT6 L=4096 2,249, INT4 L=4096 4,854 (BOS 1,621,
      2,064, 2,491).
