@@ -26,6 +26,13 @@ grid-bp and power read the in-tile chain); sc adds cases/sc_dr.txt and grid-abit
 chain's busy rule, the drain-wave controls).  Run dirs <out>/<shape>_dr/...
   python3 flow/regress.py --drain 1 --shape both
 
+Lap fold (--fold 1): every bench compiled with +define+PAYN_LAP_FOLD=1 (a lap edge keeps its MAC and doubles first;
+the all-bits-in-time schedule drops its level-step bubbles), with either drain; suites cases, units, sc, abit,
+grid-abit and power (power without its bit-plane rows; the bit-plane suites int, switch and grid-bp are not run on
+fold builds).  abit and grid-abit add the rows of cases/abit_fold.txt and grid_abit_fold.txt whose build column is
+"fold" or "both" (a lap build, --fold 0, runs the "lap" and "both" rows).  Run dirs <out>/<shape>[_dr]_fold/...
+  python3 flow/regress.py --drain 1 --fold 1
+
 Gate-level mode (--gl MODES): the same functional bench on a netlist and on RTL, the same inputs on both, for the
 rows of cases/gl_sc.txt, gl_int.txt, gl_switch.txt and gl_abit.txt whose modes column names the mode:
   syn-unit   synthesis netlist (--synth-run), unit delay, timing checks off (ARM_UD_MODEL + ARM_EN_X_SQUASH):
@@ -64,12 +71,16 @@ PWR = REPO / "designs/payn/power"
 SHAPES = {"k16m8": 8, "k8m16": 16}          # shape -> PAYN_M
 SUITES = ["cases", "units", "sc", "int", "switch", "abit", "grid-bp", "grid-abit", "power"]
 DR_SUITES = ["cases", "units", "sc", "abit", "grid-abit"]   # --drain 1
+FOLD_SUITES = ["cases", "units", "sc", "abit", "grid-abit", "power"]   # --fold 1 (power: no bit-plane rows)
 DW = "/usr/caen/synopsys-synth-2021.06-SP1/dw/sim_ver"
 
 
 # ------------------------------------------------------------------ helpers --
 def sh(cmd: list[str], cwd: Path, log: Path) -> int:
-    """Run cmd in cwd with stdout+stderr to log; return the exit code."""
+    """Run cmd in cwd with stdout+stderr to log; return the exit code.  A simulation queues for its VCS license
+    (+vcs+lic+wait) instead of failing when many runs share the pool."""
+    if cmd and cmd[0].endswith("simv") and "+vcs+lic+wait" not in cmd:
+        cmd = [cmd[0], "+vcs+lic+wait", *cmd[1:]]
     with open(log, "w") as f:
         return subprocess.run(cmd, cwd=cwd, stdout=f, stderr=subprocess.STDOUT,
                               env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}).returncode
@@ -103,6 +114,12 @@ def table(name: str, sep: str | None = None) -> list[list[str]]:
     return rows
 
 
+def fold_table(c: "Ctx", name: str) -> list[list[str]]:
+    """Rows of a lap-fold table (second column: lap | fold | both) for this build, without the build column."""
+    want = ("fold", "both") if c.fold else ("lap", "both")
+    return [[r[0], *r[2:]] for r in table(name) if r[1] in want]
+
+
 def last_line(p: Path) -> str:
     lines = p.read_text(errors="replace").strip().splitlines() if p.is_file() else []
     return lines[-1] if lines else ""
@@ -118,9 +135,9 @@ def contract_count(log: str, pass_prefix: str) -> int:
 
 
 class Ctx:
-    def __init__(self, shape: str, out: Path, jobs: int, drain: int = 0):
-        self.shape, self.m, self.jobs, self.drain = shape, SHAPES[shape], jobs, drain
-        self.out = (out / (f"{shape}_dr" if drain else shape)).resolve()
+    def __init__(self, shape: str, out: Path, jobs: int, drain: int = 0, fold: int = 0):
+        self.shape, self.m, self.jobs, self.drain, self.fold = shape, SHAPES[shape], jobs, drain, fold
+        self.out = (out / (shape + ("_dr" if drain else "") + ("_fold" if fold else ""))).resolve()
         self.builds: dict[str, Path] = {}
 
     def simv(self, key: str, tb: Path, defines: list[str] = (), top: str = "Top") -> Path:
@@ -130,7 +147,8 @@ class Ctx:
         b = fresh_dir(self.out / "build" / key)
         cmd = ["vcs", "-sverilog", "+vc", "-Mupdate", "-line", "-full64", "-xprop=tmerge", "-lca",
                "-debug_access+pp", f"+incdir+{REPO / 'designs'}", "-assert", "svaext",
-               "-timescale=1ns/1ps", f"+define+PAYN_M={self.m}", f"+define+PAYN_DRAIN={self.drain}", *defines,
+               "-timescale=1ns/1ps", f"+define+PAYN_M={self.m}", f"+define+PAYN_DRAIN={self.drain}",
+               f"+define+PAYN_LAP_FOLD={self.fold}", *defines,
                "-o", str(b / "simv"), f"-Mdir={b / 'obj'}", "-y", DW, "+libext+.v+",
                f"+incdir+{DW}", str(tb), "-top", top]
         if sh(cmd, b, b / "compile.log") != 0 or not (b / "simv").is_file():
@@ -351,9 +369,11 @@ def abit_case(c: Ctx, label, ba, bw, L, mrows, ncols, dist, seed, flags, expect)
     log = (d / "sim.log").read_text(errors="replace")
     prefix = "PASS: PaYN abit INT bench"
     bench_pass = rc == 0 and prefix in log
-    if expect == "fail:CONTRACT":
-        ok = not bench_pass and "[INT-CONTRACT]" in log
-        return ok, f"{label}: {'PASS (caught by [INT-CONTRACT])' if ok else 'FAIL (expected [INT-CONTRACT])'}"
+    if expect in ("fail:CONTRACT", "fail:FOLDDRAIN"):
+        # FOLDDRAIN: a fold on a drain edge, [DR-CONTRACT] (read on a lap edge) or [FOLD-CONTRACT] (shift edge)
+        tag = "INT-CONTRACT" if expect == "fail:CONTRACT" else ("DR-CONTRACT" if c.drain else "FOLD-CONTRACT")
+        ok = not bench_pass and f"[{tag}]" in log
+        return ok, f"{label}: {'PASS (caught by [' + tag + '])' if ok else 'FAIL (expected [' + tag + '])'}"
     if not bench_pass:
         return False, f"{label}: FAIL (simulation error, {d / 'sim.log'})"
     scc = contract_count(log, prefix)
@@ -371,10 +391,24 @@ def abit_period_ok(_d: Path, j: dict) -> bool:
     return j["period_ok"] and j["measured_periods"] == [j["formula"]]
 
 
+def fold_sensitivity(c: Ctx) -> tuple[bool, str]:
+    """Fold builds: over the passing fold-schedule runs, the drained values a lap build would get wrong on the same
+    stimulus (the fold's MAC is exercised; the hardware negative control is the fold schedule on a lap build)."""
+    runs = wrong = 0
+    for d in sorted((c.out / "abit").iterdir()):
+        j = d / "check.json"
+        r = json.loads(j.read_text()) if j.is_file() else {}
+        if r.get("status") == "PASS" and r.get("fold_schedule") and r.get("lap_hw_mismatches") is not None:
+            runs += 1
+            wrong += r["lap_hw_mismatches"]
+    ok = runs > 0 and wrong > 0 if ONLY is None else True
+    return ok, f"abit fold sensitivity: {runs} bit-exact fold-schedule runs; a lap build would get {wrong} drained values wrong"
+
+
 def suite_abit(c: Ctx) -> list[tuple[bool, str]]:
     c.simv("array", TB / "test_payn_array.sv")
-    res = c.run_all(lambda *r: abit_case(c, *r), table("abit.txt"))
-    return res + [coverage(c, "abit", abit_period_ok)]
+    res = c.run_all(lambda *r: abit_case(c, *r), table("abit.txt") + fold_table(c, "abit_fold.txt"))
+    return res + [coverage(c, "abit", abit_period_ok)] + ([fold_sensitivity(c)] if c.fold else [])
 
 
 # ------------------------------------------------------------- grid suites --
@@ -416,7 +450,8 @@ def suite_grid(c: Ctx, mode: str) -> list[tuple[bool, str]]:
             rows.append([label, shape, ba, bw, L, pr * (8 // int(ba)) * int(nig), 8 * pc * int(njg),
                          dist, seed, flags, expect])
     else:
-        rows = table("grid_abit.txt") + (table("grid_abit_dr.txt") if c.drain else [])
+        rows = table("grid_abit.txt") + (table("grid_abit_dr.txt") if c.drain else []) + \
+            fold_table(c, "grid_abit_fold.txt")
     for shape in sorted({r[1] for r in rows}):
         grid_simv(c, shape)
     return c.run_all(lambda *r: grid_case(c, mode, *r), rows)
@@ -472,7 +507,8 @@ def power_int(c: Ctx, mode, label, ba, bw, L, mrows, ncols, saif_mode, flags, ch
 def suite_power(c: Ctx) -> list[tuple[bool, str]]:
     jobs = [lambda w=w, j=j: power_sc(c, w, j) for w in ("uniform", "ladder") for j in (False, True)
             if selected(f"sc_{w}" + ("_junk" if j else ""))]
-    jobs += [lambda r=r: power_int(c, "bp", *r) for r in table("power_bp.txt")]
+    if not (c.drain or c.fold):                # the bit-plane schedule reads the in-tile chain, laps unfolded
+        jobs += [lambda r=r: power_int(c, "bp", *r) for r in table("power_bp.txt")]
     jobs += [lambda r=r: power_int(c, "abit", *r) for r in table("power_abit.txt")]
     for key, tb, defs in [("power_int", "power_payn_int.sv", [])] + \
             [(f"power_sc_{w}" + ("_junk" if j else ""), "power_payn_sc.sv",
@@ -540,7 +576,8 @@ class Gl:
         run_dir = b / GL_TB
         run_dir.mkdir(parents=True)
         (run_dir / "cases.txt").write_text(resolve(self.c, "plain_u128") + "\n")
-        defs = [f"+define+PAYN_M={self.c.m}", f"+define+PAYN_DRAIN={self.c.drain}"] + \
+        defs = [f"+define+PAYN_M={self.c.m}", f"+define+PAYN_DRAIN={self.c.drain}",
+                f"+define+PAYN_LAP_FOLD={self.c.fold}"] + \
             ([f"+define+PAYN_DUT={self.top}"] if self.top != "payn_array" else [])
         if self.mode == "syn-unit":
             args, vargs = ["GL=syn", f"RUN={self.synth}", "NO_SDF=1"], defs + [GL_UNIT, "+define+TB_RESET_SETTLE=0"]
@@ -749,7 +786,7 @@ def gl_mode(c: Ctx, mode: str, a) -> list[tuple[str, list[tuple[bool, str]]]]:
             "switch": [(gl_sw_case, [lab, fl, ex, allseq if it == "@ALL" else it])
                        for lab, fl, ex, it in gl_rows("gl_switch.txt", mode, "|")],
             "abit": [(gl_abit_case, r) for r in gl_rows("gl_abit.txt", mode)]}
-    if c.drain:                                # the bit-plane kinds read the in-tile chain
+    if c.drain or c.fold:                      # the bit-plane kinds: in-tile chain, unfolded laps
         jobs.pop("int")
         jobs.pop("switch")
     flat = [(kind, fn, row) for kind, rows in jobs.items() for fn, row in rows]
@@ -785,12 +822,13 @@ def main_gl(a) -> int:
     sys.path.insert(0, str(REPO / "flow"))
     from flowlib import tool_env
     os.environ.update(tool_env())               # VCS, licenses, the libraries' environment for every run
-    c = Ctx(a.shape, a.out, a.jobs, a.drain)
+    c = Ctx(a.shape, a.out, a.jobs, a.drain, a.fold)
     c.out.mkdir(parents=True, exist_ok=True)
     where = ", ".join(x for x in (f"synthesis {a.synth_run}" if a.synth_run else "",
                                   f"route {a.route}" if a.route else "") if x)
     lines = [f"PaYN gate-level checks, shape {a.shape}, modes {','.join(modes)}, {where}, top {a.top}"
-             f"{', drain register (sc and abit kinds)' if a.drain else ''}"]
+             f"{', drain register' if a.drain else ''}{', lap fold' if a.fold else ''}"
+             f"{' (sc and abit kinds)' if a.drain or a.fold else ''}"]
     status = 0
     groups = [("cases", suite_cases(c))]
     if all(r[0] for r in groups[0][1]):
@@ -824,6 +862,8 @@ def main() -> int:
                     + ", ".join(DR_SUITES) + ")")
     ap.add_argument("--drain", type=int, choices=(0, 1), default=0,
                     help="0: in-tile chain (default); 1: drain-register chain (+define+PAYN_DRAIN=1)")
+    ap.add_argument("--fold", type=int, choices=(0, 1), default=0,
+                    help="0: in-place lap (default); 1: lap fold (+define+PAYN_LAP_FOLD=1)")
     ap.add_argument("--jobs", type=int, default=12)
     ap.add_argument("--out", type=Path, default=REPO / "build/regress")
     ap.add_argument("--gl", help="gate-level mode: comma list of " + ", ".join(GL_MODES) + " (replaces --suite)")
@@ -838,20 +878,21 @@ def main() -> int:
     ONLY = re.compile(a.only) if a.only else None
     if a.gl:
         return main_gl(a)
-    suites = (a.suite or ",".join(DR_SUITES if a.drain else SUITES)).split(",")
+    allowed = FOLD_SUITES if a.fold else DR_SUITES if a.drain else SUITES
+    suites = (a.suite or ",".join(allowed)).split(",")
     for s in suites:
         if s not in RUNNERS:
             ap.error(f"unknown suite {s}")
-        if a.drain and s not in DR_SUITES:
-            ap.error(f"suite {s} reads the in-tile chain (bit-plane combiner); --drain 1 runs {', '.join(DR_SUITES)}")
+        if s not in allowed:
+            ap.error(f"suite {s} is not run on this build (bit-plane schedule); this build runs {', '.join(allowed)}")
     if any(s in suites for s in ("sc", "switch")) and "cases" not in suites:
         print("note: sc/switch use the case sets from the last `cases` run")
     status = 0
     for shape in (SHAPES if a.shape == "both" else [a.shape]):
-        c = Ctx(shape, a.out, a.jobs, a.drain)
+        c = Ctx(shape, a.out, a.jobs, a.drain, a.fold)
         c.out.mkdir(parents=True, exist_ok=True)
         lines = [f"PaYN regression, shape {shape}, drain {'register' if a.drain else 'in-tile chain'}, "
-                 f"suites {','.join(suites)}"]
+                 f"lap {'fold' if a.fold else 'in place'}, suites {','.join(suites)}"]
         for s in [x for x in SUITES if x in suites]:
             try:
                 res = RUNNERS[s](c)
@@ -862,7 +903,8 @@ def main() -> int:
             lines += [f"== {s}: {'PASS' if ok else 'FAIL'} ({sum(r[0] for r in res)}/{len(res)})"]
             lines += ["  " + r[1] for r in sorted(res, key=lambda r: (r[0], r[1]))]
             print(lines[-len(res) - 1], flush=True)
-        lines.append(f"PaYN regression {shape}{' drain register' if a.drain else ''}: {'PASS' if not status else 'FAIL'}")
+        lines.append(f"PaYN regression {shape}{' drain register' if a.drain else ''}{' lap fold' if a.fold else ''}: "
+                     f"{'PASS' if not status else 'FAIL'}")
         (c.out / "summary.txt").write_text("\n".join(lines) + "\n")
         print(f"{lines[-1]}  ({c.out / 'summary.txt'})")
     return status

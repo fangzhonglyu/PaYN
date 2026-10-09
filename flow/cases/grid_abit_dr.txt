@@ -14,7 +14,7 @@ dr8_int2_uniform_L128_m64n128_busy    4x8 2 2  128  64 128 uniform    107 -     
 dr8_int2_uniform_L256_m32n128_busy    4x8 2 2  256  32 128 uniform    108 JUNK                  pass
 dr4_int2_uniform_L128_m64n64_tight    4x4 2 2  128  64  64 uniform    109 -                     pass
 dr2_w2a3_uniform_L128_m32n32          2x2 3 2  128  32  32 uniform    110 -                     pass
-drneg8_int8_drainearly_L128           4x8 8 8  128  32  64 uniform    111 NEG_DRAIN_EARLY       caught
+drneg8_int8_drainearly_L256           4x8 8 8  256  32  64 uniform    111 NEG_DRAIN_EARLY       caught
 drneg8_int8_overlap_L128              4x8 8 8  128  32 128 uniform    112 NEG_BLOCK_OVERLAP     caught
 drneg8_int8_drrowskew_L128            4x8 8 8  128  32  64 uniform    113 NEG_DR_NO_ROW_SKEW    fail:DRCONTRACT
 drneg4_int6_drrowskew_L1024           4x4 6 6 1024  32  32 uniform    114 NEG_DR_NO_ROW_SKEW    caught

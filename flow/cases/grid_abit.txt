@@ -1,5 +1,8 @@
 # PE-grid all-bits-in-time suite (bench test_payn_pe_grid.sv +MODE=abit), workloads from int_workload.py abit.
 # label  shape  BA BW L MROWS NCOLS DIST SEED  flags  expect   (expect: pass | caught)
+# Every row runs on lap and fold builds (regress.py --fold; fold-only / lap-only rows in grid_abit_fold.txt).  The
+# NEG_ABIT_NO_BUBBLE rows force the lap schedule (on a fold build: each fold one edge early); the drain-early
+# controls run at NB >= 2 (at NB = 1 a fold build's last fold would meet the early drain: a contract stop).
 g2_int8_uniform_L384_m16n16          2x2 8 8  384 16 16 uniform      1 -                    pass
 g2_int8_uniform_L256_m32n32_junk     2x2 8 8  256 32 32 uniform      2 JUNK                 pass
 g2_int8_allmin_L384_m16n16           2x2 8 8  384 16 16 allmin       0 -                    pass
@@ -25,12 +28,12 @@ gneg2_int8_rowskew_L128              2x2 8 8  128 16 16 uniform     31 NEG_RING_
 gneg2_int8_colskew_L128              2x2 8 8  128 16 16 uniform     32 NEG_RING_NO_COL_SKEW caught
 gneg4_int8_rowskew_L256              4x4 8 8  256 32 32 uniform     33 NEG_RING_NO_ROW_SKEW caught
 gneg4_int6_colskew_L1024             4x4 6 6 1024 32 32 uniform     34 NEG_RING_NO_COL_SKEW caught
-gneg2_int8_drainearly_L128           2x2 8 8  128 16 16 uniform     35 NEG_DRAIN_EARLY      caught
+gneg2_int8_drainearly_L256           2x2 8 8  256 16 16 uniform     35 NEG_DRAIN_EARLY      caught
 gneg4_int4_drainearly_L1024          4x4 4 4 1024 32 32 uniform     36 NEG_DRAIN_EARLY      caught
 gneg2_int8_overlap_L128              2x2 8 8  128 16 32 uniform     37 NEG_BLOCK_OVERLAP    caught
 gneg4_int4_overlap_L1024             4x4 4 4 1024 32 64 uniform     38 NEG_BLOCK_OVERLAP    caught
-gneg2_int8_nobubble_L128             2x2 8 8  128 16 16 uniform     39 NEG_ABIT_NO_BUBBLE   caught
-gneg4_int6_nobubble_L1024            4x4 6 6 1024 32 32 uniform     40 NEG_ABIT_NO_BUBBLE   caught
+gneg2_int8_nobubble_L128             2x2 8 8  128 16 16 uniform     39 ABIT_FOLD=0,NEG_ABIT_NO_BUBBLE caught
+gneg4_int6_nobubble_L1024            4x4 6 6 1024 32 32 uniform     40 ABIT_FOLD=0,NEG_ABIT_NO_BUBBLE caught
 gneg2_int8_nolap_L128                2x2 8 8  128 16 16 uniform     41 NEG_ABIT_NO_LAP=7    caught
 gneg4_int8_extralap_L256             4x4 8 8  256 32 32 uniform     42 NEG_ABIT_EXTRA_LAP=7 caught
 gneg2_int6_sign_L1024                2x2 6 6 1024 16 16 uniform     43 NEG_ABIT_SIGN=1      caught

@@ -1,0 +1,15 @@
+# PE-grid all-bits-in-time rows for the lap fold (bench test_payn_pe_grid.sv +MODE=abit), run in addition to
+# grid_abit.txt (and grid_abit_dr.txt) by regress.py: build "fold" rows on PAYN_LAP_FOLD=1 builds (--fold 1), "lap"
+# rows on lap builds, "both" on either.  4x8 at NB = 1 is the target point of the fold.
+# label  build  shape  BA BW L MROWS NCOLS DIST SEED  flags  expect   (expect: pass | caught)
+gnb1_4x8_int8_uniform_L128_m64n64         both 4x8 8 8  128 64  64 uniform  301 -                    pass
+gnb1_4x8_int7_uniform_L128_m32n128_junk   both 4x8 7 7  128 32 128 uniform  302 JUNK                 pass
+gnb1_4x8_int6_uniform_L128_m64n128        both 4x8 6 6  128 64 128 uniform  303 -                    pass
+gnb1_4x8_int4_uniform_L128_m64n128        both 4x8 4 4  128 64 128 uniform  304 -                    pass
+gnb1_4x8_w4a8_uniform_L128_m32n128        both 4x8 8 4  128 32 128 uniform  305 -                    pass
+gnb1_2x2_int6_uniform_L128_m32n32         both 2x2 6 6  128 32  32 uniform  306 -                    pass
+glapsched_2x2_int8_uniform_L384_m16n16    fold 2x2 8 8  384 16  16 uniform  311 ABIT_FOLD=0          pass
+gneg_foldsched_laphw_4x4_int8_L128        lap  4x4 8 8  128 32  32 uniform  321 ABIT_FOLD=1          caught
+gneg_fold_late_2x2_int8_L128              fold 2x2 8 8  128 16  16 uniform  331 NEG_FOLD_LATE=7      caught
+gneg_fold_early_4x8_int6_L1024            fold 4x8 6 6 1024 32  64 uniform  332 NEG_FOLD_EARLY=5     caught
+gneg_fold_late_4x4_int4_L128              fold 4x4 4 4  128 32  32 uniform  333 NEG_FOLD_LATE=3      caught

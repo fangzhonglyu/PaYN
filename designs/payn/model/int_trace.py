@@ -31,6 +31,15 @@ n%8)).  The next block's first capture is the half-1 read edge unless the chain 
 max(BA*BW*NB + (BA+BW-2) + 2, 2*P_C).  The schedule logs the virtual read edges as "X e blk h", the grid bench the
 per-PE drain-wave runs as "W r c e len" (drain_q high: the half-0 read edge, r+c after RD).
 
+Lap fold (header fields "fold" = the schedule, "hw_fold" = the build's PAYN_LAP_FOLD; abit only).  On a fold build a
+lap edge keeps its MAC: T <- 2T + this edge's data cycle.  The fold schedule has no bubble between levels: the next
+level's first capture follows the previous level's last directly and the lap is on the edge after it (its MAC
+edge).  Block periods lose the BA+BW-2 term: BA*BW*NB + (P_R+P_C-2) + 8*P_C (in-tile chain), max(BA*BW*NB + 2,
+2*P_C) (drain register).  The replay models the hardware (hw_fold), the schedule rules the schedule (fold), so a
+fold schedule on a lap build (the lap drops each level's first MAC) is a caught negative control, and a lap
+schedule on a fold build passes (its bubbles add zero).  A fold-schedule run also reports how many drained values
+a lap build would get wrong on the same stimulus (lap_hw_mismatches: the fold's MAC is exercised).
+
 Subcommands (RUN_DIR holds the bench's trace and bpt_a.hex / bpt_w.hex):
   bp          single-PE functional bench (+MODE=int, and each INT segment of +MODE=switch), bpt_trace.txt: every
               drained tile and combiner word bit-exact, every (block, step) exactly once
@@ -72,11 +81,14 @@ GRID_MODES = {0: "per_pe_laps", 1: "global_lap_wait", 2: "neg_ring_no_row_skew",
               8: "oldc_unforced"}
 ABIT_FIELDS = ("ba", "bw", "L", "mrows", "ncols", "nblk", "nb", "e0", "e_end", "blk_len", "d0", "formula_bench",
                "nlev", "junk", "mode_at", "neg_no_lap", "neg_extra_lap", "neg_sign", "neg_order", "neg_no_bubble",
-               "neg_drain_early", "neg_overlap", "park_cyc0", "drain")
+               "neg_drain_early", "neg_overlap", "park_cyc0", "drain", "fold", "hw_fold", "neg_fold_late",
+               "neg_fold_early")
+ABIT_NEGS = ("neg_no_lap", "neg_extra_lap", "neg_sign", "neg_order", "neg_no_bubble", "neg_drain_early",
+             "neg_overlap", "neg_fold_late", "neg_fold_early")
 ABITG_FIELDS = ("pr", "pc", "ba", "bw", "L", "mrows", "ncols", "nblk", "nb", "e0", "e_end", "blk_len", "d0", "ds",
                 "formula_bench", "nlev", "junk", "neg_row", "neg_col", "neg_no_bubble", "neg_drain_early",
                 "neg_overlap", "neg_no_lap", "neg_extra_lap", "neg_sign", "neg_order", "drain", "neg_dr_row",
-                "neg_dr_col", "neg_dr_busy")
+                "neg_dr_col", "neg_dr_busy", "fold", "hw_fold", "neg_fold_late", "neg_fold_early")
 DRN = 32                                         # values per drain register (4 tile rows x 8 columns)
 
 
@@ -90,11 +102,24 @@ def bp_period(bw: int, nb: int, pr: int = 1, pc: int = 1, lap_len: int = 1) -> i
     return bw * nb + lap_len * (bw - 1) + (pr + pc - 2) + 8 * pc
 
 
-def abit_period(ba: int, bw: int, nb: int, pr: int = 1, pc: int = 1, drain: int = 0) -> int:
-    """drain 0: in-tile chain (skew + 8*P_C drain per block); 1: drain register (2 read edges, chain busy 2*P_C)."""
+def abit_period(ba: int, bw: int, nb: int, pr: int = 1, pc: int = 1, drain: int = 0, fold: int = 0) -> int:
+    """drain 0: in-tile chain (skew + 8*P_C drain per block); 1: drain register (2 read edges, chain busy 2*P_C).
+    fold 1: the lap folded into the next level's first MAC (no bubble per level step)."""
+    laps = 0 if fold else ba + bw - 2
     if drain:
-        return max(ba * bw * nb + (ba + bw - 2) + 2, 2 * pc)
-    return ba * bw * nb + (ba + bw - 2) + (pr + pc - 2) + 8 * pc
+        return max(ba * bw * nb + laps + 2, 2 * pc)
+    return ba * bw * nb + laps + (pr + pc - 2) + 8 * pc
+
+
+def runs_of(edges) -> list[tuple[int, int]]:
+    """Sorted edges -> [(first, length)] of maximal runs of consecutive edges."""
+    out: list[list[int]] = []
+    for e in sorted(edges):
+        if out and e == out[-1][0] + out[-1][1]:
+            out[-1][1] += 1
+        else:
+            out.append([e, 1])
+    return [tuple(r) for r in out]
 
 
 def wrap(v):
@@ -531,11 +556,13 @@ def check_abit_schedule(cfg: dict, rec: dict, pr: int = 1, pc: int = 1) -> dict:
     block's first capture - its first capture (the last block: its last drain edge - its first capture; with the
     drain register at least 2*P_C, the chain's busy time).  In-tile chain: 8*P_C drain edges from S = P_R+P_C-2
     after the bubble, the last one the next block's first capture.  Drain register: 2 read edges right after the
-    bubble (PE (0,0) time), the next block no earlier than the second."""
+    bubble (PE (0,0) time), the next block no earlier than the second.  Level steps: lap schedule one bubble and the
+    lap on the next level's first capture; fold schedule (cfg fold) no bubble and the lap on the edge after it."""
     ba, bw, nb, nblk, e0 = cfg["ba"], cfg["bw"], cfg["nb"], cfg["nblk"], cfg["e0"]
     drain = cfg.get("drain", 0)
+    fold = cfg.get("fold", 0)
     S, nd = (0, 2) if drain else (pr + pc - 2, 8 * pc)
-    want_formula = abit_period(ba, bw, nb, pr, pc, drain)
+    want_formula = abit_period(ba, bw, nb, pr, pc, drain, fold)
     errors: list[str] = []
     passes, caps, drains = defaultdict(list), defaultdict(list), defaultdict(list)
     for e, blk, j, p, q, s in rec["P"]:
@@ -568,13 +595,16 @@ def check_abit_schedule(cfg: dict, rec: dict, pr: int = 1, pc: int = 1) -> dict:
         if pl[0][2] + pl[0][3] != ba + bw - 2:
             errors.append(f"block {blk}: first pass level {pl[0][2] + pl[0][3]}, expected {ba + bw - 2} (MSB first)")
         for (f0, l0, k0), (f1, l1, k1) in zip(spans, spans[1:]):
-            inside = [x for x in laps if l0 < x <= f1]
+            inside = [x for x in laps if l0 + fold < x <= f1 + fold]
             if k1 == k0:
                 if f1 != l0 + 1 or inside:
                     errors.append(f"block {blk}: passes of level {k0} at {f0}..{l0} and {f1}.. not contiguous "
                                   f"or lapped ({len(inside)} laps between)")
             elif k1 == k0 - 1:
-                if f1 != l0 + 2 or inside != [f1]:
+                if fold and (f1 != l0 + 1 or inside != [f1 + 1]):
+                    errors.append(f"block {blk}: level {k0} -> {k1} step at edges {l0} -> {f1}: needs no bubble and "
+                                  f"one fold on {l0 + 2}, got first capture {f1} and laps {inside}")
+                if not fold and (f1 != l0 + 2 or inside != [f1]):
                     errors.append(f"block {blk}: level {k0} -> {k1} step at edges {l0} -> {f1}: needs one bubble and "
                                   f"one lap on {l0 + 2}, got first capture {f1} and laps {inside}")
             else:
@@ -617,14 +647,17 @@ def check_abit_schedule(cfg: dict, rec: dict, pr: int = 1, pc: int = 1) -> dict:
                 laps=len(laps), passes=sum(len(v) for v in passes.values()))
 
 
-def abit_replay(cfg: dict, rec: dict, A: np.ndarray, W: np.ndarray, dc: int = 128) -> dict:
+def abit_replay(cfg: dict, rec: dict, A: np.ndarray, W: np.ndarray, dc: int = 128, hw_fold: int | None = None) -> dict:
     """Single-PE edge model of the LOGGED stimulus -> {(blk, t): 8 drained values}: a lap edge doubles every tile
-    (mod 2^24), a drain edge reads the east column and shifts east with 0 entering, otherwise (mac_en) the data
-    cycle captured on the previous edge is added with the W sign in force at its capture.  Drain register
-    (cfg drain = 1): -> {(e,): 32 values}, a read edge of half h (X e blk h) reads tile rows 4h..4h+3 and clears
-    them; the other half still takes that edge's MAC."""
+    (mod 2^24; on a fold build, hw_fold = 1, it also adds that edge's data cycle), a drain edge reads the east column
+    and shifts east with 0 entering, otherwise (mac_en) the data cycle captured on the previous edge is added with
+    the W sign in force at its capture.  Drain register (cfg drain = 1): -> {(e,): 32 values}, a read edge of half h
+    (X e blk h) reads tile rows 4h..4h+3 and clears them; the other half still takes that edge's MAC.  hw_fold
+    defaults to the header's hw_fold (the build)."""
+    if hw_fold is None:
+        hw_fold = cfg.get("hw_fold", 0)
     if cfg.get("drain", 0):
-        return abit_replay_dr(cfg, rec, A, W, dc)
+        return abit_replay_dr(cfg, rec, A, W, dc, hw_fold)
     ba, bw, njg = cfg["ba"], cfg["bw"], cfg["ncols"] // 8
     a_pl, w_pl = bit_planes(A, ba), bit_planes(W, bw)
     pq = {(blk, j): (p, q) for e, blk, j, p, q, s in rec["P"]}
@@ -636,26 +669,29 @@ def abit_replay(cfg: dict, rec: dict, A: np.ndarray, W: np.ndarray, dc: int = 12
     T = np.zeros((8, 8), dtype=np.int64)
     sign, sample_sign, out = 0, {}, {}
     for e in range(max([0] + list(cap) + list(lap) + list(drn)) + 1):
-        if e in drn:
-            out[drn[e]] = [int(x) for x in wrap(T[:, 7])]
-        if e in lap:
-            T = wrap(2 * T)
-        elif e in drn:
-            T = np.concatenate([np.zeros((8, 1), np.int64), T[:, :7]], axis=1)
-        elif e >= mac0 and (e - 1) in cap:
+        add = np.zeros((8, 8), dtype=np.int64)
+        if e >= mac0 and (e - 1) in cap:
             blk, j, u = cap[e - 1]
             ig, jg = divmod(blk, njg)
             p, q = pq[(blk, j)]
             xs = slice(u * dc, (u + 1) * dc)
             cnt = a_pl[p][ig * 8:(ig + 1) * 8, xs] @ w_pl[q][xs, jg * 8:(jg + 1) * 8]
-            T = wrap(T + (-cnt if sample_sign[e - 1] else cnt))
+            add = -cnt if sample_sign[e - 1] else cnt
+        if e in drn:
+            out[drn[e]] = [int(x) for x in wrap(T[:, 7])]
+        if e in lap:
+            T = wrap(2 * T + (add if hw_fold else 0))
+        elif e in drn:
+            T = np.concatenate([np.zeros((8, 1), np.int64), T[:, :7]], axis=1)
+        else:
+            T = wrap(T + add)
         if e in sign_at:
             sign = sign_at[e]
         sample_sign[e] = sign
     return out
 
 
-def abit_replay_dr(cfg: dict, rec: dict, A: np.ndarray, W: np.ndarray, dc: int = 128) -> dict:
+def abit_replay_dr(cfg: dict, rec: dict, A: np.ndarray, W: np.ndarray, dc: int = 128, hw_fold: int = 0) -> dict:
     ba, bw, njg = cfg["ba"], cfg["bw"], cfg["ncols"] // 8
     a_pl, w_pl = bit_planes(A, ba), bit_planes(W, bw)
     pq = {(blk, j): (p, q) for e, blk, j, p, q, s in rec["P"]}
@@ -676,7 +712,7 @@ def abit_replay_dr(cfg: dict, rec: dict, A: np.ndarray, W: np.ndarray, dc: int =
             cnt = a_pl[p][ig * 8:(ig + 1) * 8, xs] @ w_pl[q][xs, jg * 8:(jg + 1) * 8]
             add = -cnt if sample_sign[e - 1] else cnt
         if e in lap:
-            T = wrap(2 * T)
+            T = wrap(2 * T + (add if hw_fold else 0))
         elif e in rd:
             h = rd[e]
             rows = slice(4 * h, 4 * h + 4)
@@ -726,12 +762,21 @@ def check_abit(run_dir: Path, dc: int = 128) -> tuple[dict, dict]:
     rep_mism = [dict(key=k, got=got_out[k], replay=rep.get(k)) for k in sorted(got_out) if rep.get(k) != got_out[k]]
     if set(rep) != set(got_out):
         rep_mism.append(dict(note=f"replay drained {len(rep)} items, RTL {len(got_out)}"))
+    fold, hw_fold = cfg.get("fold", 0), cfg.get("hw_fold", 0)
+    lap_hw_mism = None
+    if fold:
+        # The same stimulus on a lap build (the lap drops each fold edge's MAC): drained values it would get wrong.
+        lap_rep = abit_replay(cfg, rec, A, W, dc, hw_fold=0)
+        want_out = ({(e,): exp_v[3] for (r, e), exp_v in dr_expected(C, rec, njg)[0].items()} if drain else
+                    {(b, t): exp[(b, 0, t)] for (b, t) in rec["D"]})
+        lap_hw_mism = sum(a != b for k, v in want_out.items() for a, b in zip(lap_rep.get(k, [None] * len(v)), v))
     status = "PASS" if (not mism and coverage_ok and not sched["errors"] and not rep_mism) else "FAIL"
-    negs = {k: cfg.get(k, 0) for k in ABIT_FIELDS[15:22]}
+    negs = {k: cfg.get(k, 0) for k in ABIT_NEGS}
     result = dict(
         status=status, precision=precision_name(ba, bw), ba=ba, bw=bw, L=L, mrows=mrows, ncols=ncols,
         blocks=nblk, nb=nb, junk=cfg.get("junk"), mode_at=cfg.get("mode_at"), park_cyc0=cfg.get("park_cyc0"),
-        negative_controls=negs, negative_run=any(v not in (0, -1) for v in negs.values()),
+        negative_controls=negs, negative_run=any(v not in (0, -1) for v in negs.values()) or fold > hw_fold,
+        fold_schedule=fold, hw_fold=hw_fold, lap_hw_mismatches=lap_hw_mism,
         negative_caught=status == "FAIL" and bool(mism) and not rep_mism,
         coverage_ok=coverage_ok, duplicates=rec["dup"][:8],
         drain="register" if drain else "in-tile chain",
@@ -762,10 +807,13 @@ def abit_verdict(r: dict, expect_fail: bool) -> tuple[bool, str]:
         return False, (f"[FAIL] {tag}: {r['n_mismatch']} GEMM mismatches, {r['n_replay_mismatch']} replay "
                        f"mismatches, {r['n_schedule_errors']} schedule errors, coverage_ok={r['coverage_ok']}, "
                        f"periods {r['measured_periods']} vs {r['formula']}")
+    lap = ("folds" if r["fold_schedule"] else "laps") + (" on a fold build" if r["hw_fold"] else "")
+    lap_hw = (f"; a lap build would get {r['lap_hw_mismatches']} drained values wrong"
+              if r["lap_hw_mismatches"] is not None else "")
     return True, (f"[PASS] {tag}: {r['values_checked']} drained values = {r['outputs_checked']} GEMM outputs "
                   f"bit-exact ({r['macs']} MACs, max|out| {r['max_abs_output']}); replay identical; schedule rules "
-                  f"hold ({r['passes']} passes, {r['laps']} laps); measured block period {r['measured_periods']} "
-                  f"= formula {r['formula']} (data utilization {r['data_utilization']:.1%})")
+                  f"hold ({r['passes']} passes, {r['laps']} {lap}); measured block period {r['measured_periods']} "
+                  f"= formula {r['formula']} (data utilization {r['data_utilization']:.1%}){lap_hw}")
 
 
 def check_abit_grid(run_dir: Path, dc: int = 128) -> dict:
@@ -824,15 +872,16 @@ def check_abit_grid(run_dir: Path, dc: int = 128) -> dict:
     lap_err, vlaps = [], sorted(rec["L"])
     for r in range(pr):
         for c in range(pc):
-            want_runs, got_runs = [(x + r + c, 1) for x in vlaps], sorted(runs.get((r, c), []))
+            want_runs, got_runs = runs_of(x + r + c for x in vlaps), sorted(runs.get((r, c), []))
             if got_runs != want_runs:
                 lap_err.append(dict(pe=[r, c], got=got_runs[:4], exp=want_runs[:4], n_got=len(got_runs),
                                     n_exp=len(want_runs)))
     ok = not mism and coverage_ok and not sched["errors"] and not edge_err and not lap_err and not wave_err
     return dict(status="PASS" if ok else "FAIL", grid=f"{pr}x{pc}", precision=precision_name(ba, bw), ba=ba,
                 bw=bw, L=L, mrows=mrows, ncols=ncols, blocks=nblk, nb=nb, junk=cfg["junk"],
-                drain="register" if drain else "in-tile chain",
-                negative_controls={k: cfg.get(k, 0) for k in ABITG_FIELDS[17:] if k != "drain"},
+                drain="register" if drain else "in-tile chain", fold_schedule=cfg.get("fold", 0),
+                hw_fold=cfg.get("hw_fold", 0),
+                negative_controls={k: cfg.get(k, 0) for k in ABITG_FIELDS[17:] if k not in ("drain", "fold", "hw_fold")},
                 coverage_ok=coverage_ok, duplicates=[list(d) for d in (dup + rec["dup"])[:8]],
                 values_checked=values_checked, outputs_checked=nblk * pr * pc * 64, macs=nblk * pr * pc * 64 * L,
                 max_abs_output=int(abs(C).max()), n_mismatch=len(mism), mismatches=mism[:16],
@@ -862,17 +911,19 @@ def abit_grid_verdict(r: dict, expect_fail: bool) -> tuple[bool, str]:
                        f"periods {r['measured_periods']} vs {r['formula']}")
     dr = (f"; drain register: every item on its predicted edge, {r['wave_runs_checked']} drain-wave runs"
           if r["drain"] == "register" else "")
+    lap = ("fold" if r["fold_schedule"] else "lap") + (" (fold build)" if r["hw_fold"] else "")
     return True, (f"[PASS] {tag}: {r['values_checked']} drained values = {r['outputs_checked']} GEMM outputs "
-                  f"bit-exact ({r['macs']} MACs, max|out| {r['max_abs_output']}); {r['lap_runs_checked']} lap runs "
+                  f"bit-exact ({r['macs']} MACs, max|out| {r['max_abs_output']}); {r['lap_runs_checked']} {lap} runs "
                   f"on the per-PE wave{dr}; measured block period {r['measured_periods']} = formula {r['formula']} "
                   f"(data utilization {r['data_utilization']:.1%})")
 
 
 def check_abit_power(run_dir: Path, dc: int = 128) -> tuple[dict, list[str]]:
     """abit on the trace (negative-control, junk and park fields at their defaults, every D record on its X edge),
-    then abit_saif.txt: data = blocks*BA*BW*NB (every mode), lap = blocks*(BA+BW-2) (modes 0, 2), drain =
-    blocks*8 (mode 2), segments blocks / blocks*(BA+BW-1) / 1 (modes 0 / 1 / 2), E_END = E0 + blocks*period,
-    N_EDGES = E_END + 3.  The JSON carries what the energy row writer reads (saif_window "ring" = laps, lap_len 1).
+    then abit_saif.txt: data = blocks*BA*BW*NB (every mode), lap = blocks*(BA+BW-2) (modes 0, 2; 0 on a fold
+    build, whose fold intervals hold a MAC), drain = blocks*8 (mode 2), segments blocks / blocks*(BA+BW-1) / 1
+    (modes 0 / 1 / 2; mode 1 on a fold build: blocks), E_END = E0 + blocks*period, N_EDGES = E_END + 3.  The JSON
+    carries what the energy row writer reads (saif_window "ring" = laps, lap_len 1).
     Drain register (trace header drain = 1): drain = blocks*2 (the final bubble and the half-0 read interval),
     N_EDGES = E_END + 2, the drain-register items checked by abit (each on its read edge)."""
     reasons: list[str] = []
@@ -884,6 +935,10 @@ def check_abit_power(run_dir: Path, dc: int = 128) -> tuple[dict, list[str]]:
     if inner["negative_run"] or inner["junk"] or inner["park_cyc0"]:
         reasons.append("trace header has negative-control / junk / park fields set; an energy run must have none")
     drain = inner.get("drain") == "register"
+    fold = inner.get("fold_schedule", 0)
+    if fold != inner.get("hw_fold", 0):
+        reasons.append(f"schedule fold={fold} on a build with hw_fold={inner.get('hw_fold', 0)}; an energy run uses "
+                       f"the build's own schedule")
     xedge = {(b, t): e for e, b, t in rec["X"]}
     bad_edges = [k for k, e in rec["Dedge"].items() if xedge.get(k) != e]
     if bad_edges or len(rec["Dedge"]) != len(rec["D"]):
@@ -898,17 +953,17 @@ def check_abit_power(run_dir: Path, dc: int = 128) -> tuple[dict, list[str]]:
                      ("nb", nb), ("mode_at", mode_at)):
         if inner.get(key) != val:
             reasons.append(f"abit_saif.txt {key}={val} disagrees with the trace header ({inner.get(key)})")
-    blk = abit_period(ba, bw, nb, drain=int(drain))
+    blk = abit_period(ba, bw, nb, drain=int(drain), fold=fold)
     tail = 2 if drain else 3
     if blk_len != blk or e_end != e0 + nblk * blk or n_edges != e_end + tail:
         reasons.append(f"edge bookkeeping BLK_LEN={blk_len} E_END={e_end} N_EDGES={n_edges}, expected {blk} / "
                        f"{e0 + nblk * blk} / {e0 + nblk * blk + tail}")
     if mode not in (0, 1, 2):
         reasons.append(f"SAIF mode {mode} is not 0, 1 or 2")
-    exp = dict(data=nblk * ba * bw * nb, lap=nblk * (ba + bw - 2) if mode in (0, 2) else 0,
+    exp = dict(data=nblk * ba * bw * nb, lap=nblk * (ba + bw - 2) if mode in (0, 2) and not fold else 0,
                drain=nblk * (2 if drain else 8) if mode == 2 else 0)
     exp["active"] = exp["data"] + exp["lap"] + exp["drain"]
-    exp["segments"] = {0: nblk, 1: nblk * (ba + bw - 1), 2: 1}.get(mode, -1)
+    exp["segments"] = {0: nblk, 1: nblk if fold else nblk * (ba + bw - 1), 2: 1}.get(mode, -1)
     for key, val in exp.items():
         if win[key] != val:
             reasons.append(f"SAIF window {key}={win[key]}, expected {val}")
@@ -917,7 +972,7 @@ def check_abit_power(run_dir: Path, dc: int = 128) -> tuple[dict, list[str]]:
         reasons.append(f"window data cycles {win['data']} x {64 * dc}/(BA*BW) != {macs} MACs")
     result = dict(
         status="FAIL" if reasons else "PASS", rejection_reasons=reasons, schedule="abit",
-        drain="register" if drain else "in-tile chain",
+        drain="register" if drain else "in-tile chain", fold=fold,
         precision=precision_name(ba, bw), ba=ba, bw=bw, L=L, mrows=mrows, ncols=ncols,
         blocks=nblk, nb=nb, saif_mode=mode, mode_at=mode_at, e0=e0, e_end=e_end, n_edges=n_edges,
         lap_ring_only=1, lap_len=1, block_period=blk, formula=inner["formula"],

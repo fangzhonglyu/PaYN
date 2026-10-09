@@ -243,6 +243,24 @@ Where things are:
    - **Open:** the PsumBuffer side (64-128 token banks + a small conflict buffer), the sorter / gather,
      PaYN_eval's column_sort schedule, K8/M16 not routed with the drain register. The earlier drain options (both-way, per-PE path, shadow
      registers) are superseded; their upper bounds stay in `doc/payn_results.md`, "Drain variants".
+3c. **(Done 2026-10-08: RTL, routed, measured) INT lap fold** (`doc/int_lap_fold.md`, section 9; `doc/payn_results.md`,
+   "Lap fold vs in-place lap"). Build-time define `PAYN_LAP_FOLD=1`, either drain; the default 0 is unchanged
+   (Formality against the committed RTL, both drains, arrays and grid, all equivalent). A lap edge becomes a fold
+   edge, acc <- 2*acc + that edge's sum, built into the segmented accumulator with no new adder: the heap takes the
+   doubled low row, and the high segment loads 2*high_next plus the bit that leaves the low segment. So the
+   all-bits-in-time schedule loses its bubble and lap edge per level step: block period
+   max(BA*BW*NB + 2, 2*P_C) with the drain register.
+   - **Verified:** the tile against an integer model on 200k random edges, including folds meeting pending
+     carries and borrows, with 3 mutants caught. Fold regressions on both shapes and both drains pass every suite;
+     the negative controls are all caught, among them the fold schedule on a lap build. Routed GL 14/14 SC +
+     19/19 abit.
+   - **Routed, K16/M8 DR** (`payn_k16m8_dr_fold_20261008_final`, `route.py/measure.py --drain 1 --fold 1`):
+     setup +0.053 / hold +0.182 ns. Area 1 PE −0.9%, 4x8 composite −1.3% vs the DR route. SC energy −0.9 to −1.3%.
+   - **At NB = 1 (L = 128):** pJ/MAC −10.7% (INT8) to −17.0% (INT4). 4x8 GMAC/s/mm2: INT8 1,082 -> 1,330
+     (0.82x BOS), INT7 1,375 -> 1,721 (0.95x), INT6 1,804 -> 2,309 (1.12x), INT4 3,608 -> 4,875 (1.96x).
+   - **At L = 1,024:** +4 to +6%, e.g. INT7 0.99x BOS.
+   - **Open:** a K8/M16 or in-tile-chain fold route, and the PaYN_eval refit (lap edges -> 0, refit the energy
+     model).
 4. **Encoder remap.** DC maps the kA encoders onto bigger adders whenever the INT bypass is present. That costs about
    +1.9k µm² and +0.16 mW in AF-IPD.
 5. **Grid open items:**

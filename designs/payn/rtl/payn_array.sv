@@ -47,6 +47,13 @@
 //      captures, int_out and int_out_valid stay 0.  The drain rules of
 //      DRAIN = 1 are marked [DR] below.
 //
+// Lap fold (FOLD = `PAYN_LAP_FOLD, a build-time choice; default 0): with 1 a
+// lap edge (ring_q) is a fold edge, a MAC edge that doubles every tile first
+// (acc <- 2*acc + this edge's sum; PaynTile), so the all-bits-in-time
+// schedule needs no bubble before a lap.  SC mode is unaffected (ring_in is
+// gated by int_mode).  The bit-plane schedule is not run on FOLD = 1 builds.
+// The FOLD = 1 rules are marked [FOLD] below.
+//
 // ============================================================== SC mode ==
 // int_mode = 0.
 //   * Operands per element: magnitude b in 0..128 on a_binary_in /
@@ -103,6 +110,10 @@
 //     [DR] drain_in on the edge after the last capture (the bubble capture),
 //     so half 0 is read on the bubble's MAC edge and half 1 on the next block's
 //     first capture edge: single-PE block BA*BW*NB + (BA+BW-2) + 2 edges.
+//     [FOLD] no bubble between levels: the next level's first plane is
+//     captured on the edge after the previous level's last one, and ring_in
+//     goes high on that capture edge, so the lap (fold) edge is that plane's
+//     MAC edge.  Single-PE block BA*BW*NB + N_W edges ([DR] + 2).
 // Common rules:
 //   * int_mode is registered before the 2,048-pin select: a raw plane is
 //     captured by the bit pipes at edge P only if int_mode was high at P-1.
@@ -121,7 +132,9 @@
 //     on the lap edge is dropped (shift priority), so the plane captured on
 //     the edge before it is a bubble.  k consecutive ring_in edges multiply by
 //     2^k; every high ring_in edge makes the next edge a doubling edge.
-//     Lower int_mode only after the last ring_in edge.
+//     Lower int_mode only after the last ring_in edge.  [FOLD] the lap edge
+//     keeps its MAC (2*value + that edge's sum): no bubble; mac_en must be
+//     high and shift_in low on it ([FOLD-CONTRACT], PaynPeCore).
 //   * Drain: shift_in with ring_q low and acc_in_west = 0.  The combiner
 //     captures on exactly those edges (int_mode & shift_in & ~ring_q) and
 //     emits int_out / int_out_valid two edges later.  [DR] the read-out above;
@@ -181,6 +194,9 @@
 `ifndef PAYN_DRAIN
 `define PAYN_DRAIN 0
 `endif
+`ifndef PAYN_LAP_FOLD
+`define PAYN_LAP_FOLD 0
+`endif
 
 module payn_array #(
     parameter int M = `PAYN_M,
@@ -191,6 +207,7 @@ module payn_array #(
     parameter int OWIDTH = 24,
     parameter int LOW_W = `PAYN_LOW_W,
     parameter int DRAIN = `PAYN_DRAIN,
+    parameter int FOLD = `PAYN_LAP_FOLD,
     parameter int DRW = (N_H / 2) * N_W * OWIDTH  // drain register bits (derived)
 ) (
     input logic clk,
@@ -302,7 +319,7 @@ module payn_array #(
 
     PaynPe #(
         .K(K), .M(M), .N_H(N_H), .N_W(N_W),
-        .OWIDTH(OWIDTH), .LOW_W(LOW_W), .DRAIN(DRAIN)
+        .OWIDTH(OWIDTH), .LOW_W(LOW_W), .DRAIN(DRAIN), .FOLD(FOLD)
     ) u_pe (
         .clk, .reset, .mac_en(mac_core), .shift_in,
         .ring_in(ring_in & int_mode),
@@ -354,7 +371,8 @@ module payn_array #(
     // Sequencer checks on SC edges (int_mode low), with the MAC accounting on
     // the samples captured under the SC select (int_mode_q2 low at the MAC
     // edge) and the real core MAC (mac_core, the guard included; tile shift =
-    // shift_in | ring_q).  Non-fatal, so a bench can still compare its drains;
+    // shift_in | ring_q, or shift_in with FOLD = 1, where a lap edge keeps the
+    // MAC).  Non-fatal, so a bench can still compare its drains;
     // benches read contract_errors.
     //
     // Slice attribution: a block starts a new slice exactly when a shift edge
@@ -433,7 +451,7 @@ module payn_array #(
             smp_ones = !smp_int && ((|a_bits_out_nc) === 1'b1);
             rd_edge = (DRAIN == 1) && (drain_d1 || drain_d2);
             mac_drop = (shift_in === 1'b1) || rd_edge;
-            smp_counted = (mac_core === 1'b1) && !mac_drop && (ring_q !== 1'b1);
+            smp_counted = (mac_core === 1'b1) && !mac_drop && (FOLD == 1 || ring_q !== 1'b1);
             // [DR] one half drops the MAC of a read edge and the other half
             // takes it, so a live sample there is always wrong (a repeated
             // last cycle double-counts in the other half).

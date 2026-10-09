@@ -131,6 +131,14 @@
 // first capture at E0): the register holds known values when the window opens
 // (no X resolving inside it).  That priming read-out is not logged.
 //
+// Lap fold (+define+PAYN_LAP_FOLD=1, +MODE=abit only): a lap edge keeps its MAC
+// and doubles first, so the schedule has no bubble between levels: the next
+// level's first plane is captured on the edge after the previous level's
+// last, and the lap (fold) edge is that plane's MAC edge.  Block period
+// BA*BW*NB + 8 (DRAIN=1: + 2); no LAP intervals (every fold interval holds a
+// MAC and is DATA).  The ABITCFG header gains FOLD HW_FOLD (both 1) and the
+// fold negative-control fields (-1).
+//
 // Configuration: compile-time defines (make sim passes no runtime arguments),
 // each overridable at run time by the plusarg of the same name without the
 // INT_ prefix:
@@ -159,6 +167,9 @@
 `endif
 `ifndef PAYN_DRAIN
 `define PAYN_DRAIN 0                  // drain: 0 in-tile chain, 1 drain register (payn_array.sv)
+`endif
+`ifndef PAYN_LAP_FOLD
+`define PAYN_LAP_FOLD 0               // lap: 0 in-place lap (drops the MAC), 1 fold (payn_array.sv)
 `endif
 `ifndef PAYN_DUT
 `define PAYN_DUT payn_array           // netlist top name (GL_SIM)
@@ -251,6 +262,7 @@ module Top;
     logic [DRW-1:0] dr_in_east = '0;           // one PE: no east neighbour
     logic dr_in_east_valid = 1'b0;
     logic int_out_valid;
+    localparam int FOLD = `PAYN_LAP_FOLD;
 
     logic [7:0] a_mem [];             // a_mem[i*L + x] = A[i, x]
     logic [7:0] w_mem [];             // w_mem[j*L + x] = W[x, j]
@@ -269,7 +281,7 @@ module Top;
 `else
     payn_array #(
         .K(K), .M(M), .N_H(N_H), .N_W(N_W), .WIDTH(WIDTH), .OWIDTH(OWIDTH),
-        .LOW_W(LOW_W), .DRAIN(DRAIN)
+        .LOW_W(LOW_W), .DRAIN(DRAIN), .FOLD(FOLD)
     ) dut (.*);
 `endif
 
@@ -486,7 +498,8 @@ module Top;
 
     task automatic abit_schedule();
         int sl_kind [$], sl_pass [$], sl_u [$];  // 0 data, 1 lap bubble, 2 final bubble
-        bit sl_lap [$];
+        int lap_slot [$];
+        bit sl_lap [];
         bit lap_next, first;
         int base, e;
         NLEV = BA + BW - 1;
@@ -499,20 +512,27 @@ module Top;
                 pp.push_back(p); pq.push_back(q); pn.push_back(n);
                 ps.push_back((p == BA - 1) ^ (q == BW - 1));
             end
+        // Lap: a bubble before every level step, the lap on the next level's
+        // first capture.  Fold: no bubble, the fold on that capture's MAC edge.
         lap_next = 1'b0;
         for (int j = 0; j < NP; j++) begin
             first = (j == 0) || (pn[j] != pn[j-1]);
             if (first && j > 0) begin
-                sl_kind.push_back(1); sl_pass.push_back(-1); sl_u.push_back(-1); sl_lap.push_back(1'b0);
+                if (FOLD == 0) begin
+                    sl_kind.push_back(1); sl_pass.push_back(-1); sl_u.push_back(-1);
+                end
                 lap_next = 1'b1;
             end
             for (int u = 0; u < NB; u++) begin
-                sl_kind.push_back(0); sl_pass.push_back(j); sl_u.push_back(u); sl_lap.push_back(lap_next && u == 0);
+                sl_kind.push_back(0); sl_pass.push_back(j); sl_u.push_back(u);
+                if (lap_next && u == 0) lap_slot.push_back(sl_kind.size() - 1 + FOLD);
             end
             lap_next = 1'b0;
         end
-        sl_kind.push_back(2); sl_pass.push_back(-1); sl_u.push_back(-1); sl_lap.push_back(1'b0);
+        sl_kind.push_back(2); sl_pass.push_back(-1); sl_u.push_back(-1);
         D0 = sl_kind.size();
+        sl_lap = new[D0];
+        foreach (lap_slot[i]) sl_lap[lap_slot[i]] = 1'b1;
         BLK_LEN = (DRAIN == 1) ? D0 + 1 : D0 + N_W - 1;
         E_END = E0 + NBLK*BLK_LEN;               // final drain (DRAIN=1: half-1 read) edge
         N_EDGES = E_END + ((DRAIN == 1) ? 2 : 3);    // + combiner latency / the last read-out's pre-edge look
@@ -760,6 +780,8 @@ module Top;
         abit = (sched == "abit");
         if (DRAIN == 1 && !abit)
             $fatal(1, "[BENCH] +MODE=bp reads the in-tile chain: build with PAYN_DRAIN=0 (DRAIN=1 runs +MODE=abit)");
+        if (FOLD == 1 && !abit)
+            $fatal(1, "[BENCH] +MODE=bp is not run on a fold build: build with PAYN_LAP_FOLD=0 (PAYN_LAP_FOLD=1 runs +MODE=abit)");
         void'($value$plusargs("BA=%d", BA));
         void'($value$plusargs("BW=%d", BW));
         void'($value$plusargs("L=%d", L));
@@ -789,10 +811,11 @@ module Top;
         if (abit) begin
             trace_file = $fopen("abit_trace.txt", "w");
             if (trace_file == 0) $fatal(1, "cannot open abit_trace.txt");
-            // The functional bench's 23-field header; negative controls at their defaults, junk 0, park_cyc0 0.
-            $fwrite(trace_file, "ABITCFG %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d 0 %0d -1 -1 0 0 0 0 0 0 %0d\n",
+            // The functional bench's 28-field header; negative controls at their defaults, junk 0, park_cyc0 0.
+            $fwrite(trace_file, "ABITCFG %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d 0 %0d -1 -1 0 0 0 0 0 0 %0d %0d %0d -1 -1\n",
                     BA, BW, L, MROWS, NCOLS, NBLK, NB, E0, E_END, BLK_LEN, D0,
-                    BA*BW*NB + (BA + BW - 2) + ((DRAIN == 1) ? 2 : N_W), NLEV, MODE_AT, DRAIN);
+                    BA*BW*NB + ((FOLD == 1) ? 0 : BA + BW - 2) + ((DRAIN == 1) ? 2 : N_W), NLEV, MODE_AT, DRAIN,
+                    FOLD, FOLD);
         end else begin
             trace_file = $fopen("bpt_trace.txt", "w");
             if (trace_file == 0) $fatal(1, "cannot open bpt_trace.txt");

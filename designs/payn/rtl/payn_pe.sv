@@ -22,6 +22,14 @@
 // combinational loop.  With lap = 0 the core is a plain output-stationary
 // grid with a west -> east drain chain.
 //
+// Lap fold (FOLD, a build-time choice; default 0 is the lap above).  With
+// FOLD = 1 lap drives every tile's fold input instead (PaynTile): the lap edge
+// keeps its MAC and loads 2 * value + this edge's sum, so the schedule needs
+// no bubble before it; the tile acc_in has no lap leg and PaynPe does not
+// raise the tile shift on lap edges.  Checked in simulation ([FOLD-CONTRACT],
+// fatal): a fold on a shift edge (the shift wins and the doubling is lost)
+// and a fold without mac_en (a fold edge adds its sample).
+//
 // Drain (DRAIN, a build-time choice):
 //   0  in-tile chain (default): the accumulators themselves are the drain,
 //      west -> east, 8 values per edge on acc_out_east; dr_west is 0.
@@ -32,7 +40,8 @@
 //      clear; shift has priority over the MAC); on every other edge the DR
 //      loads dr_east, the east neighbour's DR, when that is valid, so items
 //      move one PE west per edge.  dr_west_valid marks a loaded item.  The
-//      tiles have no chain: acc_in = lap ? acc << 1 : 0, acc_out_east is 0.
+//      tiles have no chain: acc_in = lap ? acc << 1 : 0 (FOLD = 1: 0),
+//      acc_out_east is 0.
 //      Checked in simulation ([DR-CONTRACT], fatal): a read edge while an
 //      item arrives from the east (it would be lost), both halves on one edge,
 //      a read on a lap edge.
@@ -50,6 +59,7 @@ module PaynPeCore #(
     parameter int OWIDTH = 24,
     parameter int LOW_W = 9,
     parameter int DRAIN = 0,
+    parameter int FOLD = 0,
     parameter int DRN = (N_H / 2) * N_W           // values per DR (derived)
 ) (
     input  logic clk,
@@ -89,6 +99,8 @@ module PaynPeCore #(
             else $fatal(1, "K, M, N_H and N_W must be positive");
         assert (DRAIN == 0 || (DRAIN == 1 && N_H % 2 == 0 && DRN == (N_H / 2) * N_W))
             else $fatal(1, "DRAIN must be 0 or 1 (1 needs an even N_H and DRN = N_H/2*N_W)");
+        assert (FOLD == 0 || FOLD == 1)
+            else $fatal(1, "FOLD must be 0 or 1");
     end
 
     // Canonical tile values, for the DR's half select.
@@ -151,12 +163,12 @@ module PaynPeCore #(
 
         for (genvar v = 0; v < N_W; v++) begin : g_col
             logic signed [OWIDTH-1:0] tile_acc_in;
-            assign tile_acc_in = lap ? {acc_chain[v+1][OWIDTH-2:0], 1'b0} :
+            assign tile_acc_in = (FOLD == 0 && lap) ? {acc_chain[v+1][OWIDTH-2:0], 1'b0} :
                                  (DRAIN == 1) ? '0 : acc_chain[v];
             assign tile_out[h][v] = acc_chain[v+1];
 
             PaynTile #(
-                .K(K), .M(M), .OWIDTH(OWIDTH), .LOW_W(LOW_W)
+                .K(K), .M(M), .OWIDTH(OWIDTH), .LOW_W(LOW_W), .FOLD(FOLD)
             ) u_inner (
                 .clk,
                 .reset,
@@ -166,6 +178,7 @@ module PaynPeCore #(
                 .w_bits(w_bits_pipe[v]),
                 .shift_in(row_shift),
                 .mac_en,
+                .fold(lap),
                 .acc_in(tile_acc_in),
                 .acc_out(acc_chain[v+1])
             );
@@ -217,6 +230,19 @@ module PaynPeCore #(
         assign dr_west_valid = 1'b0;
     end
 
+`ifndef SYNTHESIS
+    if (FOLD == 1) begin : g_fold_ck
+        always_ff @(posedge clk) begin
+            if (reset !== 1'b1 && lap === 1'b1) begin
+                if (shift_in === 1'b1)
+                    $fatal(1, "[FOLD-CONTRACT] %m: fold on a shift edge (the shift wins; the doubling is lost)");
+                if (mac_en !== 1'b1)
+                    $fatal(1, "[FOLD-CONTRACT] %m: fold on an edge without mac_en (a fold edge doubles and adds that edge's sample)");
+            end
+        end
+    end
+`endif
+
     for (genvar v = 0; v < N_W; v++) begin : g_w_output
         for (genvar d = 0; d < K; d++) begin : g_depth
             assign w_bits_out[v][d] = w_bits_pipe[v][d];
@@ -228,11 +254,13 @@ endmodule
 // PE with packed ports and the registered lap enable.
 //
 //     ring_q       <= ring_in                 (reset to 0)
-//     tile shift    = shift_in | ring_q
-//     tile acc_in   = ring_q ? own << 1 : west          (in the core)
+//     tile shift    = shift_in | ring_q       (FOLD = 1: shift_in)
+//     tile acc_in   = ring_q ? own << 1 : west          (in the core; FOLD = 1:
+//                                                       west, ring_q folds)
 //
-// ring_in high at edge P makes P+1 a lap edge that doubles every tile; k
-// consecutive ring_in edges multiply by 2^k.  ring_out = ring_q re-exports the
+// ring_in high at edge P makes P+1 a lap edge that doubles every tile (FOLD =
+// 1: a fold edge, doubling and adding that edge's MAC); k consecutive ring_in
+// edges multiply by 2^k.  ring_out = ring_q re-exports the
 // lap wave to the next PE east (PaynPeGrid), so every PE laps one edge after
 // its west neighbour, in step with its A skew.  With ring_in = 0 the PE is a
 // plain SC PE.  The core keeps the instance name u_array_core (APR guides).
@@ -256,6 +284,7 @@ module PaynPe #(
     parameter int OWIDTH = 24,
     parameter int LOW_W = 9,
     parameter int DRAIN = 0,
+    parameter int FOLD = 0,
     parameter int DRW = (N_H / 2) * N_W * OWIDTH  // DR bits (derived)
 ) (
     input  logic clk,
@@ -311,7 +340,7 @@ module PaynPe #(
     end
 
     assign ring_out = ring_q;
-    assign core_shift = shift_in | ring_q;
+    assign core_shift = shift_in | ((FOLD == 0) & ring_q);
 
     if (DRAIN == 1) begin : g_drain
         logic drain_q, drain_q2;
@@ -360,7 +389,7 @@ module PaynPe #(
 
     PaynPeCore #(
         .K(K), .M(M), .N_H(N_H), .N_W(N_W),
-        .OWIDTH(OWIDTH), .LOW_W(LOW_W), .DRAIN(DRAIN)
+        .OWIDTH(OWIDTH), .LOW_W(LOW_W), .DRAIN(DRAIN), .FOLD(FOLD)
     ) u_array_core (
         .clk,
         .reset,

@@ -11,7 +11,8 @@ by flow/route.py) must hold qualification.json (final, setup and hold met) and b
 proof PASS); for a flow route its qualify, gate and routed-func stages must have passed.
 
 Points (--points: names or the groups sc, tsweep, bp, abit, ctl, int, all; default sc,int; with --drain 1, a
-drain-register route, the bit-plane points are skipped and the INT bench reads the drain register):
+drain-register route, the bit-plane points are skipped and the INT bench reads the drain register; with --fold 1, a
+lap-fold route (PAYN_LAP_FOLD=1), the bit-plane points are skipped and abit runs the fold schedule):
   sc_uniform, sc_ladder   designs/payn/power/power_payn_sc.sv: uniform L=128, or the per-row ladder; SC_BATCHES =
                           --sc-columns / K blocks (3,072 columns: 384 blocks at K8/M16, 192 at K16/M8; the same window
                           of 3,072 edges at L=128 and the same 196,608 kernel MACs at either shape)
@@ -19,6 +20,7 @@ drain-register route, the bit-plane points are skipped and the INT bench reads t
                           SC_UNIFORM_L)
   bp_<prec>_L<L>_<win>    designs/payn/power/power_payn_int.sv +MODE=bp (bit-plane), operands int_workload.py energy
   abit_<prec>_L<L>_<win>  the same bench with INT_ABIT (all bits in time), operands int_workload.py abit --dist plain
+                          (L = 128: NB = 1, one quantization group per block)
   bp_..._ctl              bit-plane controls on the abit operands (same MACs, same data cycles)
   windows: dr = data + laps (drain excluded, the headline), d = data only (peak), all = drain included
 Per point, each step resumable by its own PASS marker under OUT/<point>/:
@@ -97,11 +99,11 @@ class Point:
         rows_pe = 8 if self.kind == "abit" else 8 // self.ba
         return (self.mrows // rows_pe) * (self.ncols // 8)
 
-    def active(self, drain: int = 0) -> int:
+    def active(self, drain: int = 0, fold: int = 0) -> int:
         """SAIF intervals of the window (the benches' window rules; a drain-register block has 2 drain
-        intervals, the in-tile chain 8)."""
+        intervals, the in-tile chain 8; a fold route has no lap intervals)."""
         if self.kind == "abit":
-            data, laps = self.ba * self.bw * self.nb, self.ba + self.bw - 2
+            data, laps = self.ba * self.bw * self.nb, 0 if fold else self.ba + self.bw - 2
         else:
             data, laps = self.bw * self.nb, self.bw - 1
         per = {0: data + laps, 1: data, 2: data + laps + (2 if drain else 8)}[self.mode]
@@ -126,12 +128,14 @@ def point_table() -> dict[str, Point]:
     shapes = {("int8", 384): (16, 64, 1), ("int8", 256): (24, 64, 1), ("int6", 1024): (24, 32, 9),
               ("int6", 4096): (8, 24, 9), ("int4", 1024): (24, 64, 3), ("int4", 4096): (16, 24, 3),
               ("w4a8", 1024): (8, 96, 5), ("int7", 384): (24, 56, 7), ("int7", 1024): (16, 32, 7),
-              ("int7", 4096): (8, 16, 7)}
+              ("int7", 4096): (8, 16, 7), ("int8", 128): (32, 96, 1), ("int7", 128): (56, 72, 7),
+              ("int6", 128): (64, 88, 9), ("int4", 128): (96, 128, 3)}
     for prec, L, win in (("int8", 384, "dr"), ("int8", 384, "all"), ("int8", 384, "d"), ("int8", 256, "dr"),
                          ("int6", 1024, "dr"), ("int6", 1024, "all"), ("int6", 4096, "dr"), ("int6", 4096, "d"),
                          ("int4", 1024, "dr"), ("int4", 1024, "all"), ("int4", 4096, "dr"), ("int4", 4096, "d"),
                          ("w4a8", 1024, "dr"), ("int7", 384, "dr"), ("int7", 1024, "dr"), ("int7", 1024, "all"),
-                         ("int7", 4096, "dr"), ("int7", 4096, "d")):
+                         ("int7", 4096, "dr"), ("int7", 4096, "d"), ("int8", 128, "dr"), ("int7", 128, "dr"),
+                         ("int6", 128, "dr"), ("int4", 128, "dr")):
         pts.append(int_point("abit", prec, L, win, *shapes[(prec, L)]))
     # bit-plane controls on the abit operands
     for prec, L, win in (("int8", 384, "dr"), ("int8", 384, "all"), ("int8", 256, "dr"), ("int4", 1024, "dr"),
@@ -176,6 +180,7 @@ class Route:
     approvals: tuple[str, ...] = ()
     sc_columns: int = SC_COLUMNS
     drain: int = 0                # 1: a drain-register route (PAYN_DRAIN=1)
+    fold: int = 0                 # 1: a lap-fold route (PAYN_LAP_FOLD=1)
 
     @property
     def K(self) -> int:
@@ -231,7 +236,7 @@ def gate_route(r: Route, evidence: Path, flow_route: bool) -> dict:
 
 # -------------------------------------------------------------------------------------------- GL settings --
 def vcs_args(r: Route, p: Point) -> str:
-    d = [f"+define+PAYN_M={r.M}", f"+define+PAYN_DRAIN={r.drain}"]
+    d = [f"+define+PAYN_M={r.M}", f"+define+PAYN_DRAIN={r.drain}"] + (["+define+PAYN_LAP_FOLD=1"] if r.fold else [])
     if r.top != TOP:
         d.append(f"+define+PAYN_DUT={r.top}")
     if p.kind == "sc":
@@ -258,14 +263,19 @@ SC_PASS_RE = (r"^PASS: PaYN SC power bench; workload (?P<wl>uniform L=\d+|ladder
               r"(?P<window>\d+) window edges, drain dumped \(check with sc_trace\.py\)$")
 
 
-def int_pass_line(p: Point, drain: int = 0) -> str:
+def abit_block_len(p: Point, drain: int = 0, fold: int = 0) -> int:
+    """The single-PE abit block period of the power bench (int_trace.py abit_period)."""
+    return p.ba * p.bw * p.nb + (0 if fold else p.ba + p.bw - 2) + (2 if drain else 8)
+
+
+def int_pass_line(p: Point, drain: int = 0, fold: int = 0) -> str:
     """The INT power bench's PASS line; a drain-register route reads 2 items per block and has no combiner."""
     head = "PaYN abit INT power bench" if p.kind == "abit" else "PaYN bit-plane INT power bench"
     drained, combined = (2 * p.blocks, 0) if drain else (8 * p.blocks, 8 * p.blocks)
-    line = (f"PASS: {head}; BA={p.ba} BW={p.bw} L={p.L} blocks={p.blocks} mode={p.mode} active={p.active(drain)} "
-            f"drained={drained} combined={combined}")
+    line = (f"PASS: {head}; BA={p.ba} BW={p.bw} L={p.L} blocks={p.blocks} mode={p.mode} "
+            f"active={p.active(drain, fold)} drained={drained} combined={combined}")
     if p.kind == "abit":
-        return line + f" block_len={p.ba * p.bw * p.nb + p.ba + p.bw - 2 + (2 if drain else 8)}"
+        return line + f" block_len={abit_block_len(p, drain, fold)}"
     return line + " lap_ring_only=1"
 
 
@@ -273,10 +283,12 @@ def sc_workload_name(p: Point) -> str:
     return {"uniform": "uniform L=128", "ladder": "ladder"}.get(p.workload, f"uniform L={p.workload[1:]}")
 
 
-def bench_supports(p: Point, drain: int = 0) -> str | None:
+def bench_supports(p: Point, drain: int = 0, fold: int = 0) -> str | None:
     """None if the bench can run this point, else why not."""
     if drain and p.kind == "bp":
         return "the bit-plane schedule reads the in-tile chain (combiner); a drain-register route runs sc and abit"
+    if fold and p.kind == "bp":
+        return "the bit-plane schedule is not run on a lap-fold route; it runs sc and abit"
     if p.kind == "sc" and p.workload.startswith("T"):
         if not re.search(r"`ifndef SC_UNIFORM_L\b", text(REPO / SC_TB)):
             return f"{SC_TB} has no uniform-L workload (no SC_UNIFORM_L define)"
@@ -343,7 +355,7 @@ class PointRun:
 
     def do_gl(self, log: Log) -> None:
         r, p = self.r, self.p
-        why = bench_supports(p, r.drain)
+        why = bench_supports(p, r.drain, r.fold)
         require(why is None, f"{p.name}: {why}")
         run, run_dir = gl_run_dir(r, p)
         if not r.native:
@@ -370,7 +382,7 @@ class PointRun:
             if p.workload == "uniform":
                 require(window == r.sc_batches * 128 // r.M, f"uniform window {window} edges")
         else:
-            line = int_pass_line(p, r.drain)
+            line = int_pass_line(p, r.drain, r.fold)
             require(re.search(rf"^{re.escape(line)}$", body, re.M), f"bench PASS line missing: {line} (make rc {rc})")
         (self.gl / "expected_pass.txt").write_text(line + "\n")
         require("sdf corner = max" in body and "[INFO] $sdf_annotate(" in body, "no max-corner SDF annotation")
@@ -381,8 +393,9 @@ class PointRun:
             require(chk["window_edges"] == window and chk["blocks"] == r.sc_batches and not chk["errors"],
                     f"trace window/blocks {chk['window_edges']}/{chk['blocks']} vs PASS line {window}/{r.sc_batches}")
         else:
-            require(chk["status"] == "PASS" and chk["saif_window"]["active"] == p.active(r.drain),
-                    f"INT trace check {chk['status']}, window {chk['saif_window']}")
+            require(chk["status"] == "PASS" and chk["saif_window"]["active"] == p.active(r.drain, r.fold)
+                    and chk.get("fold", 0) == r.fold,
+                    f"INT trace check {chk['status']}, window {chk['saif_window']}, fold {chk.get('fold', 0)}")
         log(text(self.gl / "trace_check.log").strip().splitlines()[-1])
         rc = qualify("sdf-clock", r.file("apr.sdf"), "--period-ns", PERIOD_NS, "--sim-log", simlog,
                      "--json", self.gl / "sdf_clock_audit.json", log=self.gl / "sdf_clock_audit.log")
@@ -485,7 +498,7 @@ class PointRun:
                 *([f"operands  {quote(self.stim_cmd())}"] if p.kind != "sc" else []),
                 f"GL on    {gl_where}",
                 f"sim      {quote(self.gl_cmd())}",
-                f"expect   {int_pass_line(p, r.drain) if p.kind != 'sc' else 'PASS: PaYN SC power bench; workload ' + sc_workload_name(p) + f', {r.sc_batches} blocks, ...'}",
+                f"expect   {int_pass_line(p, r.drain, r.fold) if p.kind != 'sc' else 'PASS: PaYN SC power bench; workload ' + sc_workload_name(p) + f', {r.sc_batches} blocks, ...'}",
                 f"check    {quote(self.check_cmd())}",
                 f"gate     qualify.py sdf-clock {r.file('apr.sdf')} --sim-log gl/simulation.log"]),
             Stage("audit", self.gl / "timing_qualification.json", self.do_audit,
@@ -542,6 +555,7 @@ def common_row(pr: PointRun) -> tuple[dict, dict]:
     p_tot = total(power_dir / "power.rpt", "Total Power")
     hier = hierarchy(power_dir, pr.r.drain)
     base = dict(point=pr.p.name, kind=pr.p.kind, shape=pr.r.shape, route=pr.r.run, top=pr.r.top, drain=pr.r.drain,
+                fold=pr.r.fold,
                 power_mW=p_tot, internal_mW=total(power_dir / "power.rpt", "Cell Internal Power"),
                 switching_mW=total(power_dir / "power.rpt", "Net Switching Power"),
                 leakage_mW=total(power_dir / "power.rpt", "Cell Leakage Power"),
@@ -585,7 +599,7 @@ def int_row(pr: PointRun) -> dict:
     mpc = chk["macs"] / win["active"]
     sched = chk.get("schedule", "bp")
     nb = chk["L"] // 128
-    period = (ba * bw * nb + ba + bw - 2 + (2 if pr.r.drain else 8)) if sched == "abit" else (bw * nb + bw - 1 + 8)
+    period = abit_block_len(pr.p, pr.r.drain, pr.r.fold) if sched == "abit" else (bw * nb + bw - 1 + 8)
     row = dict(base, schedule=sched, precision=chk["precision"], ba=ba, bw=bw, L=chk["L"], mrows=chk["mrows"],
                ncols=chk["ncols"], blocks=chk["blocks"], saif_mode=chk["saif_mode"], window=pr.p.window,
                active_cycles=win["active"], data_cycles=win["data"], lap_cycles=win["ring"],
@@ -720,6 +734,7 @@ def collect(out: Path) -> None:
 def manifest(r: Route, evidence: Path) -> list[str]:
     lines = [f"route={r.route}", f"top={r.top}", f"target={r.target}", f"shape={r.shape} K={r.K} M={r.M}",
              f"evidence={evidence}", f"sc_columns={r.sc_columns} sc_batches={r.sc_batches}", f"drain={r.drain}",
+             f"fold={r.fold}",
              f"approvals={' '.join(r.approvals) or '(none)'}"]
     lines += [f"{sha256(f)}  {f.relative_to(r.route)}" for f in (r.file("apr.v"), r.file("apr.sdf"), r.file("spef"),
                                                                  r.sdc)]
@@ -745,6 +760,8 @@ def main() -> int:
     ap.add_argument("--jobs", type=int, default=4)
     ap.add_argument("--drain", type=int, choices=(0, 1), default=0,
                     help="1: a drain-register route (PAYN_DRAIN=1): benches built with it; bit-plane points refused")
+    ap.add_argument("--fold", type=int, choices=(0, 1), default=0,
+                    help="1: a lap-fold route (PAYN_LAP_FOLD=1): benches built with it; bit-plane points refused")
     ap.add_argument("--retry-failed", action="store_true", default=os.environ.get("RETRY_FAILED") == "1")
     ap.add_argument("--dry-run", action="store_true", default=os.environ.get("DRY_RUN") == "1")
     a = ap.parse_args()
@@ -761,7 +778,7 @@ def main() -> int:
     for tok in approvals:
         if not (tok.startswith("--approve-") or re.fullmatch(r"[0-9]+(\.[0-9]+)?", tok)):
             ap.error(f"--gl-approve takes only qualify.py --approve-* flags (got {tok})")
-    r = Route(shape, route, a.top, out, a.target, approvals, a.sc_columns, a.drain)
+    r = Route(shape, route, a.top, out, a.target, approvals, a.sc_columns, a.drain, a.fold)
     require(r.sc_columns % (8 * r.K) == 0, "--sc-columns must be a multiple of 8 K")
     names = select(a.points)
     classes = set(select(a.classes)) if a.classes else set()
@@ -782,12 +799,14 @@ def main() -> int:
     if not a.dry_run:
         out.mkdir(parents=True, exist_ok=True)
         write_manifest(out / "inputs.txt", manifest(r, evidence))
-    if r.drain:                                # the default groups include bit-plane points
+    if r.drain or r.fold:                      # the default groups include bit-plane points
         dropped = [n for n in names if POINTS[n].kind == "bp"]
         names = [n for n in names if POINTS[n].kind != "bp"]
         if dropped:
-            print(f"drain-register route: {len(dropped)} bit-plane points skipped ({', '.join(dropped[:4])}...)")
-    blocked = {n: bench_supports(POINTS[n], r.drain) for n in names if bench_supports(POINTS[n], r.drain)}
+            kind = "drain-register" if r.drain else "lap-fold"
+            print(f"{kind} route: {len(dropped)} bit-plane points skipped ({', '.join(dropped[:4])}...)")
+    blocked = {n: bench_supports(POINTS[n], r.drain, r.fold) for n in names
+               if bench_supports(POINTS[n], r.drain, r.fold)}
 
     def one(name: str) -> tuple[str, str]:
         pr = PointRun(r, POINTS[name], name in classes)

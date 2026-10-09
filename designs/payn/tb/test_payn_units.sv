@@ -38,10 +38,19 @@
 //       words and raw planes: in SC select every A bit (thermometer of the
 //       reference kA), every W bit, both sign banks and ka_flat; in INT select
 //       a_bits / w_bits = reference | raw.  Then after an asynchronous reset.
+//   (5) PaynTile with FOLD = 1 (the INT lap fold) against an integer model,
+//       acc <- shift ? acc_in : fold ? 2*acc + S : mac ? acc + S : acc
+//       (mod 2^24, S = sum over lanes of +-popcount(a & w)), on 200,000 random
+//       edges: shift / fold+MAC / MAC / idle mixes, dense and sparse operands,
+//       uniform and random signs, random shift values.  acc_out is checked
+//       after every edge; folds that meet a pending carry / borrow (the
+//       segmented accumulator's corner) are counted and must both occur.
+//       Every build runs it (the instance sets FOLD = 1 itself).
 // Last line PASS: / FAIL: PaYN units bench, with counts.
 
 `include "payn/rtl/payn_stream_gen.sv"
 `include "payn/rtl/payn_edge.sv"
+`include "payn/rtl/payn_tile.sv"
 
 `ifndef PAYN_M
 `define PAYN_M 8                      // positions per lane: 8 (K16/M8) or 16 (K8/M16)
@@ -308,6 +317,84 @@ module Top;
         if (bs) check_words(0, exp_p, what);
     endtask
 
+    //------------------------------------------------- (5) PaynTile fold --
+    localparam int T_OW = 24, T_LW = 9, T_EDGES = 200000;
+    logic tclk = 1'b0, trst = 1'b1;
+    logic         t_a_sgn  [K];
+    logic [M-1:0] t_a_bits [K];
+    logic         t_w_sgn  [K];
+    logic [M-1:0] t_w_bits [K];
+    logic t_shift = 1'b0, t_mac = 1'b0, t_fold = 1'b0;
+    logic signed [T_OW-1:0] t_acc_in = '0;
+    logic signed [T_OW-1:0] t_acc_out;
+    int tile_checks = 0, tile_bad = 0, tile_folds = 0, fold_pc = 0, fold_pb = 0;
+
+    PaynTile #(.K(K), .M(M), .OWIDTH(T_OW), .LOW_W(T_LW), .FOLD(1)) u_tile (
+        .clk(tclk), .reset(trst),
+        .a_signs(t_a_sgn), .a_bits(t_a_bits), .w_signs(t_w_sgn), .w_bits(t_w_bits),
+        .shift_in(t_shift), .mac_en(t_mac), .fold(t_fold), .acc_in(t_acc_in), .acc_out(t_acc_out)
+    );
+
+    function automatic longint wrap_ow(input longint x);
+        x = x & ((longint'(1) << T_OW) - 1);
+        return (x >= (longint'(1) << (T_OW - 1))) ? x - (longint'(1) << T_OW) : x;
+    endfunction
+
+    // Random operands for one edge: density 0 sparse / 1 random / 2 dense,
+    // signs 0 all positive / 1 all negative products / 2 random.
+    task automatic t_operands(output longint s);
+        int dens, sg;
+        dens = $urandom_range(0, 2);
+        sg = $urandom_range(0, 2);
+        s = 0;
+        for (int i = 0; i < K; i++) begin
+            t_a_bits[i] = (dens == 2) ? ~M'($urandom_range(0, 3)) : (dens == 1) ? M'($urandom) : M'($urandom) & M'($urandom) & M'($urandom);
+            t_w_bits[i] = (dens == 2) ? '1 : M'($urandom);
+            t_a_sgn[i] = (sg == 2) ? 1'($urandom) : 1'b0;
+            t_w_sgn[i] = (sg == 2) ? 1'($urandom) : 1'(sg);
+            s += ((t_a_sgn[i] ^ t_w_sgn[i]) ? -1 : 1) * $countones(t_a_bits[i] & t_w_bits[i]);
+        end
+    endtask
+
+    task automatic tile_fold_test();
+        longint ref_acc, s;
+        int r;
+        for (int i = 0; i < K; i++) begin
+            t_a_bits[i] = '0; t_w_bits[i] = '0; t_a_sgn[i] = 1'b0; t_w_sgn[i] = 1'b0;
+        end
+        #1 tclk = 1'b1;
+        #1 tclk = 1'b0;
+        trst = 1'b0;
+        ref_acc = 0;
+        for (int e = 0; e < T_EDGES; e++) begin
+            r = $urandom_range(0, 99);
+            t_operands(s);
+            t_shift = (r < 4);
+            t_fold = (r >= 4 && r < 40);
+            t_mac = (r >= 4 && r < 90);
+            t_acc_in = T_OW'({$urandom, $urandom});
+            if (t_fold) begin
+                tile_folds++;
+                fold_pc += (u_tile.pending_carry === 1'b1);
+                fold_pb += (u_tile.pending_borrow === 1'b1);
+            end
+            if (t_shift) ref_acc = t_acc_in;
+            else if (t_fold) ref_acc = wrap_ow(2 * ref_acc + s);
+            else if (t_mac) ref_acc = wrap_ow(ref_acc + s);
+            #1 tclk = 1'b1;
+            #1 tclk = 1'b0;
+            tile_checks++;
+            if (t_acc_out !== T_OW'(ref_acc)) begin
+                tile_bad++;
+                if (tile_bad < 10)
+                    $display("[UNIT-FAIL] tile edge %0d (shift %0b fold %0b mac %0b, S %0d): acc_out %0d, expected %0d",
+                             e, t_shift, t_fold, t_mac, s, t_acc_out, ref_acc);
+            end
+        end
+        $display("tile fold: %0d edges checked, %0d mismatches; %0d folds, %0d with a pending carry, %0d with a pending borrow",
+                 tile_checks, tile_bad, tile_folds, fold_pc, fold_pb);
+    endtask
+
     initial begin
         int p;
         bit ok;
@@ -532,15 +619,19 @@ module Top;
         p_check_eq("after reset");
         $display("edge vs reference: %0d checks, %0d mismatches", eq_checks, eq_bad);
 
+        // (5) PaynTile fold vs the integer model.
+        tile_fold_test();
+
         ok = enc_bad == 0 && gen_bad == 0 && sil_bad == 0 && eq_bad == 0 && lz_bad == 0 &&
              enc_checks == NPH*256*129*K && lz_checks == NPH*256*K &&
-             sil_checks == NPH*256*K + 64*NCYC*NPH*2 && eq_checks == 4000*4*2 + 1;
+             sil_checks == NPH*256*K + 64*NCYC*NPH*2 && eq_checks == 4000*4*2 + 1 &&
+             tile_bad == 0 && tile_checks == T_EDGES && fold_pc > 0 && fold_pb > 0;
         if (ok)
-            $display("PASS: PaYN units bench K=%0d M=%0d: encoder %0d cases, L=0 %0d checks, stream gen %0d checks, INT silence %0d checks, edge vs reference %0d checks",
-                     K, M, enc_checks, lz_checks, gen_checks, sil_checks, eq_checks);
+            $display("PASS: PaYN units bench K=%0d M=%0d: encoder %0d cases, L=0 %0d checks, stream gen %0d checks, INT silence %0d checks, edge vs reference %0d checks, tile fold %0d edges (%0d folds, %0d / %0d with a pending carry / borrow)",
+                     K, M, enc_checks, lz_checks, gen_checks, sil_checks, eq_checks, tile_checks, tile_folds, fold_pc, fold_pb);
         else
-            $display("FAIL: PaYN units bench K=%0d M=%0d: encoder %0d/%0d bad, L=0 %0d/%0d bad, stream gen %0d/%0d bad, INT silence %0d/%0d bad, edge vs reference %0d/%0d bad",
-                     K, M, enc_bad, enc_checks, lz_bad, lz_checks, gen_bad, gen_checks, sil_bad, sil_checks, eq_bad, eq_checks);
+            $display("FAIL: PaYN units bench K=%0d M=%0d: encoder %0d/%0d bad, L=0 %0d/%0d bad, stream gen %0d/%0d bad, INT silence %0d/%0d bad, edge vs reference %0d/%0d bad, tile fold %0d/%0d bad (%0d / %0d folds with a pending carry / borrow)",
+                     K, M, enc_bad, enc_checks, lz_bad, lz_checks, gen_bad, gen_checks, sil_bad, sil_checks, eq_bad, eq_checks, tile_bad, tile_checks, fold_pc, fold_pb);
         $finish;
     end
 endmodule

@@ -57,7 +57,7 @@
 // DRAIN_SAMPLE_LATE_PS that many ps before the next edge), dr_out_valid high
 // on both; the DRAIN line is the same.  dr_in_east is held at 0 (one PE).
 //
-// Defines: PAYN_M, PAYN_DRAIN (0), SC_NH, SC_NW, SC_OWIDTH (24), SC_BATCHES (256), SC_SEED,
+// Defines: PAYN_M, PAYN_DRAIN (0), PAYN_LAP_FOLD (0; SC mode never laps), SC_NH, SC_NW, SC_OWIDTH (24), SC_BATCHES (256), SC_SEED,
 // SC_UNIFORM_L (128), SC_LADDER, SC_INT_JUNK, SC_DRAIN_SAMPLE_LATE_PS (0; or the
 // plusarg +DRAIN_SAMPLE_LATE_PS=n, for routed netlists, see the drain below),
 // ASTRAEA_CLK_PERIOD_NS.  Needs DesignWare for the RTL

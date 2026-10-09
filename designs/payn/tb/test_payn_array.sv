@@ -155,6 +155,31 @@
 //   and every valid dr_out as "Q 0 e v0..v31" (loaded on segment edge e); the
 //   ABITCFG header gains DRAIN.  shift_in stays low.
 //
+// ------------------------------------------ lap fold (PAYN_LAP_FOLD=1) --
+// With +define+PAYN_LAP_FOLD=1 a lap edge is a fold edge (payn_array.sv
+// [FOLD]: it keeps its MAC and doubles first); +MODE=sc and +MODE=abit run,
+// +MODE=int and +MODE=switch (bit-plane) need PAYN_LAP_FOLD=0.  +MODE=abit
+// runs the fold schedule by default: no bubble between levels, the lap edge
+// (ring_in one edge ahead) on the MAC edge of the next level's first capture
+// (the edge after it); block period BA*BW*NB + 8 (DRAIN=1: + 2).  Options:
+//   +ABIT_FOLD=0|1         the schedule (default: the build's PAYN_LAP_FOLD):
+//                          0 the lap schedule above, 1 the fold schedule.  The
+//                          lap schedule on a fold build must PASS (its bubble
+//                          adds zero); the fold schedule on a lap build drops
+//                          the MAC of every level's first capture (must be
+//                          caught).  NEG_ABIT_NO_BUBBLE needs the lap schedule;
+//                          on a fold build it puts each fold on the previous
+//                          level's last MAC edge (one edge early).
+//   +NEG_FOLD_LATE=n       fold schedule: the fold before level n one edge late
+//                          (the MAC edge of the level's second capture)
+//   +NEG_FOLD_EARLY=n      fold schedule: the fold before level n one edge early
+//                          (the previous level's last MAC edge)
+//   +NEG_FOLD_ON_DRAIN     fold build: an extra fold on block 0's first drain
+//                          edge (DRAIN=0: [FOLD-CONTRACT], a fold on a shift
+//                          edge; DRAIN=1: [DR-CONTRACT], a read on a lap edge)
+// The ABITCFG header gains FOLD (the schedule) HW_FOLD (the build)
+// NEG_FOLD_LATE NEG_FOLD_EARLY.
+//
 // Needs DesignWare for the tile heap (VCS -y $SYNOPSYS/dw/sim_ver).  GL runs:
 // +define+GL_SIM, +define+PAYN_DUT=<netlist top> if it is not payn_array.
 
@@ -179,6 +204,9 @@
 `endif
 `ifndef PAYN_DRAIN
 `define PAYN_DRAIN 0                  // drain: 0 in-tile chain, 1 drain register (payn_array.sv)
+`endif
+`ifndef PAYN_LAP_FOLD
+`define PAYN_LAP_FOLD 0               // lap: 0 in-place lap (drops the MAC), 1 fold (payn_array.sv)
 `endif
 `ifndef PAYN_DUT
 `define PAYN_DUT payn_array           // netlist top name (GL_SIM)
@@ -230,6 +258,7 @@ module Top;
     logic [DRW-1:0] dr_in_east = '0;           // one PE: no east neighbour
     logic dr_in_east_valid = 1'b0;
     logic int_out_valid;
+    localparam int FOLD = `PAYN_LAP_FOLD;
 
     ClkUtils #(.TIMEOUT(`TB_TIMEOUT)) clk_utils (.clk, .reset, .timeout);
 
@@ -240,7 +269,7 @@ module Top;
 `else
     payn_array #(
         .K(K), .M(M), .N_H(N_H), .N_W(N_W), .WIDTH(WIDTH),
-        .OWIDTH(OWIDTH), .LOW_W(LOW_W), .DRAIN(DRAIN)
+        .OWIDTH(OWIDTH), .LOW_W(LOW_W), .DRAIN(DRAIN), .FOLD(FOLD)
     ) dut (.*);
 `endif
 
@@ -1096,12 +1125,17 @@ module Top;
     int ab_drn_blk [], ab_drn_t [];              // P_e is drain step t of block ab_drn_blk (-1: none)
     int ab_neg_no_lap = -1, ab_neg_extra_lap = -1, ab_neg_sign = 0, ab_neg_order = 0;
     bit ab_neg_no_bubble = 1'b0, ab_neg_drain_early = 0, ab_neg_overlap = 1'b0;
+    int ab_fold = FOLD;                          // the schedule: 0 lap (bubble), 1 fold
+    int ab_neg_fold_late = -1, ab_neg_fold_early = -1;
+    bit ab_neg_fold_drain = 1'b0;
 
     // Pass order, per-block slot list and the per-edge schedule of one segment.
     task automatic abit_config();
         int sl_kind [$], sl_pass [$], sl_u [$];   // slot: 0 data / 1 bubble, pass, chunk
-        bit sl_lap [$];
+        int lap_slot [$];                         // slots that are lap (fold) edges
+        bit sl_lap [];
         bit lap_next;
+        int lap_off;
         int first_in_level, base, e;
         if (BA < 2 || BA > 8 || BW < 2 || BW > 8) $fatal(1, "[BENCH] BA, BW must be 2..8 (got %0d, %0d)", BA, BW);
         if (L < K*M || L % (K*M) != 0) $fatal(1, "[BENCH] L=%0d must be a positive multiple of %0d", L, K*M);
@@ -1120,7 +1154,7 @@ module Top;
         AB_NBLK = NIG * NJG;
         AB_NLEV = BA + BW - 1;
         AB_NP = BA * BW;
-        AB_FORMULA = BA*BW*NB + (BA + BW - 2) + N_W;     // + (P_R+P_C-2) = 0, 8*P_C = 8
+        AB_FORMULA = BA*BW*NB + (ab_fold ? 0 : BA + BW - 2) + N_W;   // + (P_R+P_C-2) = 0, 8*P_C = 8
         // Levels MSB first (NEG_ORDER=1: LSB first; 2: levels 1 and 2 of the order swapped).
         ab_lev_k.delete();
         for (int n = 0; n < AB_NLEV; n++) ab_lev_k.push_back(AB_NLEV - 1 - n);
@@ -1154,39 +1188,51 @@ module Top;
             foreach (ab_pn[j]) np_lev += (ab_pn[j] == ab_neg_extra_lap);
             if (np_lev < 2) $fatal(1, "[BENCH] NEG_EXTRA_LAP=%0d: that level has %0d pass(es), needs 2", ab_neg_extra_lap, np_lev);
         end
-        // Slots of one block: every pass NB data slots; before every level but
-        // the first a bubble slot (the MAC on the lap edge is dropped), the lap
-        // on the next level's first capture; after the last level one bubble
+        // Slots of one block: every pass NB data slots.  Lap schedule: before
+        // every level but the first a bubble slot (the MAC on the lap edge is
+        // dropped), the lap on the next level's first capture.  Fold schedule:
+        // no bubble, the lap (fold) on the slot after the next level's first
+        // capture (that capture's MAC edge).  After the last level one bubble
         // (the last MAC edge), then the drain.
         lap_next = 1'b0;
+        lap_off = 0;
         for (int j = 0; j < AB_NP; j++) begin
             first_in_level = (j == 0) || (ab_pn[j] != ab_pn[j-1]);
             if (first_in_level && j > 0) begin
-                if (!ab_neg_no_bubble) begin
-                    sl_kind.push_back(1); sl_pass.push_back(-1); sl_u.push_back(-1); sl_lap.push_back(1'b0);
+                if (!ab_fold && !ab_neg_no_bubble) begin
+                    sl_kind.push_back(1); sl_pass.push_back(-1); sl_u.push_back(-1);
                 end
                 lap_next = (ab_pn[j] != ab_neg_no_lap);               // NEG_NO_LAP: this level's lap dropped
+                lap_off = !ab_fold ? 0 : (ab_pn[j] == ab_neg_fold_late) ? 2 :     // NEG_FOLD_LATE / _EARLY
+                          (ab_pn[j] == ab_neg_fold_early) ? 0 : 1;
             end
             if (!first_in_level && ab_pn[j] == ab_neg_extra_lap && ab_pn[j-1] == ab_neg_extra_lap &&
                 (j < 2 || ab_pn[j-2] != ab_neg_extra_lap)) begin       // NEG_EXTRA_LAP: lap after the level's first pass
-                if (!ab_neg_no_bubble) begin
-                    sl_kind.push_back(1); sl_pass.push_back(-1); sl_u.push_back(-1); sl_lap.push_back(1'b0);
+                if (!ab_fold && !ab_neg_no_bubble) begin
+                    sl_kind.push_back(1); sl_pass.push_back(-1); sl_u.push_back(-1);
                 end
                 lap_next = 1'b1;
+                lap_off = ab_fold ? 1 : 0;
             end
             for (int u = 0; u < NB; u++) begin
                 sl_kind.push_back(0); sl_pass.push_back(j); sl_u.push_back(u);
-                sl_lap.push_back(lap_next && u == 0);
+                if (lap_next && u == 0) lap_slot.push_back(sl_kind.size() - 1 + lap_off);
             end
             lap_next = 1'b0;
         end
         if (!ab_neg_drain_early) begin
-            sl_kind.push_back(1); sl_pass.push_back(-1); sl_u.push_back(-1); sl_lap.push_back(1'b0);
+            sl_kind.push_back(1); sl_pass.push_back(-1); sl_u.push_back(-1);
         end
         AB_D0 = sl_kind.size();                  // first drain slot
+        sl_lap = new[AB_D0];
+        foreach (lap_slot[i]) begin
+            if (lap_slot[i] >= AB_D0)
+                $fatal(1, "[BENCH] a lap lands on slot %0d, past the block's last MAC slot %0d", lap_slot[i], AB_D0 - 1);
+            sl_lap[lap_slot[i]] = 1'b1;
+        end
         if (DRAIN == 1) begin
             AB_BLK_NOM = AB_D0 + 1;              // half-1 read edge = next block's slot 0
-            AB_FORMULA = BA*BW*NB + (BA + BW - 2) + 2;
+            AB_FORMULA = BA*BW*NB + (ab_fold ? 0 : BA + BW - 2) + 2;
         end else
             AB_BLK_NOM = AB_D0 + N_W - 1;        // 8th drain edge = next block's slot 0
         AB_BLK_LEN = AB_BLK_NOM - (ab_neg_overlap ? 1 : 0);
@@ -1214,6 +1260,7 @@ module Top;
                 ab_drn_blk[e] = b; ab_drn_t[e] = t;
             end
         end
+        if (ab_neg_fold_drain) ab_lap[E0 + AB_D0] = 1'b1;   // NEG_FOLD_ON_DRAIN: block 0's first drain edge
     endtask
 
     function automatic bit abit_drain_at(input int e);
@@ -1306,6 +1353,7 @@ module Top;
     // One all-bits-in-time segment (edge 0 = next posedge), trace abit_trace.txt:
     //   ABITCFG BA BW L MROWS NCOLS NBLK NB E0 E_END BLK_LEN D0 FORMULA NLEV JUNK MODE_AT
     //           NEG_NO_LAP NEG_EXTRA_LAP NEG_SIGN NEG_ORDER NEG_NO_BUBBLE NEG_DRAIN_EARLY NEG_OVERLAP PARK_CYC0
+    //           DRAIN FOLD HW_FOLD NEG_FOLD_LATE NEG_FOLD_EARLY
     //   P e blk j p q sign    first capture of pass j (the sign the W wave loaded for it)
     //   K e blk j u           raw-plane capture (chunk u of pass j)
     //   L e                   lap edge (ring_in driven on e-1)
@@ -1327,10 +1375,11 @@ module Top;
         if (seg_trace[seg] == 0) $fatal(1, "cannot open abit_trace.txt");
         seg_sched[seg] = $fopen("abit_sched.txt", "w");
         if (seg_sched[seg] == 0) $fatal(1, "cannot open abit_sched.txt");
-        $fwrite(seg_trace[seg], "ABITCFG %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d\n",
+        $fwrite(seg_trace[seg], "ABITCFG %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d %0d\n",
                 BA, BW, L, MROWS, NCOLS, AB_NBLK, NB, E0, AB_E_END, AB_BLK_LEN, AB_D0, AB_FORMULA, AB_NLEV,
                 junk, MODE_AT, ab_neg_no_lap, ab_neg_extra_lap, ab_neg_sign, ab_neg_order,
-                ab_neg_no_bubble, ab_neg_drain_early, ab_neg_overlap, park_cyc0, DRAIN);
+                ab_neg_no_bubble, ab_neg_drain_early, ab_neg_overlap, park_cyc0, DRAIN,
+                ab_fold, FOLD, ab_neg_fold_late, ab_neg_fold_early);
         $fwrite(seg_sched[seg], "SCHED abit=1 blk_len=%0d d0=%0d nb=%0d ba=%0d bw=%0d nblk=%0d formula=%0d\n",
                 AB_BLK_LEN, AB_D0, NB, BA, BW, AB_NBLK, AB_FORMULA);
         seg_base[seg] = int'(edge_n) + 1;
@@ -1489,6 +1538,9 @@ module Top;
 
         if (DRAIN == 1 && (bench_mode == "int" || bench_mode == "switch"))
             $fatal(1, "[BENCH] +MODE=%s uses the bit-plane combiner on the in-tile chain: build with PAYN_DRAIN=0",
+                   bench_mode);
+        if (FOLD == 1 && (bench_mode == "int" || bench_mode == "switch"))
+            $fatal(1, "[BENCH] +MODE=%s runs the bit-plane schedule, which is not run on a fold build: build with PAYN_LAP_FOLD=0",
                    bench_mode);
 
         if (bench_mode == "sc") begin
@@ -1688,8 +1740,19 @@ module Top;
             ab_neg_no_bubble = $test$plusargs("NEG_ABIT_NO_BUBBLE");
             ab_neg_drain_early = $test$plusargs("NEG_ABIT_DRAIN_EARLY");
             ab_neg_overlap = $test$plusargs("NEG_ABIT_OVERLAP");
+            void'($value$plusargs("ABIT_FOLD=%d", ab_fold));
+            void'($value$plusargs("NEG_FOLD_LATE=%d", ab_neg_fold_late));
+            void'($value$plusargs("NEG_FOLD_EARLY=%d", ab_neg_fold_early));
+            ab_neg_fold_drain = $test$plusargs("NEG_FOLD_ON_DRAIN");
             if (!(ab_neg_sign >= 0 && ab_neg_sign <= 2) || !(ab_neg_order >= 0 && ab_neg_order <= 2))
                 $fatal(1, "[BENCH] NEG_ABIT_SIGN and NEG_ABIT_ORDER must be 0..2");
+            if (!(ab_fold == 0 || ab_fold == 1)) $fatal(1, "[BENCH] ABIT_FOLD must be 0 or 1");
+            if (ab_neg_no_bubble && ab_fold) $fatal(1, "[BENCH] NEG_ABIT_NO_BUBBLE needs the lap schedule (+ABIT_FOLD=0)");
+            if ((ab_neg_fold_late >= 0 || ab_neg_fold_early >= 0) && !ab_fold)
+                $fatal(1, "[BENCH] NEG_FOLD_LATE / NEG_FOLD_EARLY need the fold schedule");
+            if (ab_neg_fold_late == 0 || ab_neg_fold_early == 0 || ab_neg_fold_late >= BA + BW - 1 || ab_neg_fold_early >= BA + BW - 1)
+                $fatal(1, "[BENCH] NEG_FOLD_LATE / NEG_FOLD_EARLY must be 1..%0d", BA + BW - 2);
+            if (ab_neg_fold_drain && FOLD != 1) $fatal(1, "[BENCH] NEG_FOLD_ON_DRAIN needs PAYN_LAP_FOLD=1");
             void'($urandom(seed));
             abit_config();
             int_mode = (MODE_AT < 0);
@@ -1720,10 +1783,11 @@ module Top;
                      cov_lap_edges, cov_tile_laps, cov_pending_carry, cov_pending_borrow);
             $display("INT_SILENT_MAC_SAMPLES %0d", int_mac_samples);
 `endif
-            $display("PASS: PaYN abit INT bench BA=%0d BW=%0d L=%0d MROWS=%0d NCOLS=%0d blocks=%0d block_len=%0d formula=%0d edges=%0d junk=%0d mode_at=%0d sc_contract=%0d park_cyc0=%0d neg=%0d/%0d/%0d/%0d/%0d/%0d/%0d drain=%0d",
+            $display("PASS: PaYN abit INT bench BA=%0d BW=%0d L=%0d MROWS=%0d NCOLS=%0d blocks=%0d block_len=%0d formula=%0d edges=%0d junk=%0d mode_at=%0d sc_contract=%0d park_cyc0=%0d neg=%0d/%0d/%0d/%0d/%0d/%0d/%0d/%0d/%0d drain=%0d fold=%0d hw_fold=%0d",
                      BA, BW, L, MROWS, NCOLS, AB_NBLK, AB_BLK_LEN, AB_FORMULA, AB_E_END + 3, junk, MODE_AT,
                      contract, park_cyc0, ab_neg_no_lap, ab_neg_extra_lap, ab_neg_sign, ab_neg_order,
-                     ab_neg_no_bubble, ab_neg_drain_early, ab_neg_overlap, DRAIN);
+                     ab_neg_no_bubble, ab_neg_drain_early, ab_neg_overlap, ab_neg_fold_late, ab_neg_fold_early,
+                     DRAIN, ab_fold, FOLD);
             $finish;
         end
         $fatal(1, "[BENCH] unknown +MODE=%s (sc | int | switch | abit)", bench_mode);

@@ -2,6 +2,9 @@
 # label  BA BW L MROWS NCOLS DIST SEED  flags  expect
 #   expect  pass | caught (data wrong, RTL = replay of the logged schedule) |
 #           fail:CONTRACT ([INT-CONTRACT] stops the run) | fail:SCCONTRACT (bit-exact, [SC-CONTRACT] > 0)
+# Every row runs on lap and fold builds (regress.py --fold); rows for one of them are in abit_fold.txt.  The
+# NEG_ABIT_NO_BUBBLE rows force the lap schedule (ABIT_FOLD=0): on a fold build the lap then lands on the previous
+# level's last MAC edge, a fold one edge early.
 int8_uniform_L128_m8n8            8 8  128  8  8 uniform      1 -                       pass
 int8_uniform_L256_m16n16          8 8  256 16 16 uniform      2 -                       pass
 int8_uniform_L384_m16n16          8 8  384 16 16 uniform      3 -                       pass
@@ -64,8 +67,8 @@ neg_int8_order_lsb_L128           8 8  128  8  8 uniform     66 NEG_ABIT_ORDER=1
 neg_int8_order_swap_L256          8 8  256  8  8 uniform     67 NEG_ABIT_ORDER=2        caught
 neg_int6_order_lsb_L1024          6 6 1024  8  8 uniform     68 NEG_ABIT_ORDER=1        caught
 neg_int4_order_swap_L1024         4 4 1024  8  8 uniform     69 NEG_ABIT_ORDER=2        caught
-neg_int8_nobubble_L256            8 8  256  8 16 uniform     70 NEG_ABIT_NO_BUBBLE      caught
-neg_int4_nobubble_L1024           4 4 1024  8  8 uniform     71 NEG_ABIT_NO_BUBBLE      caught
+neg_int8_nobubble_L256            8 8  256  8 16 uniform     70 ABIT_FOLD=0,NEG_ABIT_NO_BUBBLE caught
+neg_int4_nobubble_L1024           4 4 1024  8  8 uniform     71 ABIT_FOLD=0,NEG_ABIT_NO_BUBBLE caught
 neg_int8_drainearly_L256          8 8  256  8  8 uniform     72 NEG_ABIT_DRAIN_EARLY    caught
 neg_int6_drainearly_L1024         6 6 1024  8  8 uniform     73 NEG_ABIT_DRAIN_EARLY    caught
 neg_int8_overlap_L256_m8n16       8 8  256  8 16 uniform     74 NEG_ABIT_OVERLAP        caught

@@ -36,6 +36,15 @@
 //   bit-plane schedule (A bits in space)    BW*NB + (BW-1) + (P_ROWS+P_COLS-2) + 8*P_COLS
 //   all-bits-in-time schedule               BA*BW*NB + (BA+BW-2) + (P_ROWS+P_COLS-2) + 8*P_COLS
 //
+// Lap fold (FOLD = 1, a build-time choice; PaynPeCore).  A lap edge keeps its
+// MAC and folds the doubling into it, so the all-bits-in-time schedule drops
+// the bubble before every level step: the lap wave is the same per-PE wave,
+// timed on the MAC edge of the next level's first slice (one edge after that
+// slice's capture), and the BA+BW-2 term leaves both periods below:
+//   all bits in time, in-tile chain         BA*BW*NB + (P_ROWS+P_COLS-2) + 8*P_COLS
+//   all bits in time, drain register        max(BA*BW*NB + 2, 2*P_COLS)
+// The bit-plane schedule is not run on FOLD = 1 builds.
+//
 // Drain register chain (DRAIN = 1, a build-time choice; default 0 is the
 // in-tile chain above).  Each PE has one drain register (DR) of 32 values
 // (N_H/2 x N_W; PaynPe).  A drain wave runs like the ring: drain_in[r] is
@@ -73,6 +82,7 @@ module PaynPeGrid #(
     parameter int OWIDTH = 24,
     parameter int LOW_W = 9,
     parameter int DRAIN = 0,
+    parameter int FOLD = 0,
     parameter int DRW = (N_H / 2) * N_W * OWIDTH  // one DR (derived)
 ) (
     input  logic clk,
@@ -157,7 +167,7 @@ module PaynPeGrid #(
         for (genvar c = 0; c < P_COLS; c++) begin : g_pe_col
             PaynPe #(
                 .K(K), .M(M), .N_H(N_H), .N_W(N_W),
-                .OWIDTH(OWIDTH), .LOW_W(LOW_W), .DRAIN(DRAIN)
+                .OWIDTH(OWIDTH), .LOW_W(LOW_W), .DRAIN(DRAIN), .FOLD(FOLD)
             ) u_pe (
                 .clk,
                 .reset,

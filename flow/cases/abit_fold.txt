@@ -1,0 +1,26 @@
+# INT all-bits-in-time rows for the lap fold (bench test_payn_array.sv +MODE=abit), run in addition to abit.txt by
+# regress.py: build "fold" rows on PAYN_LAP_FOLD=1 builds (--fold 1), "lap" rows on lap builds, "both" on either.
+# NB = 1 (L = 128, one 128-element quantization group per block) is where the fold pays most.
+# label  build  BA BW L MROWS NCOLS DIST SEED  flags  expect
+#   expect  pass | caught (data wrong, RTL = replay of the logged schedule) | fail:FOLDDRAIN (a fold on a drain
+#           edge stops the run: [DR-CONTRACT] read on a lap edge with the drain register, [FOLD-CONTRACT] fold on
+#           a shift edge with the in-tile chain)
+nb1_int8_uniform_L128_m16n16          both 8 8  128 16 16 uniform    201 -                      pass
+nb1_int7_uniform_L128_m16n24_junk     both 7 7  128 16 24 uniform    202 JUNK                   pass
+nb1_int6_uniform_L128_m24n16          both 6 6  128 24 16 uniform    203 -                      pass
+nb1_int4_uniform_L128_m16n16          both 4 4  128 16 16 uniform    204 -                      pass
+nb1_int4_allmin_L128_m8n16            both 4 4  128  8 16 allmin       0 -                      pass
+nb1_w4a8_uniform_L128_m16n16          both 8 4  128 16 16 uniform    205 -                      pass
+nb1_int2_uniform_L128_m16n16          both 2 2  128 16 16 uniform    206 -                      pass
+lapsched_int8_uniform_L384_m16n16     fold 8 8  384 16 16 uniform    211 ABIT_FOLD=0            pass
+lapsched_int6_uniform_L128_m16n16_junk fold 6 6 128 16 16 uniform    212 ABIT_FOLD=0,JUNK       pass
+neg_foldsched_laphw_int8_L128         lap  8 8  128  8  8 uniform    221 ABIT_FOLD=1            caught
+neg_foldsched_laphw_int6_L1024        lap  6 6 1024  8  8 uniform    222 ABIT_FOLD=1            caught
+neg_fold_late_int8_L128               fold 8 8  128  8  8 uniform    231 NEG_FOLD_LATE=7        caught
+neg_fold_late_int6_L1024              fold 6 6 1024  8  8 uniform    232 NEG_FOLD_LATE=5        caught
+neg_fold_late_int4_L128_m8n16         fold 4 4  128  8 16 uniform    233 NEG_FOLD_LATE=2        caught
+neg_fold_early_int8_L256              fold 8 8  256  8  8 uniform    234 NEG_FOLD_EARLY=7       caught
+neg_fold_early_int4_L128              fold 4 4  128  8  8 uniform    235 NEG_FOLD_EARLY=3       caught
+neg_fold_early_w4a8_L128_m8n16        fold 8 4  128  8 16 uniform    236 NEG_FOLD_EARLY=5       caught
+neg_fold_on_drain_int8_L128           fold 8 8  128  8  8 uniform    237 NEG_FOLD_ON_DRAIN      fail:FOLDDRAIN
+neg_fold_on_drain_int4_L1024          fold 4 4 1024  8  8 uniform    238 NEG_FOLD_ON_DRAIN      fail:FOLDDRAIN

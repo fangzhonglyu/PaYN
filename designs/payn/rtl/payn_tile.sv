@@ -86,11 +86,26 @@ endmodule
 // acc_out = {high_next, acc_low} is the canonical value with the pending bit
 // already folded in.  A shift edge loads acc_in and clears both pending bits;
 // shift has priority over mac_en.
+//
+// Fold (FOLD = 1, the INT lap fold).  An edge with fold and mac_en is a MAC
+// edge that doubles the canonical value first,
+//
+//     acc  <-  2 * acc_out + S        (mod 2^OWIDTH, S = this edge's heap sum)
+//
+// with no new adder: the heap takes {acc_low[LOW_W-2:0], 0} in place of
+// acc_low, so low_sum = 2*(acc_low mod 2^(LOW_W-1)) + S stays inside
+// [-K*M, 2**(LOW_W+1)-1] (one carry or borrow at most, pending bits as on any
+// MAC edge), and acc_high loads {high_next[HIGH_W-2:0], acc_low[LOW_W-1]},
+// i.e. 2*high_next plus the bit that leaves the low segment (high_next has
+// the previous edge's pending bit folded in).  Shift keeps priority; a fold
+// needs mac_en (the PE checks both, [FOLD-CONTRACT]).  With FOLD = 0 the fold
+// input is ignored.
 module PaynTile #(
     parameter int K = 16,
     parameter int M = 8,
     parameter int OWIDTH = 24,
-    parameter int LOW_W = 9
+    parameter int LOW_W = 9,
+    parameter int FOLD = 0
 ) (
     input  logic clk,
     input  logic reset,
@@ -100,6 +115,7 @@ module PaynTile #(
     input  logic [M-1:0] w_bits  [K],
     input  logic shift_in,
     input  logic mac_en,
+    input  logic fold,
     input  logic signed [OWIDTH-1:0] acc_in,
     output logic signed [OWIDTH-1:0] acc_out
 );
@@ -166,7 +182,12 @@ module PaynTile #(
     logic pending_carry;
     logic pending_borrow;
 
-    assign heap_inputs[(2*K+1)*SUM_W +: SUM_W] = SUM_W'($unsigned(acc_low));
+    // The heap's accumulator row: acc_low, doubled on a fold edge.
+    logic do_fold;
+    logic [LOW_W-1:0] acc_low_row;
+    assign do_fold = (FOLD == 1) && fold;
+    assign acc_low_row = do_fold ? {acc_low[LOW_W-2:0], 1'b0} : acc_low;
+    assign heap_inputs[(2*K+1)*SUM_W +: SUM_W] = SUM_W'($unsigned(acc_low_row));
 
     logic [SUM_W-1:0] heap_row0;
     logic [SUM_W-1:0] heap_row1;
@@ -184,8 +205,9 @@ module PaynTile #(
         .OUT1(heap_row1)
     );
 
-    // low_sum spans [-K*M, 2**(LOW_W+1)-1]: a negative sum is exactly one
-    // borrow, and bit LOW_W of a non-negative sum is exactly one carry.
+    // low_sum spans [-K*M, 2**(LOW_W+1)-1] (a fold edge: [-K*M, 2**LOW_W-2+K*M]):
+    // a negative sum is exactly one borrow, and bit LOW_W of a non-negative sum
+    // is exactly one carry.
     assign low_sum = $signed(heap_row0) + $signed(heap_row1);
     assign next_borrow = low_sum[SUM_W-1];
     assign next_carry  = !low_sum[SUM_W-1] && low_sum[LOW_W];
@@ -209,7 +231,9 @@ module PaynTile #(
             pending_carry <= 1'b0;
             pending_borrow <= 1'b0;
         end else begin
-            if (pending_carry || pending_borrow)
+            if (do_fold)
+                acc_high <= {high_next[HIGH_W-2:0], acc_low[LOW_W-1]};
+            else if (pending_carry || pending_borrow)
                 acc_high <= high_next;
 
             if (mac_en) begin
