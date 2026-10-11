@@ -49,8 +49,11 @@ module PaynIntCombiner #(
     localparam int G = N_H / 2;
 
     initial begin
-        assert (N_H >= 2)
-            else $fatal(1, "N_H (%0d) must be at least 2", N_H);
+        // N_H = 1 elaborates (G = 0, the whole column in one half) for the SC
+        // K/M/N sweeps, which build the drain register and never capture here;
+        // it is not an INT configuration.
+        assert (N_H >= 1)
+            else $fatal(1, "N_H (%0d) must be at least 1", N_H);
         assert (OUT_W >= OWIDTH + N_H - 1)
             else $fatal(1, "OUT_W (%0d) must hold a %0d-bit tile shifted by %0d",
                         OUT_W, OWIDTH, N_H - 1);

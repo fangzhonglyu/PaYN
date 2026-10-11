@@ -43,8 +43,8 @@ module PaynKaEncoder #(
     localparam logic [7:0] LANE_MASK = lane_mask(LANE);
 
     initial begin
-        assert ((K == 8 || K == 16) && LANE >= 0 && LANE < K)
-            else $fatal(1, "PaynKaEncoder needs K 8 or 16 and LANE 0..K-1 (got K=%0d LANE=%0d)", K, LANE);
+        assert ((K == 1 || K == 2 || K == 4 || K == 8 || K == 16 || K == 32) && LANE >= 0 && LANE < K)
+            else $fatal(1, "PaynKaEncoder needs K a power of two up to 32 and LANE 0..K-1 (got K=%0d LANE=%0d)", K, LANE);
     end
 
     logic [7:0] phase_mask;
@@ -161,8 +161,11 @@ module PaynEdge #(
     endfunction
 
     initial begin
-        assert (((K == 8 && M == 16) || (K == 16 && M == 8)) && WIDTH == 8)
-            else $fatal(1, "PaynEdge is built for the C-BSG block: K8/M16 or K16/M8, WIDTH=8 (got K=%0d M=%0d WIDTH=%0d)",
+        // K8/M16 and K16/M8 are the production shapes; the K/M/N sweeps also
+        // build K, M in {1, 2, 4, 8, 16} independently.
+        assert ((K == 1 || K == 2 || K == 4 || K == 8 || K == 16 || K == 32) &&
+                (M == 1 || M == 2 || M == 4 || M == 8 || M == 16) && WIDTH == 8)
+            else $fatal(1, "PaynEdge is built for the C-BSG block: K, M powers of two (K <= 32, M <= 16), WIDTH=8 (got K=%0d M=%0d WIDTH=%0d)",
                         K, M, WIDTH);
         assert (N_H > 0 && N_W > 0)
             else $fatal(1, "N_H and N_W must be positive");
@@ -228,9 +231,14 @@ module PaynEdge #(
             assign ka_hi_gt = cyc < ka[7:LM];
             assign ka_hi_eq = cyc == ka[7:LM];
 
-            for (genvar lane = 0; lane < M; lane++) begin : g_a_lane
-                assign sc_a_bits[(row*K + depth)*M + lane] =
-                    ka_hi_gt || (ka_hi_eq && (LM'(lane) < ka[LM-1:0]));
+            if (M == 1) begin : g_a_m1
+                // One position per cycle: the thermometer is cyc < kA.
+                assign sc_a_bits[row*K + depth] = ka_hi_gt;
+            end else begin : g_a_lanes
+                for (genvar lane = 0; lane < M; lane++) begin : g_a_lane
+                    assign sc_a_bits[(row*K + depth)*M + lane] =
+                        ka_hi_gt || (ka_hi_eq && (LM'(lane) < ka[LM-1:0]));
+                end
             end
         end
     end

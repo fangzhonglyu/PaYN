@@ -4,7 +4,9 @@
 
 // SC power + output-checking bench for payn_array (A-first C-BSG streams, one
 // PE).  Shape from +define+PAYN_M=8 (K16/M8, default) or 16 (K8/M16), K =
-// 128/M lanes; SC_NH x SC_NW tiles (default 8 x 8).
+// 128/M lanes; SC_NH x SC_NW tiles (default 8 x 8).  The K/M/N sweeps set
+// +define+PAYN_K too (K, M powers of two, K <= 32, M <= 16); SC_NH = 1 needs the
+// drain register (one half, one read edge).
 //
 // One plain call of SC_BATCHES blocks (D = K * SC_BATCHES reduction columns)
 // runs back to back inside the SAIF window: every block loads new A/W
@@ -71,6 +73,9 @@
 `ifndef PAYN_M
 `define PAYN_M 8                      // positions per lane: 8 (K16/M8) or 16 (K8/M16)
 `endif
+`ifndef PAYN_K
+`define PAYN_K (128 / `PAYN_M)        // lanes per block (production: 128 / M)
+`endif
 `ifndef PAYN_DRAIN
 `define PAYN_DRAIN 0                  // drain: 0 in-tile chain, 1 drain register (payn_array.sv)
 `endif
@@ -104,7 +109,7 @@
 
 module Top;
     localparam int M = `PAYN_M;
-    localparam int K = 128 / M;
+    localparam int K = `PAYN_K;
     localparam int CYCLES = 128 / M;                 // cycles per 128-sample block
     localparam int N_H = `SC_NH;
     localparam int N_W = `SC_NW;
@@ -144,7 +149,9 @@ module Top;
     logic [63:0] int_out;
     // Drain register ports (DRAIN = 1 builds; unused and 0 with the in-tile chain).
     localparam int DRAIN = `PAYN_DRAIN;
-    localparam int DRW = (N_H / 2) * N_W * OWIDTH;
+    localparam int HALF = (N_H + 1) / 2;              // tile rows per drain-register half
+    localparam int N_HALVES = (N_H == 1) ? 1 : 2;
+    localparam int DRW = HALF * N_W * OWIDTH;
     logic drain_in = 1'b0;
     logic [DRW-1:0] dr_out;
     logic dr_out_valid;
@@ -291,8 +298,11 @@ module Top;
 
         void'($value$plusargs("DRAIN_SAMPLE_LATE_PS=%d", drain_sample_late_ps));
 
-        assert (((K == 16 && M == 8) || (K == 8 && M == 16)) && WIDTH == 8)
-            else $fatal(1, "PaYN SC power bench needs K16/M8 or K8/M16, WIDTH=8 (got K=%0d M=%0d)", K, M);
+        assert ((K == 1 || K == 2 || K == 4 || K == 8 || K == 16 || K == 32) &&
+                (M == 1 || M == 2 || M == 4 || M == 8 || M == 16) && WIDTH == 8)
+            else $fatal(1, "PaYN SC power bench needs K, M powers of two (K <= 32, M <= 16), WIDTH=8 (got K=%0d M=%0d)", K, M);
+        assert (N_H % 2 == 0 || (N_H == 1 && DRAIN == 1))
+            else $fatal(1, "SC_NH = %0d: odd N_H only as 1 with the drain register", N_H);
         assert (N_BLOCKS > 0)
             else $fatal(1, "SC_BATCHES must be positive");
 
@@ -393,15 +403,15 @@ module Top;
             @(posedge clk);
             @(negedge clk);
             drain_in = 1'b0;
-            for (int hf = 0; hf < 2; hf++) begin
+            for (int hf = 0; hf < N_HALVES; hf++) begin
                 @(posedge clk);
                 @(negedge clk);
                 if (drain_sample_late_ps > 0) #(PERIOD / 2.0 - drain_sample_late_ps / 1000.0);
                 if (dr_out_valid !== 1'b1)
                     $fatal(1, "[X-FAIL] dr_out_valid %b after read edge %0d", dr_out_valid, hf);
-                for (int h = 0; h < N_H / 2; h++)
+                for (int h = 0; h < HALF; h++)
                     for (int v = 0; v < N_W; v++)
-                        drain[hf*(N_H/2) + h][v] = $signed(dr_out[(h*N_W + v)*OWIDTH +: OWIDTH]);
+                        drain[hf*HALF + h][v] = $signed(dr_out[(h*N_W + v)*OWIDTH +: OWIDTH]);
             end
         end else begin
         acc_in_west = '0;

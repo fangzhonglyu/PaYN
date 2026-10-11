@@ -20,6 +20,12 @@
 //
 // The final drain is compared against the reference matrix in full, so all
 // N_H*N_W accumulators are checked, not just the east column.
+//
+// BOS_INT4X2 (the dual top binary_os_array_int8_int4) connects the mode pin;
+// BOS_MODE4=1 runs the window in INT4 mode.  A uniform random 8-bit lane is a
+// pair of uniform random INT4 values, so the stimulus is the same and only the
+// reference lane product changes: 16 * (aH*wL + aL*wH) on signed nibbles
+// (BinaryOSPE), two MACs per PE per cycle.
 
 `ifndef GL_SIM
 `include "baselines/binary_os/binary_os_array_native.sv"
@@ -52,6 +58,9 @@
 `ifndef BOS_SEED
 `define BOS_SEED 32'hDEAD_BEEF
 `endif
+`ifndef BOS_MODE4
+`define BOS_MODE4 0
+`endif
 `ifndef ASTRAEA_CLK_PERIOD_NS
 `define ASTRAEA_CLK_PERIOD_NS 2.5
 `endif
@@ -64,9 +73,12 @@ module Top;
     localparam int STIM_CYCLES  = `STIM_CYCLES_N;
     localparam int DRAIN_PERIOD = `BOS_DRAIN_PERIOD;
     localparam real PERIOD      = `ASTRAEA_CLK_PERIOD_NS;
+    localparam bit  MODE4       = `BOS_MODE4;
+    localparam int  LANE_MACS   = MODE4 ? 2 : 1;
 
     logic clk, reset, timeout;
     logic mac_en = 1'b0, shift_in = 1'b0;
+    logic int4_mode = MODE4;    // the dual top's mode pin, held for the whole run
 
     logic [N_H*IWIDTH-1:0] a_in = '0;
     logic [N_W*IWIDTH-1:0] w_in = '0;
@@ -89,6 +101,9 @@ module Top;
 `ifdef GL_SIM
     `BOS_GL_DUT dut (
         .clk(clk), .reset(reset), .mac_en(mac_en), .shift_in(shift_in),
+`ifdef BOS_INT4X2
+        .int4_mode(int4_mode),
+`endif
         .a_in(a_in), .w_in(w_in),
         .acc_in_west(acc_in_west), .acc_out_east(acc_out_east)
     );
@@ -104,6 +119,7 @@ module Top;
     `BOS_GL_DUT #(.N_H(N_H), .N_W(N_W), .OWIDTH(OWIDTH)) dut (.*);
 `endif
 
+
     // -------- reference model: per-PE operand hops + stationary accumulator ----
     // Mirrors the mesh exactly: A hops west->east one PE per cycle, W hops
     // north->south one PE per cycle, and each PE multiplies only its own
@@ -111,6 +127,16 @@ module Top;
     logic signed [IWIDTH-1:0] ref_a [N_H][N_W];
     logic signed [IWIDTH-1:0] ref_w [N_H][N_W];
     logic signed [OWIDTH-1:0] ref_acc [N_H][N_W];
+
+    // One PE's product for its two operand registers in the window's mode.
+    function automatic logic signed [OWIDTH-1:0] lane_product(
+        input logic signed [IWIDTH-1:0] a, input logic signed [IWIDTH-1:0] w);
+        if (MODE4)
+            lane_product = 16 * ($signed(a[7:4]) * $signed(w[3:0]) +
+                                 $signed(a[3:0]) * $signed(w[7:4]));
+        else
+            lane_product = a * w;
+    endfunction
 
     always @(posedge clk) begin
         for (int h = 0; h < N_H; h++)
@@ -131,7 +157,7 @@ module Top;
                         : ref_acc[h][v-1];
                 else if (mac_en)
                     ref_acc[h][v] <=
-                        ref_acc[h][v] + OWIDTH'(ref_a[h][v] * ref_w[h][v]);
+                        ref_acc[h][v] + lane_product(ref_a[h][v], ref_w[h][v]);
             end
     end
 
@@ -165,6 +191,10 @@ module Top;
             else $fatal(1, "BOS_DRAIN_PERIOD must be non-negative");
         assert (STIM_CYCLES > 0)
             else $fatal(1, "STIM_CYCLES_N must be positive");
+`ifndef BOS_INT4X2
+        assert (!MODE4)
+            else $fatal(1, "BOS_MODE4 needs the dual top (BOS_INT4X2)");
+`endif
 
         seed_state = `BOS_SEED;
         void'($urandom(seed_state));
@@ -247,8 +277,12 @@ module Top;
         if (drain_errors != 0)
             $fatal(1, "[FUNC-FAIL] %0d drained accumulators mismatched", drain_errors);
 
-        $display("PASS: binary OS power SAIF captured + output-checked; %0d cycles (%0d MAC, %0d drain), %0d useful MAC",
-                 checked_cycles, mac_cycles, drain_cycles, mac_cycles * N_H * N_W);
+        if (MODE4)
+            $display("PASS: binary OS power SAIF captured + output-checked; %0d cycles (%0d MAC, %0d drain), %0d useful MAC (INT4 mode, 2 MAC per PE per cycle)",
+                     checked_cycles, mac_cycles, drain_cycles, mac_cycles * N_H * N_W * LANE_MACS);
+        else
+            $display("PASS: binary OS power SAIF captured + output-checked; %0d cycles (%0d MAC, %0d drain), %0d useful MAC",
+                     checked_cycles, mac_cycles, drain_cycles, mac_cycles * N_H * N_W);
         $finish;
     end
 

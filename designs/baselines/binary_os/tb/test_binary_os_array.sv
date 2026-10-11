@@ -38,6 +38,13 @@
 //
 // Also covered: mac_en=0 holds the accumulator, and acc_in_west is a real
 // architectural input (a nonzero west value shifts into the row).
+//
+// BOS_INT4X2 (the dual top binary_os_array_int8_int4): the whole suite runs in
+// INT8 mode, then again in INT4 mode.  The INT4 golden is a plain integer
+// matmul of signed INT4 element matrices of depth 2*K_DEPTH, packed into the
+// 8-bit lanes by the documented convention (A lane t = {a[2t+1], a[2t]}, W lane
+// t = {w[2t], w[2t+1]}) and scaled by 16 (the accumulators hold 16x the INT4
+// dot product).
 module Top;
     localparam int IWIDTH  = `BOS_IWIDTH;
     localparam int N_H     = `BOS_NH;
@@ -45,8 +52,13 @@ module Top;
     localparam int OWIDTH  = `BOS_OWIDTH;
     localparam int K_DEPTH = 24;          // reduction depth
     localparam int BLOCKS  = 8;
-    localparam int MIN_OPERAND = -(1 << (IWIDTH-1));
-    localparam int MAX_OPERAND =  (1 << (IWIDTH-1)) - 1;
+    localparam int MIN8 = -(1 << (IWIDTH-1));
+    localparam int MAX8 =  (1 << (IWIDTH-1)) - 1;
+`ifdef BOS_INT4X2
+    localparam bit DUAL = 1'b1;
+`else
+    localparam bit DUAL = 1'b0;
+`endif
     // Cycles the skewed stream needs: slice t reaches PE (h,v) at t+h+v+1, so
     // the last productive MAC edge is K_DEPTH-1 + (N_H-1) + (N_W-1) + 1.
     localparam int STREAM_CYCLES = K_DEPTH + N_H + N_W - 1;
@@ -55,13 +67,16 @@ module Top;
 
     logic clk, reset, timeout;
     logic mac_en = 1'b0, shift_in = 1'b0;
+    logic int4_mode = 1'b0;     // connected by .* on the dual top only
+    bit m4 = 1'b0;              // the suite's current mode
+    int MIN_OPERAND = MIN8, MAX_OPERAND = MAX8;
 
     logic [N_H*IWIDTH-1:0] a_in = '0;
     logic [N_W*IWIDTH-1:0] w_in = '0;
     logic [N_H*OWIDTH-1:0] acc_in_west = '0;
     logic [N_H*OWIDTH-1:0] acc_out_east;
 
-    ClkUtils #(.TIMEOUT(BLOCKS*(STREAM_CYCLES + FLUSH_CYCLES + N_W + 8) + 512))
+    ClkUtils #(.TIMEOUT(2*BLOCKS*(STREAM_CYCLES + FLUSH_CYCLES + N_W + 8) + 1024))
         clk_utils (.clk, .reset, .timeout);
 
 `ifdef GL_SIM
@@ -86,16 +101,28 @@ module Top;
     end
 
     // Golden operands and result, held as unbounded integers and only truncated
-    // to OWIDTH at the comparison.
-    int a_mat [N_H][K_DEPTH];
-    int w_mat [K_DEPTH][N_W];
+    // to OWIDTH at the comparison.  INT8 mode uses depth K_DEPTH, INT4 mode
+    // 2*K_DEPTH elements (two per lane).
+    int a_mat [N_H][2*K_DEPTH];
+    int w_mat [2*K_DEPTH][N_W];
     int golden [N_H][N_W];
     logic signed [OWIDTH-1:0] got [N_H][N_W];
 
     int errors = 0;
 
-    function automatic logic signed [IWIDTH-1:0] rand_operand();
-        rand_operand = IWIDTH'($urandom);
+    // One element: a signed IWIDTH value in INT8 mode, a signed INT4 value in
+    // INT4 mode.
+    function automatic int rand_operand();
+        rand_operand = m4 ? int'($signed(4'($urandom))) : int'($signed(IWIDTH'($urandom)));
+    endfunction
+
+    // Lane t of A row h / W column v: one element, or in INT4 mode the pair
+    // A {a[2t+1], a[2t]} and W {w[2t], w[2t+1]}.
+    function automatic logic [IWIDTH-1:0] a_lane(input int h, input int t);
+        a_lane = m4 ? {4'(a_mat[h][2*t+1]), 4'(a_mat[h][2*t])} : IWIDTH'(a_mat[h][t]);
+    endfunction
+    function automatic logic [IWIDTH-1:0] w_lane(input int t, input int v);
+        w_lane = m4 ? {4'(w_mat[2*t][v]), 4'(w_mat[2*t+1][v])} : IWIDTH'(w_mat[t][v]);
     endfunction
 
     // Drive edge cycle c with the systolic skew; zero-pad outside the window.
@@ -103,15 +130,11 @@ module Top;
         int t;
         for (int h = 0; h < N_H; h++) begin
             t = c - h;
-            a_in[h*IWIDTH +: IWIDTH] =
-                (t >= 0 && t < K_DEPTH) ? a_mat[h][t][IWIDTH-1:0]
-                                        : {IWIDTH{1'b0}};
+            a_in[h*IWIDTH +: IWIDTH] = (t >= 0 && t < K_DEPTH) ? a_lane(h, t) : {IWIDTH{1'b0}};
         end
         for (int v = 0; v < N_W; v++) begin
             t = c - v;
-            w_in[v*IWIDTH +: IWIDTH] =
-                (t >= 0 && t < K_DEPTH) ? w_mat[t][v][IWIDTH-1:0]
-                                        : {IWIDTH{1'b0}};
+            w_in[v*IWIDTH +: IWIDTH] = (t >= 0 && t < K_DEPTH) ? w_lane(t, v) : {IWIDTH{1'b0}};
         end
     endtask
 
@@ -147,21 +170,23 @@ module Top;
             end
     endtask
 
-    initial begin
-        clk_utils.set_clock(2.5);
-        clk_utils.do_reset();
-        @(negedge clk);
-
+    // The suite in the current mode m4: BLOCKS golden blocks, west shift-in and
+    // drain priority, both accumulator wrap directions.  Starts and ends drained.
+    task automatic run_suite();
+        int depth, scale, base;
+        depth = m4 ? 2*K_DEPTH : K_DEPTH;      // elements per output
+        scale = m4 ? 16 : 1;                   // INT4 accumulators hold 16x
+        base = m4 ? BLOCKS + 2 : 0;            // block numbers in messages
         for (int block = 0; block < BLOCKS; block++) begin
             for (int h = 0; h < N_H; h++)
-                for (int t = 0; t < K_DEPTH; t++)
+                for (int t = 0; t < depth; t++)
                     case (block)
                         0, 1: a_mat[h][t] = MIN_OPERAND;
                         2: a_mat[h][t] = ((h+t)%2) ? MIN_OPERAND : MAX_OPERAND;
                         3: a_mat[h][t] = ((h+t)%3) - 1;
                         default: a_mat[h][t] = $signed(rand_operand());
                     endcase
-            for (int t = 0; t < K_DEPTH; t++)
+            for (int t = 0; t < depth; t++)
                 for (int v = 0; v < N_W; v++)
                     case (block)
                         0: w_mat[t][v] = MIN_OPERAND;
@@ -173,8 +198,9 @@ module Top;
             for (int h = 0; h < N_H; h++)
                 for (int v = 0; v < N_W; v++) begin
                     golden[h][v] = 0;
-                    for (int t = 0; t < K_DEPTH; t++)
+                    for (int t = 0; t < depth; t++)
                         golden[h][v] += a_mat[h][t] * w_mat[t][v];
+                    golden[h][v] *= scale;
                 end
 
             // Flush the resetless hop registers with zeros before enabling MAC.
@@ -200,15 +226,15 @@ module Top;
             // operands keep arriving on the hop.
             for (int idle = 0; idle < 3; idle++) begin
                 for (int h = 0; h < N_H; h++)
-                    a_in[h*IWIDTH +: IWIDTH] = rand_operand();
+                    a_in[h*IWIDTH +: IWIDTH] = IWIDTH'($urandom);
                 for (int v = 0; v < N_W; v++)
-                    w_in[v*IWIDTH +: IWIDTH] = rand_operand();
+                    w_in[v*IWIDTH +: IWIDTH] = IWIDTH'($urandom);
                 @(posedge clk);
                 @(negedge clk);
             end
 
             drain_matrix();
-            check_matrix(block);
+            check_matrix(base + block);
         end
 
         // acc_in_west is architectural: after a full drain the matrix is zero,
@@ -237,12 +263,18 @@ module Top;
             int start_value, w_value;
             start_value = (polarity == 0) ? (1 << (OWIDTH-1))-1 : -(1 << (OWIDTH-1));
             w_value = (polarity == 0) ? MIN_OPERAND : MAX_OPERAND;
+            // Every element MIN_OPERAND (A) and w_value (W): one lane product
+            // is MIN_OPERAND * w_value, twice over and scaled in INT4 mode.
+            for (int t = 0; t < 2; t++) begin
+                a_mat[0][t] = MIN_OPERAND;
+                w_mat[t][0] = w_value;
+            end
             for (int h = 0; h < N_H; h++) begin
-                a_in[h*IWIDTH +: IWIDTH] = IWIDTH'(MIN_OPERAND);
+                a_in[h*IWIDTH +: IWIDTH] = a_lane(0, 0);
                 acc_in_west[h*OWIDTH +: OWIDTH] = OWIDTH'(start_value);
             end
             for (int v = 0; v < N_W; v++)
-                w_in[v*IWIDTH +: IWIDTH] = IWIDTH'(w_value);
+                w_in[v*IWIDTH +: IWIDTH] = w_lane(0, 0);
             shift_in = 1'b1;
             mac_en = 1'b1;
             repeat (FLUSH_CYCLES) begin
@@ -258,16 +290,44 @@ module Top;
             acc_in_west = '0;
             for (int h = 0; h < N_H; h++)
                 for (int v = 0; v < N_W; v++)
-                    golden[h][v] = start_value + 2*MIN_OPERAND*w_value;
+                    golden[h][v] = start_value + 2*scale*(m4 ? 2 : 1)*MIN_OPERAND*w_value;
             drain_matrix();
-            check_matrix(BLOCKS + polarity);
+            check_matrix(base + BLOCKS + polarity);
+        end
+        a_in = '0;
+        w_in = '0;
+        // Leave the array drained for the next suite.
+        drain_matrix();
+    endtask
+
+    initial begin
+        clk_utils.set_clock(2.5);
+        clk_utils.do_reset();
+        @(negedge clk);
+
+        run_suite();
+        if (DUAL) begin
+            // Mode change on an idle, drained array; the top registers the pin.
+            int4_mode = 1'b1;
+            m4 = 1'b1;
+            MIN_OPERAND = -8;
+            MAX_OPERAND = 7;
+            repeat (2) begin
+                @(posedge clk);
+                @(negedge clk);
+            end
+            run_suite();
         end
 
         if (errors != 0)
             $fatal(1, "FAIL: %0d mismatches in %0d blocks of %0d x %0d depth %0d",
                    errors, BLOCKS, N_H, N_W, K_DEPTH);
-        $display("PASS: binary OS INT%0d array matched golden matmul, %0d blocks of %0dx%0d, depth %0d; signed extremes, hold, drain priority and both accumulator wrap directions checked",
-                 IWIDTH, BLOCKS, N_H, N_W, K_DEPTH);
+        if (DUAL)
+            $display("PASS: binary OS INT8+INT4x2 array matched golden matmul in both modes, %0d blocks of %0dx%0d each, depth %0d INT8 / %0d INT4; signed extremes, hold, drain priority and both accumulator wrap directions checked",
+                     BLOCKS, N_H, N_W, K_DEPTH, 2*K_DEPTH);
+        else
+            $display("PASS: binary OS INT%0d array matched golden matmul, %0d blocks of %0dx%0d, depth %0d; signed extremes, hold, drain priority and both accumulator wrap directions checked",
+                     IWIDTH, BLOCKS, N_H, N_W, K_DEPTH);
         $finish;
     end
 

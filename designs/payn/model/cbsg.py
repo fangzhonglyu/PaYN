@@ -439,7 +439,8 @@ def sobol_bank(dv, M):
             ones += 1
         if lm + ones < len(dv):
             h ^= dv[lm + ones]
-        h ^= dv[lm - 1]
+        if lm > 0:                       # M = 1: gray(c) itself, no (c & 1) term
+            h ^= dv[lm - 1]
     return np.array(out, dtype=np.int64)
 
 
@@ -449,8 +450,10 @@ def geometry(K=8, M=16):
     d = K*j + k.  Its mask bitrev8(d mod 64) splits into the lane bits bitrev(k) at [7:8-log2 K], hard-wired, and
     PB = 6 - log2 K phase bits bitrev(p) just below, p = j mod 2^PB from the block-phase register; bits [1:0] are 0.
     MASK[k, p] is that mask, WBANK the W words in sample order (t = M*c + m), CYC = 128 / M the longest block."""
-    if (K, M) not in SHAPES.values():
-        raise ValueError(f"unsupported PE shape K{K}/M{M}; supported: {', '.join(SHAPES)}")
+    # Production shapes are SHAPES; the K/M/N sweeps also use any power-of-two K <= 32, M <= 16 (K M decoupled).
+    if (K, M) not in SHAPES.values() and not (K in (1, 2, 4, 8, 16, 32) and M in (1, 2, 4, 8, 16)):
+        raise ValueError(f"unsupported PE shape K{K}/M{M}; supported: {', '.join(SHAPES)} and power-of-two "
+                         f"K <= 32, M <= 16")
     lk = K.bit_length() - 1
     pb = 6 - lk
     mask = (_bit_reverse(np.arange(K)[:, None], lk) << (8 - lk)) | (_bit_reverse(np.arange(1 << pb)[None, :], pb) << 2)

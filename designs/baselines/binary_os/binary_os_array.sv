@@ -17,6 +17,9 @@
 `ifndef BOS_OWIDTH
 `define BOS_OWIDTH 24
 `endif
+`ifndef BOS_DUAL_BOOTH
+`define BOS_DUAL_BOOTH 1
+`endif
 
 // N_H x N_W output-stationary binary systolic array.
 //
@@ -38,16 +41,24 @@
 // Per cycle the array retires N_H*N_W signed IWIDTH MACs.  A drain costs N_W
 // cycles and empties the array through N_H parallel OWIDTH rails, so a reduction
 // of depth D runs at N_H*N_W*D/(D+N_W) useful MAC/cycle.
+//
+// INT4X2 = 1 (IWIDTH = 8) builds every PE with the dual INT8 / 2 x INT4
+// multiplier (BinaryOSPE); `int4` selects the mode for the whole array and is a
+// static control net like mac_en.  In INT4 mode each 8-bit lane carries two
+// signed INT4 values, so the array retires 2*N_H*N_W MACs per cycle.
 module BinaryOSArray #(
     parameter int IWIDTH = 8,
     parameter int N_H = 8,
     parameter int N_W = 8,
-    parameter int OWIDTH = 24
+    parameter int OWIDTH = 24,
+    parameter int INT4X2 = 0,
+    parameter int DUAL_BOOTH = 1
 ) (
     input  logic clk,
     input  logic reset,
     input  logic mac_en,
     input  logic shift_in,
+    input  logic int4,
     input  logic signed [IWIDTH-1:0] a_in  [N_H],
     input  logic signed [IWIDTH-1:0] w_in  [N_W],
     output logic signed [IWIDTH-1:0] a_out [N_H],
@@ -76,12 +87,15 @@ module BinaryOSArray #(
         for (genvar v = 0; v < N_W; v++) begin : g_col
             BinaryOSPE #(
                 .IWIDTH(IWIDTH),
-                .OWIDTH(OWIDTH)
+                .OWIDTH(OWIDTH),
+                .INT4X2(INT4X2),
+                .DUAL_BOOTH(DUAL_BOOTH)
             ) u_pe (
                 .clk,
                 .reset,
                 .shift_in,
                 .mac_en,
+                .int4,
                 .a_in(a_link[h][v]),
                 .a_out(a_link[h][v+1]),
                 .w_in(w_link[v][h]),
@@ -105,12 +119,15 @@ module BinaryOSArrayFlat #(
     parameter int IWIDTH = 8,
     parameter int N_H = 8,
     parameter int N_W = 8,
-    parameter int OWIDTH = 24
+    parameter int OWIDTH = 24,
+    parameter int INT4X2 = 0,
+    parameter int DUAL_BOOTH = 1
 ) (
     input  logic clk,
     input  logic reset,
     input  logic mac_en,
     input  logic shift_in,
+    input  logic int4,
     input  logic [N_H*IWIDTH-1:0] a_in,
     input  logic [N_W*IWIDTH-1:0] w_in,
     output logic [N_H*IWIDTH-1:0] a_out,
@@ -138,12 +155,13 @@ module BinaryOSArrayFlat #(
     end
 
     BinaryOSArray #(
-        .IWIDTH(IWIDTH), .N_H(N_H), .N_W(N_W), .OWIDTH(OWIDTH)
+        .IWIDTH(IWIDTH), .N_H(N_H), .N_W(N_W), .OWIDTH(OWIDTH), .INT4X2(INT4X2), .DUAL_BOOTH(DUAL_BOOTH)
     ) u_array_core (
         .clk,
         .reset,
         .mac_en,
         .shift_in,
+        .int4,
         .a_in(a_in_array),
         .w_in(w_in_array),
         .a_out(a_out_array),
@@ -185,6 +203,57 @@ module binary_os_array #(
         .reset,
         .mac_en,
         .shift_in,
+        .int4(1'b0),
+        .a_in,
+        .w_in,
+        .a_out(a_out_nc),
+        .w_out(w_out_nc),
+        .acc_in_west,
+        .acc_out_east
+    );
+endmodule
+
+// Synthesis top for the dual INT8 / INT4 binary output-stationary array: the
+// binary_os_array mesh and ports with the INT4X2 PEs and one mode pin.
+// int4_mode is registered here, so the PE-wide mode net hangs off one flop
+// (reset to INT8); a mode change takes effect on the edge after the pin
+// changes and is meant for an idle, drained array.  INT4 mode: each 8-bit lane
+// carries two signed INT4 values (A {a1, a0}, W {w0, w1}: an A lane's high
+// nibble pairs with the W lane's low nibble), 2 x N_H x N_W MACs per cycle, and
+// the accumulators hold 16 x the INT4 dot product (BinaryOSPE).
+module binary_os_array_int8_int4 #(
+    parameter int N_H = `BOS_NH,
+    parameter int N_W = `BOS_NW,
+    parameter int OWIDTH = `BOS_OWIDTH,
+    parameter int DUAL_BOOTH = `BOS_DUAL_BOOTH    // BinaryOSPE: 1 Booth radix-4 (default), 0 AND array
+) (
+    input  logic clk,
+    input  logic reset,
+    input  logic mac_en,
+    input  logic shift_in,
+    input  logic int4_mode,
+    input  logic [N_H*8-1:0] a_in,
+    input  logic [N_W*8-1:0] w_in,
+    input  logic [N_H*OWIDTH-1:0] acc_in_west,
+    output logic [N_H*OWIDTH-1:0] acc_out_east
+);
+    logic int4_q;
+    logic [N_H*8-1:0] a_out_nc;
+    logic [N_W*8-1:0] w_out_nc;
+
+    always_ff @(posedge clk) begin
+        if (reset) int4_q <= 1'b0;
+        else       int4_q <= int4_mode;
+    end
+
+    BinaryOSArrayFlat #(
+        .IWIDTH(8), .N_H(N_H), .N_W(N_W), .OWIDTH(OWIDTH), .INT4X2(1), .DUAL_BOOTH(DUAL_BOOTH)
+    ) u_array (
+        .clk,
+        .reset,
+        .mac_en,
+        .shift_in,
+        .int4(int4_q),
         .a_in,
         .w_in,
         .a_out(a_out_nc),

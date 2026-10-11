@@ -13,7 +13,7 @@ in `../ASTRAEA`); this directory drives it, gates every artifact and keeps the e
 | `route.py` | the physical flow of one shape: synthesis, post-synthesis GL, bootstrap APR, bootstrap GL power simulation, final APR, qualification (with the targeted repair), basin gate, routed functional GL.  `--drain 1` builds the drain-register hardware (`PAYN_DRAIN=1`), `--fold 1` the lap fold (`PAYN_LAP_FOLD=1`). |
 | `measure.py` | routed gate-level power of a qualified route: SC (uniform L=128, per-row ladder, stream-length points) and INT (bit-plane, all bits in time, controls), each point gated end to end, plus the per-class power and area split.  `--drain 1` for a drain-register route, `--fold 1` for a lap-fold route (bit-plane points skipped). |
 | `report.py` | `doc/payn_results.md` from the run directories: area, timing, SC and INT energy, throughput and GMAC/s/mm2 for one PE and grids, the comparison against BOS. |
-| `bos.sh` | the BOS baseline (binary output-stationary INT8 / INT6 / INT4 arrays) from RTL to routed power with the same tools and gates. |
+| `bos.sh` | the BOS baseline (binary output-stationary INT8 / INT7 / INT6 / INT4 arrays, and the dual INT8 / INT4 array) from RTL to routed power with the same tools and gates. |
 | `qualify.py` | every gate (routed APR, routed and post-synthesis GL timing, SAIFs, PT coverage, SDF clock gates, the basin); `python3 flow/qualify.py -h`. |
 | `flowlib.py` | shared plumbing: the environment, command logging, resumable stages, netlist helpers. |
 | `tcl/` | `pt_libraries.tcl` (the TSMC22 PrimeTime libraries every PT script sources), `pt_power_classes.tcl` (power and area by functional class), `pt_basin_skew.tcl` (operand skew for the basin gate), `repair_route.tcl` (the targeted residual-marker repair). |
@@ -90,7 +90,14 @@ DRY_RUN=1 bash flow/bos.sh <campaign> 8 6 4      # plan
 bash flow/bos.sh <campaign> 6 4                  # RTL tests, workload SAIF, synthesis, unit-delay netlist test,
                                                  # APR, routed GL, PT-PX -> build/flow/bos/<campaign>/results.csv
 python3 flow/report.py --bos-results build/flow/bos/<campaign>/results.csv
+bash flow/bos.sh <campaign> dual                 # the dual INT8 / INT4 array (BinaryOSPE INT4X2): one route, GL and
+                                                 # PT-PX in both modes -> build/flow/bos/<campaign>/results_dual.csv
 ```
+
+The dual array (`binary_os_array_int8_int4`, target `TSMC22/BOS_ARRAY_INT8_INT4`) is the BOS mesh with a split
+multiplier: INT8 at 64 MAC/cycle, or two signed INT4 MACs per PE at 128 MAC/cycle on the same 8-bit lanes (A packs
+{a1, a0}, W packs {w0, w1}; the accumulators hold 16x the INT4 dot product).  Its rows stay in `results_dual.csv`, so
+report.py's per-width BOS rows never take them.
 
 ## GL approvals
 

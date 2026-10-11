@@ -4,8 +4,11 @@
 `timescale 1ns/1ps
 
 // Block clock of the C-BSG edge, for M = 16 or 8 samples per lane per cycle
-// (K = 128/M lanes; a block is 128/M cycles of the 128-sample grid).  It
-// holds three things:
+// (K = 128/M lanes; a block is 128/M cycles of the 128-sample grid).  The
+// K/M/N sweeps also build K, M in {1, 2, 4, 8, 16} independently (K sets the
+// phase bits, M the cycle count); at M = 1 the sample order is the Gray-code
+// Sobol of the cycle itself (no lane words, no (c & 1) term).  It holds three
+// things:
 //
 //   cyc     the block cycle counter: the words presented now are samples
 //           t = M*cyc + m.  0..CYCLES-1 inside a block (CYCLES = 128/M);
@@ -56,7 +59,8 @@
 //   rng_en       advance one cycle (cyc < CYCLES); held at IDLE once there.
 module PaynStreamGen #(
     parameter int M = 8,
-    parameter int WIDTH = 8
+    parameter int WIDTH = 8,
+    parameter int K = 128 / M
 ) (
     input  logic clk,
     input  logic reset,
@@ -65,10 +69,9 @@ module PaynStreamGen #(
     input  logic slice_start,
     input  logic shift_in,
     output logic [$clog2(128/M + 1)-1:0] cyc,      // CW bits
-    output logic [6 - $clog2(128/M) - 1:0] phase,  // PB bits
+    output logic [6 - $clog2(K) - 1:0] phase,      // PB bits
     output logic [M*(WIDTH-1)-1:0] w_words
 );
-    localparam int K = 128 / M;
     localparam int LM = $clog2(M);
     localparam int CYCLES = 128 / M;
     localparam int CW = $clog2(CYCLES + 1);        // cycle counter width
@@ -77,9 +80,10 @@ module PaynStreamGen #(
     localparam logic [CW-1:0] CYC_IDLE = CW'(CYCLES);
 
     initial begin
-        assert ((M == 16 || M == 8) && WIDTH == 8)
-            else $fatal(1, "PaynStreamGen is the C-BSG stream: M=16 or 8, WIDTH=8 (got M=%0d WIDTH=%0d)",
-                        M, WIDTH);
+        assert ((M == 16 || M == 8 || M == 4 || M == 2 || M == 1) && WIDTH == 8 &&
+                (K == 1 || K == 2 || K == 4 || K == 8 || K == 16 || K == 32))
+            else $fatal(1, "PaynStreamGen is the C-BSG stream: M, K powers of two (M <= 16, K <= 32), WIDTH=8 (got M=%0d K=%0d WIDTH=%0d)",
+                        M, K, WIDTH);
     end
 
     function automatic logic [7:0] dv_k(input int j);

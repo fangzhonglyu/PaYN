@@ -182,6 +182,12 @@
 `ifndef PAYN_M
 `define PAYN_M 8
 `endif
+// PAYN_K: lanes per block; default 128 / M (the production shapes K16/M8 and
+// K8/M16).  The K/M/N sweeps set K and M independently (powers of two,
+// K <= 32, M <= 16) and N_H = N_W = 1..8 (N_H = 1 with the drain register only).
+`ifndef PAYN_K
+`define PAYN_K (128 / `PAYN_M)
+`endif
 `ifndef PAYN_NH
 `define PAYN_NH 8
 `endif
@@ -200,7 +206,7 @@
 
 module payn_array #(
     parameter int M = `PAYN_M,
-    parameter int K = 128 / M,
+    parameter int K = `PAYN_K,
     parameter int N_H = `PAYN_NH,
     parameter int N_W = `PAYN_NW,
     parameter int WIDTH = 8,
@@ -208,7 +214,7 @@ module payn_array #(
     parameter int LOW_W = `PAYN_LOW_W,
     parameter int DRAIN = `PAYN_DRAIN,
     parameter int FOLD = `PAYN_LAP_FOLD,
-    parameter int DRW = (N_H / 2) * N_W * OWIDTH  // drain register bits (derived)
+    parameter int DRW = ((N_H + 1) / 2) * N_W * OWIDTH  // drain register bits (derived)
 ) (
     input logic clk,
     input logic reset,
@@ -245,8 +251,9 @@ module payn_array #(
     output logic int_out_valid
 );
     initial begin
-        assert (((K == 16 && M == 8) || (K == 8 && M == 16)) && WIDTH == 8)
-            else $fatal(1, "payn_array needs K16/M8 or K8/M16, WIDTH=8 (got K=%0d M=%0d WIDTH=%0d)",
+        assert ((K == 1 || K == 2 || K == 4 || K == 8 || K == 16 || K == 32) &&
+                (M == 1 || M == 2 || M == 4 || M == 8 || M == 16) && WIDTH == 8)
+            else $fatal(1, "payn_array needs K, M powers of two (K <= 32, M <= 16; production K16/M8 or K8/M16), WIDTH=8 (got K=%0d M=%0d WIDTH=%0d)",
                         K, M, WIDTH);
     end
 
@@ -264,7 +271,7 @@ module payn_array #(
     assign rng_drain = shift_in | ((DRAIN == 1) & drain_in);
 
     PaynStreamGen #(
-        .M(M), .WIDTH(WIDTH)
+        .M(M), .WIDTH(WIDTH), .K(K)
     ) u_rng (
         .clk, .reset, .rng_en, .block_start, .slice_start, .shift_in(rng_drain),
         .cyc, .phase, .w_words
@@ -383,7 +390,7 @@ module payn_array #(
     // two read edges count as drain edges; a read edge drops the MAC of the
     // half it reads, so the accounting treats it like a shift edge (the
     // sample it consumes must have no A ones).
-    typedef struct { int unsigned at; bit ss; bit dseen; logic [2:0] ph; int unsigned prev; } slice_ck_t;
+    typedef struct { int unsigned at; bit ss; bit dseen; logic [5:0] ph; int unsigned prev; } slice_ck_t;
     int contract_errors = 0;
     int unsigned ck_edge = 0;         // posedges since reset
     int unsigned last_shift = 1;      // edge of the last shift (reset: 1)
@@ -429,7 +436,7 @@ module payn_array #(
             sc_edge = (int_mode !== 1'b1);
             while (slice_q.size() > 0 && slice_q[0].at <= ck_edge) begin
                 drained = last_shift > slice_q[0].prev;
-                if (drained && slice_q[0].ph !== 3'd0) begin
+                if (drained && slice_q[0].ph !== 6'd0) begin
                     contract_errors++;
                     $error("[SC-CONTRACT] first block after a drain or reset loaded phase %0d, not 0 (drain not seen by its block_start edge and no slice_start)",
                            slice_q[0].ph);

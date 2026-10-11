@@ -129,6 +129,7 @@ module binary_os_array_asym #(
         .reset,
         .mac_en,
         .shift_in,
+        .int4(1'b0),
         .a_in,
         .w_in,
         .a_out(a_out_nc),

@@ -45,6 +45,9 @@
 //      Checked in simulation ([DR-CONTRACT], fatal): a read edge while an
 //      item arrives from the east (it would be lost), both halves on one edge,
 //      a read on a lap edge.
+//      N_H = 1 (the K/M/N sweeps only): a single half of N_W values, read on
+//      the half-0 edge; PaynPe keeps rd_half1 low.  HALF = (N_H + 1) / 2 tile
+//      rows per half (N_H / 2 for the even N_H of every production build).
 //
 // The operand bit pipes have no reset (they stream every edge); the sign pipes
 // reset, because the tile XORs the sign into the counter bits and an unknown
@@ -60,7 +63,7 @@ module PaynPeCore #(
     parameter int LOW_W = 9,
     parameter int DRAIN = 0,
     parameter int FOLD = 0,
-    parameter int DRN = (N_H / 2) * N_W           // values per DR (derived)
+    parameter int DRN = ((N_H + 1) / 2) * N_W     // values per DR (derived)
 ) (
     input  logic clk,
     input  logic reset,
@@ -88,6 +91,7 @@ module PaynPeCore #(
     input  logic signed [OWIDTH-1:0] acc_in_west  [N_H],
     output logic signed [OWIDTH-1:0] acc_out_east [N_H]
 );
+    localparam int HALF = (N_H + 1) / 2;           // tile rows per DR half
     logic [M-1:0] a_bits_pipe  [N_H][K];
     logic         a_signs_pipe [N_H][K];
     logic [M-1:0] w_bits_pipe  [N_W][K];
@@ -97,8 +101,8 @@ module PaynPeCore #(
     initial begin
         assert (K > 0 && M > 0 && N_H > 0 && N_W > 0)
             else $fatal(1, "K, M, N_H and N_W must be positive");
-        assert (DRAIN == 0 || (DRAIN == 1 && N_H % 2 == 0 && DRN == (N_H / 2) * N_W))
-            else $fatal(1, "DRAIN must be 0 or 1 (1 needs an even N_H and DRN = N_H/2*N_W)");
+        assert (DRAIN == 0 || (DRAIN == 1 && (N_H % 2 == 0 || N_H == 1) && DRN == HALF * N_W))
+            else $fatal(1, "DRAIN must be 0 or 1 (1 needs an even N_H or N_H = 1, and DRN = HALF*N_W)");
         assert (FOLD == 0 || FOLD == 1)
             else $fatal(1, "FOLD must be 0 or 1");
     end
@@ -159,7 +163,7 @@ module PaynPeCore #(
 
         assign acc_chain[0] = acc_in_west[h];
         assign acc_out_east[h] = (DRAIN == 1) ? '0 : acc_chain[N_W];
-        assign row_shift = shift_in | ((DRAIN == 1) && ((h < N_H / 2) ? rd_half0 : rd_half1));
+        assign row_shift = shift_in | ((DRAIN == 1) && ((h < HALF) ? rd_half0 : rd_half1));
 
         for (genvar v = 0; v < N_W; v++) begin : g_col
             logic signed [OWIDTH-1:0] tile_acc_in;
@@ -205,7 +209,7 @@ module PaynPeCore #(
             if (dr_load)
                 for (int n = 0; n < DRN; n++)
                     dr_q[n] <= rd_half0 ? tile_out[n / N_W][n % N_W] :
-                               rd_half1 ? tile_out[N_H / 2 + n / N_W][n % N_W] : dr_east[n];
+                               (N_H > 1 && rd_half1) ? tile_out[HALF + n / N_W][n % N_W] : dr_east[n];
         end
 
         assign dr_west = dr_q;
@@ -285,7 +289,7 @@ module PaynPe #(
     parameter int LOW_W = 9,
     parameter int DRAIN = 0,
     parameter int FOLD = 0,
-    parameter int DRW = (N_H / 2) * N_W * OWIDTH  // DR bits (derived)
+    parameter int DRW = ((N_H + 1) / 2) * N_W * OWIDTH  // DR bits (derived)
 ) (
     input  logic clk,
     input  logic reset,
@@ -324,7 +328,7 @@ module PaynPe #(
     logic         w_signs_out_array [N_W][K];
     logic signed [OWIDTH-1:0] acc_in_west_array  [N_H];
     logic signed [OWIDTH-1:0] acc_out_east_array [N_H];
-    localparam int DRN = (N_H / 2) * N_W;
+    localparam int DRN = ((N_H + 1) / 2) * N_W;
     logic signed [OWIDTH-1:0] dr_east_array [DRN];
     logic signed [OWIDTH-1:0] dr_west_array [DRN];
 
@@ -354,7 +358,7 @@ module PaynPe #(
             end
         end
         assign rd_half0 = drain_q;
-        assign rd_half1 = drain_q2;
+        assign rd_half1 = (N_H > 1) & drain_q2;     // N_H = 1: one half
         assign drain_out = drain_q;
     end else begin : g_no_drain
         assign rd_half0 = 1'b0;

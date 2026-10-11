@@ -27,7 +27,7 @@ module binary_os_array_int7 #(
     BinaryOSArrayFlat #(
         .IWIDTH(7), .N_H(N_H), .N_W(N_W), .OWIDTH(OWIDTH)
     ) u_array (
-        .clk, .reset, .mac_en, .shift_in,
+        .clk, .reset, .mac_en, .shift_in, .int4(1'b0),
         .a_in, .w_in, .a_out(a_out_nc), .w_out(w_out_nc),
         .acc_in_west, .acc_out_east
     );
@@ -53,7 +53,7 @@ module binary_os_array_int6 #(
     BinaryOSArrayFlat #(
         .IWIDTH(6), .N_H(N_H), .N_W(N_W), .OWIDTH(OWIDTH)
     ) u_array (
-        .clk, .reset, .mac_en, .shift_in,
+        .clk, .reset, .mac_en, .shift_in, .int4(1'b0),
         .a_in, .w_in, .a_out(a_out_nc), .w_out(w_out_nc),
         .acc_in_west, .acc_out_east
     );
@@ -79,7 +79,7 @@ module binary_os_array_int4 #(
     BinaryOSArrayFlat #(
         .IWIDTH(4), .N_H(N_H), .N_W(N_W), .OWIDTH(OWIDTH)
     ) u_array (
-        .clk, .reset, .mac_en, .shift_in,
+        .clk, .reset, .mac_en, .shift_in, .int4(1'b0),
         .a_in, .w_in, .a_out(a_out_nc), .w_out(w_out_nc),
         .acc_in_west, .acc_out_east
     );

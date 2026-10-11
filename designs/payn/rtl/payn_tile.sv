@@ -67,6 +67,21 @@ module PaynCount8 (
     assign s2 = fc[3];
 endmodule
 
+// M = 4 counterpart: one full adder leaves the count in three redundant bits,
+//
+//     count = s0a + s0b + 2*s1,
+//
+// whose weights sum to exactly 4.  (M = 2: the two bits themselves, s0a and
+// s0b; M = 1: the bit alone, one heap row per lane.  Only the K/M/N sweeps use
+// M < 8.)
+module PaynCount4 (
+    input  logic [3:0] bits_in,
+    output logic s0a, s0b, s1
+);
+    PaynFA u_fa0 (.a(bits_in[0]), .b(bits_in[1]), .ci(bits_in[2]), .s(s0a), .co(s1));
+    assign s0b = bits_in[3];
+endmodule
+
 // Exact signed segmented accumulator.
 //
 // Lanes.  Lane i counts a_bits[i] & w_bits[i] and hands the count to a
@@ -125,12 +140,15 @@ module PaynTile #(
     localparam int NEG_W = $clog2(K + 1);
     localparam int M_LOG2 = $clog2(M);
     // Per lane: one multi-bit row ({s3,s2,s1,s0a} at M = 16, {s2,s1,s0a} at
-    // M = 8) and one 1-bit row {s0b}; plus the sign correction and acc_low.
-    localparam int N_HEAP = 2*K + 2;
+    // M = 8, {s1,s0a} at M = 4, {s0a} at M = 2) and one 1-bit row {s0b}; at
+    // M = 1 the one bit is the lane's only row.  Plus the sign correction and
+    // acc_low.
+    localparam int LANE_ROWS = (M == 1) ? 1 : 2;
+    localparam int N_HEAP = LANE_ROWS*K + 2;
 
     initial begin
-        assert (M == 16 || M == 8)
-            else $fatal(1, "PaynTile is built for M=16 or M=8 (got %0d)", M);
+        assert (M == 16 || M == 8 || M == 4 || M == 2 || M == 1)
+            else $fatal(1, "PaynTile is built for M = 1, 2, 4, 8 or 16 (got %0d)", M);
         assert (K > 0 && LOW_W > 0)
             else $fatal(1, "K and LOW_W must be positive");
         assert (OWIDTH > LOW_W)
@@ -159,7 +177,7 @@ module PaynTile #(
                 SUM_W'({s3, s2, s1, s0a} ^ {4{negate}});
             assign heap_inputs[(2*i+1)*SUM_W +: SUM_W] =
                 SUM_W'(s0b ^ negate);
-        end else begin : g_m8
+        end else if (M == 8) begin : g_m8
             logic s0a, s0b, s1, s2;
             PaynCount8 u_popcount (
                 .bits_in(products), .s0a, .s0b, .s1, .s2
@@ -168,14 +186,33 @@ module PaynTile #(
                 SUM_W'({s2, s1, s0a} ^ {3{negate}});
             assign heap_inputs[(2*i+1)*SUM_W +: SUM_W] =
                 SUM_W'(s0b ^ negate);
+        end else if (M == 4) begin : g_m4
+            logic s0a, s0b, s1;
+            PaynCount4 u_popcount (
+                .bits_in(products), .s0a, .s0b, .s1
+            );
+            assign heap_inputs[(2*i)*SUM_W +: SUM_W] =
+                SUM_W'({s1, s0a} ^ {2{negate}});
+            assign heap_inputs[(2*i+1)*SUM_W +: SUM_W] =
+                SUM_W'(s0b ^ negate);
+        end else if (M == 2) begin : g_m2
+            assign heap_inputs[(2*i)*SUM_W +: SUM_W] = SUM_W'(products[0] ^ negate);
+            assign heap_inputs[(2*i+1)*SUM_W +: SUM_W] = SUM_W'(products[1] ^ negate);
+        end else begin : g_m1
+            assign heap_inputs[i*SUM_W +: SUM_W] = SUM_W'(products[0] ^ negate);
         end
     end
 
     // -M per negative lane, applied once.  Stable for a whole block.
     logic [NEG_W-1:0] negative_count;
     assign negative_count = NEG_W'($countones(negative_lanes));
-    assign heap_inputs[(2*K)*SUM_W +: SUM_W] =
-        SUM_W'(-$signed({1'b0, negative_count, {M_LOG2{1'b0}}}));
+    if (M == 1) begin : g_neg_m1
+        assign heap_inputs[(LANE_ROWS*K)*SUM_W +: SUM_W] =
+            SUM_W'(-$signed({1'b0, negative_count}));
+    end else begin : g_neg
+        assign heap_inputs[(LANE_ROWS*K)*SUM_W +: SUM_W] =
+            SUM_W'(-$signed({1'b0, negative_count, {M_LOG2{1'b0}}}));
+    end
 
     logic [LOW_W-1:0]  acc_low;
     logic [HIGH_W-1:0] acc_high;
@@ -187,7 +224,7 @@ module PaynTile #(
     logic [LOW_W-1:0] acc_low_row;
     assign do_fold = (FOLD == 1) && fold;
     assign acc_low_row = do_fold ? {acc_low[LOW_W-2:0], 1'b0} : acc_low;
-    assign heap_inputs[(2*K+1)*SUM_W +: SUM_W] = SUM_W'($unsigned(acc_low_row));
+    assign heap_inputs[(LANE_ROWS*K+1)*SUM_W +: SUM_W] = SUM_W'($unsigned(acc_low_row));
 
     logic [SUM_W-1:0] heap_row0;
     logic [SUM_W-1:0] heap_row1;

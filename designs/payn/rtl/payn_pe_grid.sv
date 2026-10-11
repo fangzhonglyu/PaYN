@@ -83,7 +83,7 @@ module PaynPeGrid #(
     parameter int LOW_W = 9,
     parameter int DRAIN = 0,
     parameter int FOLD = 0,
-    parameter int DRW = (N_H / 2) * N_W * OWIDTH  // one DR (derived)
+    parameter int DRW = ((N_H + 1) / 2) * N_W * OWIDTH  // one DR (derived)
 ) (
     input  logic clk,
     input  logic reset,

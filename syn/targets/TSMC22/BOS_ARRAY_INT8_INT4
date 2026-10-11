@@ -1,0 +1,12 @@
+#!/bin/bash
+# Dual INT8 / INT4 binary output-stationary 8x8 mesh (BinaryOSPE INT4X2: INT8, or two INT4 MACs per PE per cycle),
+# OW24 accumulator/drain, one registered mode pin.  64 MAC/cycle INT8, 128 INT4.
+export TOP=binary_os_array_int8_int4
+export TECH=TSMC22
+export SRC_SV="baselines/binary_os/binary_os_array.sv"
+export PERIOD=2.5
+# Power/test benches launch on the falling edge: a half-cycle input budget.
+export INPUT_DELAY=${INPUT_DELAY:-1.25}
+export MULTIBIT_INFER=1
+export CLOCK_GATE=1
+export RTL_PREFLIGHT_CMD=${RTL_PREFLIGHT_CMD:-"make --no-print-directory sim GL= TARGET= TOP=Top TB=designs/baselines/binary_os/tb/test_binary_os_array.sv VCS_ARGS='+define+BOS_IWIDTH=8+define+BOS_INT4X2+define+BOS_GL_DUT=binary_os_array_int8_int4' BUILD_DIR=build/rtl_preflight/binary_os_int8_int4"}
