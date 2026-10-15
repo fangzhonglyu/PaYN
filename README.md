@@ -17,7 +17,7 @@ designs/
 flow/                   regression, route, measure, report (see flow/README.md)
 syn/targets/TSMC22/     synthesis targets: PAYN and the baselines
 apr/targets/TSMC22/     APR targets
-apr/scripts/            APR hooks (PaYN pre-place: guides + fixed pins + post-fill repair; clock uncertainty)
+apr/scripts/            APR hooks (PaYN pre-place: guides + fixed pins; final placement check)
 doc/                    results and handoff notes
 archive/                superseded designs, studies and scripts, untouched (see archive/README.md)
 ```

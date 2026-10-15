@@ -33,3 +33,18 @@ shape added. At the old shape it is the same hardware:
   `InnerPESignedSegmentedCsaBpIpdGridAfIpd` (2x2), 20,114 of 20,114 pass; no unmatched points.
 - **Synthesis** (`syn/build/TSMC22/PAYN/payn_k8m16_20261006` vs `syn/build/TSMC22/PAYN_SC_CSA_CBSG_AF_IPD/cbsg_af_ipd_20261005`,
   same knobs): 58,232 cells, 2,880 sequential, 44,690.646 um2, slack +0.88 ns in both.
+
+## Superseded by the ASTRAEA flow (2026-10-15)
+
+Moved when PaYN switched to ASTRAEA's versions of these pieces; here `archive/<path>` is the file that lived at
+`<path>` in commit `5f2aae8`.
+
+| path | replaced by |
+|---|---|
+| `apr/scripts/set_clock_uncertainty.tcl`, `apr/scripts/set_clock_uncertainty_setup_only.tcl` | ASTRAEA's `APR_CLOCK_UNCERTAINTY` / `APR_CLOCK_UNCERTAINTY_HOLD` (apr.tcl, just before `POST_LOAD_SCRIPT`), set by the APR targets from `CLOCK_UNCERTAINTY` / `CLOCK_UNCERTAINTY_HOLD` |
+| `apr/scripts/payn_postfill_repair.tcl` | ASTRAEA's `APR_DRC_AUTOSTOP_RETRY=1`, set by `flow/route.py`'s final APR |
+| `flow/tcl/repair_route.tcl` | ASTRAEA's `make apr_repair` (`apr/scripts/apr_qualify.py repair-prepare`, `apr/scripts/repair_route.tcl`) |
+
+The same change deleted the routed-APR and gate-level timing rules of `flow/qualify.py` and the repair planner of
+`flow/route.py` (ASTRAEA's `apr/scripts/apr_qualify.py` and `apr/scripts/gl_audit.py` are their ports); they remain in
+commit `5f2aae8`.

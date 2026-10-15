@@ -5,13 +5,16 @@ The SAIF X-policy tests encode the measurement methodology: correctness is estab
 bench; the SAIF gate rejects what would invalidate the measurement (architectural-output X, transient X beyond
 one reporter quantum, a wrong clock period).  Persistent X on a dead or internal net is benign by default and
 rejected only under --strict-persistent-x.  The other tests pin each gate's verdict on minimal fixtures in the
-formats VCS, Innovus and PrimeTime write: a clean case passes, and the one broken criterion rejects it.
+formats VCS, Innovus and PrimeTime write: a clean case passes, and the one broken criterion rejects it.  routed-apr,
+routed-gl, gl-audit and syn-gl run ASTRAEA's apr/scripts/apr_qualify.py and gl_audit.py ($ASTRAEA_FLOW, default
+../ASTRAEA): their tests exercise PaYN's delegation and the verdict fields the flow reads.
 
   python3 -m pytest flow/tests        or        python3 flow/tests/test_qualify.py
 """
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -22,9 +25,18 @@ QUALIFY = Path(__file__).resolve().parents[1] / "qualify.py"
 DURATION = 1000000
 
 
-def qualify(*args: str | Path, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+def qualify(*args: str | Path, cwd: Path | None = None,
+            env: dict | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run([sys.executable, "-B", str(QUALIFY), *map(str, args)], text=True,
-                          capture_output=True, check=False, cwd=cwd)
+                          capture_output=True, check=False, cwd=cwd, env=env)
+
+
+def captured(log: Path, *args: str | Path) -> tuple[int, list[str]]:
+    """Run qualify.py with stdout and stderr in one file, as the flow's callers capture it; (rc, its lines)."""
+    with log.open("w") as stream:
+        rc = subprocess.run([sys.executable, "-B", str(QUALIFY), *map(str, args)], stdout=stream,
+                            stderr=subprocess.STDOUT, check=False).returncode
+    return rc, log.read_text().splitlines()
 
 
 class TempDirTest(unittest.TestCase):
@@ -284,7 +296,10 @@ class RoutedGlTest(TempDirTest):
                                                      warning_total=2))
         self.write("sim/expected_pass.txt", PASS_LINE + "\n")
         flag = "--approve-annotated-interconnect"
-        self.assertEqual(qualify("gl-audit", sim, "--work", work).returncode, 1)          # no approval
+        result = qualify("gl-audit", sim, "--work", work)                                  # no approval
+        self.assertEqual(result.returncode, 1)
+        self.assertIn(f"write {work / 'gl_validator_args_rationale.txt'}", result.stderr)
+        self.assertEqual(json.loads((sim / "timing_qualification.json").read_text())["status"], "FAIL")
         result = qualify("gl-audit", sim, "--work", work, flag)
         self.assertEqual(result.returncode, 1)                                            # no rationale
         self.assertIn("need a rationale file", result.stderr)
@@ -293,13 +308,47 @@ class RoutedGlTest(TempDirTest):
         self.write("work/gl_validator_args_rationale.txt", f"Approval: {flag}\n")
         result = qualify("gl-audit", sim, "--work", work, flag)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(json.loads((sim / "timing_qualification_strict.json").read_text())["status"], "FAIL")
-        self.assertEqual(json.loads((sim / "timing_qualification.json").read_text())["status"], "PASS")
+        strict = json.loads((sim / "timing_qualification_strict.json").read_text())
+        self.assertEqual(strict["rejection_reasons"], ["unapproved SDF warnings: SDFCOM_IWSBA"])
+        final = json.loads((sim / "timing_qualification.json").read_text())
+        self.assertEqual((final["status"], len(final["approved_annotated_interconnects"])), ("PASS", 1))
+        # One record line per audit that reached a verdict: the strict failure without approvals, the approved one.
         record = (work / "gl_validator_args.txt").read_text().splitlines()
-        self.assertEqual(len(record), 1)
-        self.assertIn(f"strict=FAIL strict_reasons=['unapproved SDF warnings: SDFCOM_IWSBA'] approvals_used='{flag}'",
-                      record[0])
-        self.assertTrue(record[0].endswith("iwsba=1 post_reset_violations=0 status=PASS"))
+        self.assertEqual(len(record), 2)
+        self.assertIn(f"{sim / 'simulation.log'} strict=FAIL approvals_used=''", record[0])
+        self.assertTrue(record[0].endswith("status=FAIL"))
+        self.assertIn(f"strict=FAIL approvals_used='{flag}'", record[1])
+        self.assertTrue(record[1].endswith("iwsba=1 post_reset_violations=0 status=PASS"))
+
+    def test_gl_audit_expected_pass_overrides_the_file(self) -> None:
+        sim, work = self.tmp / "sim", self.tmp / "work"
+        work.mkdir()
+        self.write("sim/simulation.log", make_gl_log(self.sdf))
+        self.write("sim/expected_pass.txt", PASS_LINE + "\n")
+        self.assertEqual(qualify("gl-audit", sim, "--work", work).returncode, 0)
+        result = qualify("gl-audit", sim, "--work", work, "--expected-pass", "PASS: some other bench")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("missing expected text: PASS: some other bench",
+                      json.loads((sim / "timing_qualification.json").read_text())["rejection_reasons"])
+
+    def test_gl_audit_last_line(self) -> None:
+        # measure.py logs, and regress.py quotes, the last line of the captured output.
+        sim, work = self.tmp / "sim", self.tmp / "work"
+        work.mkdir()
+        late = ('"/x/DFF.v", 9: Timing violation in Top.dut.r0\n'
+                "    $setuphold( posedge CK:20000, posedge D:19995, 30 : 30, 20 : 20 );\n\n")
+        self.write("sim/simulation.log", make_gl_log(self.sdf, extra_warnings=IWSBA.format(sdf=self.sdf),
+                                                     warning_total=2, tail=late))
+        self.write("sim/expected_pass.txt", PASS_LINE + "\n")
+        rc, lines = captured(self.tmp / "a.log", "gl-audit", sim, "--work", work)
+        self.assertEqual(rc, 1)
+        self.assertTrue(lines[-1].startswith("No approvals given."), lines)
+        flag = "--approve-annotated-interconnect"
+        self.write("work/gl_validator_args_rationale.txt", f"Approval: {flag}\n")
+        rc, lines = captured(self.tmp / "b.log", "gl-audit", sim, "--work", work, flag)
+        self.assertEqual(rc, 1)                                   # approved, still a post-reset violation
+        self.assertIn(f"approvals_used='{flag}'", lines[-1])
+        self.assertTrue(lines[-1].endswith("post_reset_violations=1 status=FAIL"), lines)
 
     def test_syn_gl_excuses_only_reset_removal_cftc(self) -> None:
         def cftc(module: str) -> str:
@@ -361,6 +410,40 @@ class RoutedAprTest(TempDirTest):
         result = qualify("routed-apr", route, "top", "--stage", "bootstrap")
         self.assertEqual(result.returncode, 1)
         self.assertIn("setup timing violation -0.002", result.stderr)
+
+    def test_failure_reason_is_the_last_line(self) -> None:
+        # Callers quote the tail of the captured output (build/kmn_latest/run_cfg2.sh: the last 3 lines).
+        route = make_route(self.tmp, geometry_viols=5)
+        for stage in ((), ("--stage", "final")):
+            rc, lines = captured(self.tmp / "q.log", "routed-apr", route, "top", *stage)
+            self.assertEqual(rc, 1)
+            self.assertTrue(lines[-1].startswith("APR route not qualified: "), lines[-3:])
+            self.assertIn("geometry", lines[-1])
+
+    def test_failure_verdict_is_written(self) -> None:
+        route = make_route(self.tmp, geometry_viols=5)
+        result = qualify("routed-apr", route, "top", "--stage", "final", "--json", self.tmp / "q.json")
+        self.assertEqual(result.returncode, 1)
+        q = json.loads((self.tmp / "q.json").read_text())
+        self.assertEqual((q["status"], q["reason"], q["qualification"]), ("FAIL", "final geometry DRC 5", "final"))
+
+    def test_checkpoint_repair_completion_is_accepted(self) -> None:
+        route = make_route(self.tmp)
+        log = route / "apr.log"
+        log.write_text(log.read_text().replace("Innovus script finished", "ASTRAEA_CHECKPOINT_REPAIR_COMPLETE"))
+        result = qualify("routed-apr", route, "top", "--stage", "final", "--json", self.tmp / "q.json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        q = json.loads((self.tmp / "q.json").read_text())
+        self.assertEqual((q["status"], q["qualification"], q["top"]), ("PASS", "final", "top"))
+        log.write_text(log.read_text().replace("ASTRAEA_CHECKPOINT_REPAIR_COMPLETE", ""))
+        self.assertIn("missing APR or checkpoint-repair completion",
+                      qualify("routed-apr", route, "top", "--stage", "final").stderr)
+
+    def test_missing_astraea_is_reported(self) -> None:
+        env = dict(os.environ, ASTRAEA_FLOW=str(self.tmp / "no_astraea"))
+        result = qualify("routed-apr", make_route(self.tmp), "top", env=env)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("ASTRAEA script not found", result.stderr)
 
 
 # ------------------------------------------------------------------------------------------ PT coverage --

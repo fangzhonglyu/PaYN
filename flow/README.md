@@ -1,8 +1,11 @@
 # PaYN flow
 
 Everything that takes `designs/payn` from RTL to a results report: functional regression, synthesis, two-pass APR,
-gate-level verification, routed power and the report.  The engine is ASTRAEA (`make synth | apr | sim | power_apr`,
-in `../ASTRAEA`); this directory drives it, gates every artifact and keeps the evidence.
+gate-level verification, routed power and the report.  The engine is ASTRAEA (`make synth | apr | apr_repair | sim |
+power_apr`, in `../ASTRAEA`); this directory drives it, gates every artifact and keeps the evidence.  ASTRAEA also
+supplies the APR clock uncertainty (`APR_CLOCK_UNCERTAINTY`, set by the APR targets from `CLOCK_UNCERTAINTY`), the
+post-fill strong-reroute retry (`APR_DRC_AUTOSTOP_RETRY`), the targeted checkpoint repair (`make apr_repair`) and the
+routed APR and gate-level timing rules (`apr/scripts/apr_qualify.py`, `apr/scripts/gl_audit.py`).
 
 ## Entry points
 
@@ -14,9 +17,9 @@ in `../ASTRAEA`); this directory drives it, gates every artifact and keeps the e
 | `measure.py` | routed gate-level power of a qualified route: SC (uniform L=128, per-row ladder, stream-length points) and INT (bit-plane, all bits in time, controls), each point gated end to end, plus the per-class power and area split.  `--drain 1` for a drain-register route, `--fold 1` for a lap-fold route (bit-plane points skipped). |
 | `report.py` | `doc/payn_results.md` from the run directories: area, timing, SC and INT energy, throughput and GMAC/s/mm2 for one PE and grids, the comparison against BOS. |
 | `bos.sh` | the BOS baseline (binary output-stationary INT8 / INT7 / INT6 / INT4 arrays, and the dual INT8 / INT4 array) from RTL to routed power with the same tools and gates. |
-| `qualify.py` | every gate (routed APR, routed and post-synthesis GL timing, SAIFs, PT coverage, SDF clock gates, the basin); `python3 flow/qualify.py -h`. |
+| `qualify.py` | every gate (routed APR, routed and post-synthesis GL timing, SAIFs, PT coverage, SDF clock gates, the basin); `python3 flow/qualify.py -h`.  `routed-apr`, `routed-gl` and `gl-audit` run ASTRAEA's `apr_qualify.py` / `gl_audit.py` with PaYN's arguments and file locations. |
 | `flowlib.py` | shared plumbing: the environment, command logging, resumable stages, netlist helpers. |
-| `tcl/` | `pt_libraries.tcl` (the TSMC22 PrimeTime libraries every PT script sources), `pt_power_classes.tcl` (power and area by functional class), `pt_basin_skew.tcl` (operand skew for the basin gate), `repair_route.tcl` (the targeted residual-marker repair). |
+| `tcl/` | `pt_libraries.tcl` (the TSMC22 PrimeTime libraries every PT script sources), `pt_power_classes.tcl` (power and area by functional class), `pt_basin_skew.tcl` (operand skew for the basin gate). |
 
 ## From RTL to the report
 
@@ -41,10 +44,10 @@ environment, after the stage's own checks.
 |---|---|---|
 | `synth` | `make synth TARGET=TSMC22/PAYN` with the shape's `SYN_DEFINES` | netlist / SDC / SDF written, setup met, 1.25 ns input delays, port widths = the shape |
 | `syn-gl` | `regress.py --gl syn-unit,syn-sdf`: SC goldens, INT bit-plane blocks, switching, negative controls on the netlist vs RTL; unit delay, then the ideal-clock synthesis SDF with timing checks | GL == RTL; checkers; `qualify.py routed-gl` + `syn-gl` |
-| `boot-apr` | `make apr <synth>_distguide`: soft A-row / W-column guides, floating pins | guide line = the netlist's count; `routed-apr --stage bootstrap` (markers allowed: activity seed only) |
+| `boot-apr` | `make apr <synth>_distguide`: soft A-row / W-column guides, floating pins | guide line = the netlist's count; ASTRAEA's clock uncertainty line (`CLOCK_UNCERTAINTY`, setup and hold); `routed-apr --stage bootstrap` (markers allowed: activity seed only) |
 | `boot-sim` | uniform L=128 SC power GL of the bootstrap route (measure.py's gl / audit / saif steps); the audited SAIF becomes the route's `activity/dut.saif` | bit-exact drain, `sdf-clock`, `gl-audit`, `saif-sc` |
-| `final-apr` | `make apr <synth>_final`: `apr/scripts/payn_pre_place.tcl` (the guides, every pin fixed on the tile grid, the post-fill search-and-repair hook), workload power optimization from the bootstrap SAIF | log checks: every pin fixed, hook and final placement check ran |
-| `qualify` | `routed-apr --stage final`; if only residual geometry / antenna markers remain (< 1,000, no overlap), the targeted repair from the final checkpoint, in place, then again | `route/qualification.json` |
+| `final-apr` | `make apr <synth>_final`: `apr/scripts/payn_pre_place.tcl` (the guides, every pin fixed on the tile grid), `APR_DRC_AUTOSTOP_RETRY=1` (the post-fill strong reroute rerun once without NanoRoute's auto-stop when >= 1,000 markers remain), workload power optimization from the bootstrap SAIF | log checks: clock uncertainty line, every pin fixed, retry check and final placement check ran |
+| `qualify` | `routed-apr --stage final`; if only residual geometry / antenna markers remain (< 1,000, no overlap), the targeted repair `make apr_repair` from the final checkpoint, in place (the original run kept in the route's `before_repair_<stamp>/`), then again | `route/qualification.json` |
 | `gate` | `qualify.py basin` | grid basin, pin proof (`route/basin/`) |
 | `routed-func` | `regress.py --gl apr`: SC at reset settle 2 and 0, INT bit-plane and all-bits-in-time blocks, switching, negative controls on the routed netlist with its raw SDF | GL == RTL; `gl-audit` per log |
 
@@ -99,13 +102,17 @@ multiplier: INT8 at 64 MAC/cycle, or two signed INT4 MACs per PE at 128 MAC/cycl
 {a1, a0}, W packs {w0, w1}; the accumulators hold 16x the INT4 dot product).  Its rows stay in `results_dual.csv`, so
 report.py's per-width BOS rows never take them.
 
+The `apr` stage requires ASTRAEA's clock uncertainty line in the route's log (`INFO: APR clock uncertainty 0.125 ns,
+setup and hold`).  The `sim` stage's `routed-gl` takes its SDF evidence from VCS's own `$sdf_annotate() version` and
+`SDF annotation completed` messages (ASTRAEA's `gl_audit.py`), not from a bench line.
+
 ## GL approvals
 
-`qualify.py gl-audit` runs strict first.  An approval (`--gl-approve "--approve-annotated-interconnect"` on route.py /
-measure.py / regress.py) is applied only after a strict failure and only if the work directory's
-`gl_validator_args_rationale.txt` cites the flag; every outcome is appended to `gl_validator_args.txt` there and each
-run's `timing_qualification.json` lists every approved item.  Investigate the strict failure before writing the
-rationale.
+`qualify.py gl-audit` (ASTRAEA's `apr/scripts/gl_audit.py`) runs strict first.  An approval (`--gl-approve
+"--approve-annotated-interconnect"` on route.py / measure.py / regress.py) is applied only after a strict failure and
+only if the work directory's `gl_validator_args_rationale.txt` cites the flag; every outcome is appended to
+`gl_validator_args.txt` there and each run's `timing_qualification.json` lists every approved item.  Investigate the
+strict failure before writing the rationale.
 
 ## Where results go
 

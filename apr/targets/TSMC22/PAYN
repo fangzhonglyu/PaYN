@@ -1,19 +1,24 @@
 #!/bin/bash
-# PaYN single-PE array (payn_array).  Two APR passes, driven by flow/route.sh:
+# PaYN single-PE array (payn_array).  Two APR passes, driven by flow/route.py:
 #   bootstrap  SC_DISTRIBUTION_GUIDES=1: soft A-row / W-column guides for the
 #              operand pipes, floating pins; its gate-level SAIF seeds the final
 #              pass's workload power optimization.
 #   final      SC_DISTRIBUTION_GUIDES=0 and PRE_PLACE_SCRIPT=
 #              apr/scripts/payn_pre_place.tcl (the same guides, every pin fixed
-#              on the tile grid, post-fill search-and-repair).
+#              on the tile grid), APR_DRC_AUTOSTOP_RETRY=1 (ASTRAEA's post-fill
+#              strong-reroute retry without NanoRoute's auto-stop).
 export TARGET=TSMC22/PAYN
 export SYNTH_RUN=${SYNTH_RUN:?set SYNTH_RUN to the synthesis run name}
 export TOP=payn_array
 export TECH=TSMC22
 export PERIOD=2.5
 export TSMC22_HPK=1
-export POST_LOAD_SCRIPT=${POST_LOAD_SCRIPT:-apr/scripts/set_clock_uncertainty.tcl}
-# Read-only final placement audit (the post-fill repair chains to it).
+# Implementation clock uncertainty (ASTRAEA apr.tcl): CLOCK_UNCERTAINTY if set,
+# else 5% of PERIOD, for setup and hold; CLOCK_UNCERTAINTY_HOLD, if set, is the
+# hold uncertainty instead (a setup-only margin).
+export APR_CLOCK_UNCERTAINTY=${APR_CLOCK_UNCERTAINTY:-${CLOCK_UNCERTAINTY:-auto}}
+export APR_CLOCK_UNCERTAINTY_HOLD=${APR_CLOCK_UNCERTAINTY_HOLD:-${CLOCK_UNCERTAINTY_HOLD:-}}
+# Read-only final placement audit.
 export PRE_REPORT_SCRIPT=apr/scripts/check_final_placement.tcl
 export CORE_UTIL=${CORE_UTIL:-0.70}
 export CORE_ASPECT=${CORE_ASPECT:-1.000}

@@ -13,10 +13,12 @@
 #   synth     make synth (RUN_NAME <CAMPAIGN>_int<W>) with that SAIF as the synthesis activity; setup met, native
 #             port widths (a_in / w_in 8 x W bits, 192-bit accumulator ports)
 #   syn-func  the RTL test on the synthesized cells, unit delay
-#   apr       make apr (CORE_UTIL 0.75, APR power and multibit optimization, uncertainty 0.125 ns); qualify.py
-#             routed-apr (report-file rules: no geometry / antenna / connectivity / placement violation, timing met)
+#   apr       make apr (CORE_UTIL 0.75, APR power and multibit optimization, uncertainty 0.125 ns: the log must show
+#             ASTRAEA's clock uncertainty line for env.sh's CLOCK_UNCERTAINTY, setup and hold); qualify.py routed-apr
+#             (ASTRAEA's apr_qualify.py, report-file rules: no geometry / antenna / connectivity / placement
+#             violation, timing met)
 #   sim       full-timing max-SDF GL of the route with the power bench (+neg_tchk +sdfverbose, no drain in the
-#             window); qualify.py routed-gl strict and saif-binary
+#             window); qualify.py routed-gl strict (ASTRAEA's gl_audit.py) and saif-binary
 #   power     make power_apr (PT-PX, routed SPEF) on the route with that SAIF; qualify.py pt-coverage; result.csv
 #             (power, pJ/MAC = P x 2.5 ns / 64, area, slacks, coverage)
 # dual: rtl and syn-func run the test in both modes; workload, sim and power are the INT8 mode (the synthesis activity
@@ -130,6 +132,10 @@ do_apr() {
     [[ ! -e "$route" ]] || { echo "refusing existing route $route"; return 1; }
     SYNTH_RUN="$run" RUN_NAME="$run" make apr TARGET="$target" NTFY_CHNL= ASTRAEA_FLOW="$ASTRAEA_FLOW" || rc=$?
     echo "make apr returned $rc (the routed-apr qualification decides)"
+    # The BOS targets pass CLOCK_UNCERTAINTY to ASTRAEA's APR_CLOCK_UNCERTAINTY; an ASTRAEA without it would ignore
+    # the variable silently, so the route must show the line.
+    local unc="INFO: APR clock uncertainty $CLOCK_UNCERTAINTY ns, setup and hold"
+    grep -qF "$unc" "$route/apr.log" || { echo "apr.log lacks the clock uncertainty line: $unc"; return 1; }
     "${QUALIFY[@]}" routed-apr "$route" "$top" --json "$work/qualification.json"
 }
 
@@ -173,7 +179,8 @@ mpc = 128 if mode == 4 else 64
 head = (dict(IWIDTH=int(width)) if width != "dual" else
         dict(design="int8_int4", mode=f"int{mode}", IWIDTH=mode, mac_per_cycle=mpc))
 row = dict(**head, N_H=8, N_W=8, OWIDTH=24, period_ns=2.5, mac_cycles=4096, drain_cycles=0, GMAC_s=mpc * 0.4,
-           target=target, run=run, power_mW=power, pJ_MAC=power * 2.5 / mpc, **q,
+           target=target, run=run, power_mW=power, pJ_MAC=power * 2.5 / mpc,
+           **{k: v for k, v in q.items() if k not in ("route", "top")},
            **{k: v for k, v in c.items() if k != "status"}, sdf_errors=sum(g["sdf_errors"]),
            post_reset_timing_violations=g["post_reset_timing_violations"])
 with res.open("w", newline="") as f:
@@ -206,7 +213,7 @@ run_width() (
     stage workload "$work/workload" "make sim TB=$POWER_TB VCS_ARGS='$defs +define+STIM_CYCLES_N=4096'; qualify.py saif-binary" do_workload
     stage synth "$syn" "RUN_NAME=$run SYN_SAIF_FILE=<workload SAIF> make synth TARGET=$target" do_synth
     stage syn-func "$work/syn_func" "make sim GL=syn TB=$TEST NO_SDF=1 (unit delay)" do_syn_func
-    stage apr "$route" "SYNTH_RUN=$run RUN_NAME=$run make apr TARGET=$target (CORE_UTIL=$CORE_UTIL APR_OPT_POWER=$APR_OPT_POWER APR_MULTIBIT_FLOP_OPT=$APR_MULTIBIT_FLOP_OPT); qualify.py routed-apr" do_apr
+    stage apr "$route" "SYNTH_RUN=$run RUN_NAME=$run make apr TARGET=$target (CORE_UTIL=$CORE_UTIL APR_OPT_POWER=$APR_OPT_POWER APR_MULTIBIT_FLOP_OPT=$APR_MULTIBIT_FLOP_OPT); log: 'INFO: APR clock uncertainty $CLOCK_UNCERTAINTY ns, setup and hold'; qualify.py routed-apr" do_apr
     stage sim "$work/gl" "make sim GL=apr TB=$POWER_TB SDF_CORNER=max (+neg_tchk +sdfverbose); qualify.py routed-gl, saif-binary" do_sim 8
     stage power "$work/result.csv" "make power_apr TARGET=$target RUN=$run; qualify.py pt-coverage; result.csv" do_power 8
     if [[ "$width" == dual ]]; then

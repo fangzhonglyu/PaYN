@@ -5,9 +5,10 @@
 #
 # Pins exactly the EDA versions every qualified PaYN result was produced with, points ASTRAEA_FLOW at the flow
 # engine and SYNOPSYS at the DesignWare simulation library, and sets the APR / gate-level environment of the
-# qualified routes (PaYN targets: 70 % utilization, 400 MHz, 1.25 ns input delay, 0.125 ns clock uncertainty,
-# TSMC22 sc7mcpp140z SVT C30 + HPK, no APR power or multibit optimization).  Stage-specific knobs (guides,
-# pre-place script, workload power optimization) are set by the stage that needs them, never here.
+# qualified routes (PaYN targets: 70 % utilization, 400 MHz, 1.25 ns input delay, 0.125 ns clock uncertainty --
+# the APR targets pass CLOCK_UNCERTAINTY to ASTRAEA's APR_CLOCK_UNCERTAINTY --, TSMC22 sc7mcpp140z SVT C30 + HPK, no
+# APR power or multibit optimization).  Stage-specific knobs (guides, pre-place script, workload power optimization,
+# the post-fill reroute retry) are set by the stage that needs them, never here.
 
 FLOW_REPO=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 export FLOW_REPO
@@ -35,6 +36,9 @@ unset NETLIST_FILE SDC_FILE SDF_FILE PRE_PLACE_SCRIPT POST_LOAD_SCRIPT PRE_REPOR
 unset APR_ACTIVITY_FILE APR_ACTIVITY_SCOPE APR_POWER_ANALYSIS_VIEW
 unset APR_WORKLOAD_POWER_OPT APR_LEAKAGE_TO_DYNAMIC_RATIO APR_DETAIL_WIRE_LENGTH_OPT_EFFORT
 unset APR_RESUME_FINAL SKIP_FILLER FORCE_STRONG_FINAL_DRC SKIP_FINAL_HOLD_OPT FORCE_FINAL_HOLD_OPT
+unset APR_CLOCK_UNCERTAINTY APR_CLOCK_UNCERTAINTY_HOLD CLOCK_UNCERTAINTY_HOLD
+unset APR_DRC_AUTOSTOP_RETRY APR_DRC_RETRY_THRESHOLD APR_QUALIFY APR_QUALIFY_STAGE APR_PROCS_ONLY APR_REFUSE_STRONG_DRC
+unset GL_AUDIT
 unset SC_DISTRIBUTION_GUIDES SC_DIST_HIER_PREFIX SC_TILE_HIER_PREFIX NO_SDF VCS_ARGS SYN_DEFINES PAYN_TOP
 unset SC_PIN_SPAN SC_PIN_LAYERS_H SC_PIN_LAYERS_V SC_PIN_TRACK_UM SC_PIN_MIN_PITCH_TRACKS
 unset SC_PIN_SOUTH_CTRL_STEP_UM SC_PIN_PLAN_FILE SC_DIST_GUIDE_BAND SC_DIST_GUIDE_MARGIN SC_DIST_GUIDE_DENSITY

@@ -1,10 +1,7 @@
 # PRE_PLACE_SCRIPT of TSMC22/PAYN (payn_array):
-#   1. arms payn_postfill_repair.tcl as this run's PRE_REPORT_SCRIPT (apr.tcl
-#      reads the hook at call time); it sources the target's own
-#      PRE_REPORT_SCRIPT when it is done;
-#   2. sources sc_distribution_guides.tcl: soft A-row / W-column bands for the
+#   1. sources sc_distribution_guides.tcl: soft A-row / W-column bands for the
 #      operand pipes (SC_NH, SC_NW, SC_DIST_HIER_PREFIX, SC_DIST_GUIDE_*);
-#   3. places every top-level pin with editPin -fixedPin before place_opt_design,
+#   2. places every top-level pin with editPin -fixedPin before place_opt_design,
 #      on the N_H x N_W tile grid, so GigaPlace sees fixed pins instead of
 #      floating ones.  apr.tcl later calls plain assignIoPins and legalizePin;
 #      neither moves a Fixed pin without -moveFixedPin, so the plan survives to
@@ -50,16 +47,10 @@
 
 set sc_pin_script_dir [file dirname [file normalize [info script]]]
 
-# ------------------------------------------------- 1. post-fill repair hook --
-set ::payn_postfill_next_hook ""
-if {[info exists ::env(PRE_REPORT_SCRIPT)]} { set ::payn_postfill_next_hook $::env(PRE_REPORT_SCRIPT) }
-set ::env(PRE_REPORT_SCRIPT) [file join $sc_pin_script_dir payn_postfill_repair.tcl]
-puts "POSTFILL_HOOK: PRE_REPORT_SCRIPT=$::env(PRE_REPORT_SCRIPT) next_hook=$::payn_postfill_next_hook"
-
-# ------------------------------------------------- 2. distribution guides --
+# ------------------------------------------------- 1. distribution guides --
 source [file join $sc_pin_script_dir sc_distribution_guides.tcl]
 
-# ------------------------------------------------------- 3. fixed pins --
+# ------------------------------------------------------- 2. fixed pins --
 
 proc sc_pin_env {name default} {
     global env

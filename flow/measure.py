@@ -27,8 +27,8 @@ Per point, each step resumable by its own PASS marker under OUT/<point>/:
   gl       make sim GL=apr with the route's raw max-corner SDF (+neg_tchk +sdfverbose), on the route itself or on a
            view directory of it; the bench's exact PASS line, SDF annotation, the trace checker (sc_trace.py /
            int_trace.py bp-power, abit-power: bit-exact, SAIF window counts), qualify.py sdf-clock
-  audit    qualify.py gl-audit: strict first; --gl-approve flags only after a strict failure and only with
-           OUT/gl_validator_args_rationale.txt citing each one
+  audit    qualify.py gl-audit (ASTRAEA's gl_audit.py): strict first; --gl-approve flags only after a strict
+           failure and only with OUT/gl_validator_args_rationale.txt citing each one
   saif     qualify.py saif-sc (every point) and saif-int (INT points)
   power    make power_apr (PrimeTime PX, routed SPEF) on a PT-only view apr/build/TSMC22/PAYN/<route>_pt_<point>
            (symlinks to the route's outputs and SDC; the route is never written), qualify.py pt-coverage, the view's

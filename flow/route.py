@@ -22,24 +22,27 @@ after the same checks):
                inputs; unit delay (functional) and the ideal-clock synthesis SDF (timing checks on, qualify.py
                routed-gl + syn-gl)
   boot-apr     make apr <SYNTH_RUN>_distguide with SC_DISTRIBUTION_GUIDES=1 (soft A-row / W-column guides, floating
-               pins, no workload power optimization); the guide line must match the netlist's own count; qualify.py
+               pins, no workload power optimization); the guide line must match the netlist's own count and ASTRAEA's
+               clock uncertainty line must show flow/env.sh's CLOCK_UNCERTAINTY for setup and hold; qualify.py
                routed-apr --stage bootstrap (residual markers allowed: the route only seeds activity)
   boot-sim     full-timing max-SDF GL of the bootstrap route with the SC uniform L=128 power bench (flow/measure.py's
                gl, audit and saif steps: bit-exact drain, sdf-clock, gl-audit strict first, saif-sc), then the
                audited SAIF becomes the bootstrap route's activity/dut.saif, the final pass's power-optimization seed
   final-apr    make apr <SYNTH_RUN>_final: PRE_PLACE_SCRIPT=apr/scripts/payn_pre_place.tcl (the same guides, every
-               pin fixed on the tile grid, the post-fill search-and-repair hook), workload power optimization from
-               the bootstrap SAIF, leakage ratio 0, detail wire-length effort high; log checks: guide line, every
-               pin fixed (#fixedPin = port count, #floatPin = 0), the hook ran, the final placement check ran
-  qualify      qualify.py routed-apr --stage final; if only residual geometry / antenna markers remain (fewer than
-               1,000, no placement overlap), the targeted repair (flow/tcl/repair_route.tcl, from the route's
-               final checkpoint, in place; the original run archived inside the route) and qualify again;
-               route/qualification.json
+               pin fixed on the tile grid), APR_DRC_AUTOSTOP_RETRY=1 (ASTRAEA reruns the post-fill strong reroute
+               once without NanoRoute's auto-stop when >= 1,000 geometry markers remain), workload power
+               optimization from the bootstrap SAIF, leakage ratio 0, detail wire-length effort high; log checks:
+               the clock uncertainty line (as boot-apr), guide line, every pin fixed (#fixedPin = port count,
+               #floatPin = 0), the retry check ran, the final placement check ran
+  qualify      qualify.py routed-apr --stage final (ASTRAEA's apr_qualify.py); if only residual geometry / antenna
+               markers remain (fewer than 1,000, no placement overlap), the targeted repair (ASTRAEA's make
+               apr_repair: from the route's final checkpoint, in place; the original run archived in the route's
+               before_repair_<stamp>/) and qualify again; route/qualification.json
   gate         qualify.py basin: tile-grid correlation and product-AND operand skew (grid vs collapsed basin) and
                the pin proof against the pre-place plan; route/basin/basin_gate.json; a collapsed basin fails
   routed-func  routed functional GL (flow/regress.py --gl apr): SC goldens at reset settle 2 and 0, INT bit-plane and
                all-bits-in-time blocks, switching, negative controls, on the routed netlist with the raw routed
-               SDF, every log through qualify.py gl-audit (strict first)
+               SDF, every log through qualify.py gl-audit (ASTRAEA's gl_audit.py, strict first)
 GL approvals (--gl-approve) are used only after a strict audit failure and only with a rationale file citing each
 flag: route/bootstrap/gl_validator_args_rationale.txt (boot-sim), routed_func/<SHAPE>/apr/gl_validator_args_rationale.txt
 (routed-func).
@@ -58,15 +61,24 @@ sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from flowlib import (REPO, SHAPES, TARGET, TOP, FlowError, Log, Runner, Stage, apr_dir, expected_guide_line,  # noqa: E402
                      first_match, grep, make_cmd, netlist_modules, port_count, qualify, qualify_cmd, quote, require,
-                     sh, stamp, syn_dir, text, tool_env, write_manifest, sha256)
+                     sh, syn_dir, text, tool_env, write_manifest, sha256)
 import measure  # noqa: E402
 
 PRE_PLACE = "apr/scripts/payn_pre_place.tcl"
 GUIDES = "apr/scripts/sc_distribution_guides.tcl"
-POSTFILL = "apr/scripts/payn_postfill_repair.tcl"
 TARGET_HOOK = "apr/scripts/check_final_placement.tcl"
-REPAIR_TCL = REPO / "flow/tcl/repair_route.tcl"
 MAX_REPAIR_MARKERS = 1000
+REPAIR_DONE = "ASTRAEA_CHECKPOINT_REPAIR_COMPLETE"
+# ASTRAEA files that build, judge and repair the routes; hashed into inputs.txt with the PaYN hooks.
+ASTRAEA_INPUTS = ("apr/scripts/apr.tcl", "apr/scripts/apr_qualify.py", "apr/scripts/repair_route.tcl",
+                  "apr/scripts/gl_audit.py", "Makefile")
+
+
+def uncertainty_line() -> str:
+    """The line ASTRAEA's apr.tcl prints when it applies flow/env.sh's CLOCK_UNCERTAINTY (the PAYN target passes it on
+    as APR_CLOCK_UNCERTAINTY, for setup and hold).  Both routes must show it: an ASTRAEA without the feature would
+    ignore the variable silently and the route would still close, at zero margin."""
+    return f"INFO: APR clock uncertainty {tool_env()['CLOCK_UNCERTAINTY']} ns, setup and hold"
 
 
 class Flow:
@@ -168,6 +180,7 @@ class Flow:
     def check_boot(self, log: Log) -> None:
         apr_log = self.boot / "apr.log"
         require(grep(apr_log, f"Running PRE_PLACE_SCRIPT script: {REPO}/{GUIDES}"), "the guide script did not run")
+        require(grep(apr_log, uncertainty_line()), f"apr.log lacks the clock uncertainty: {uncertainty_line()}")
         want = expected_guide_line(self.netlist)
         got = first_match(apr_log, r"^SC_DISTRIBUTION_GUIDES:.*$")
         require(got and got[0] == want, f"guide line {got[0] if got else None!r} != netlist prediction {want!r}")
@@ -177,7 +190,7 @@ class Flow:
         rc = qualify("routed-apr", self.boot, TOP, "--stage", "bootstrap", "--json",
                      self.work / "bootstrap_qualification.json", log=log)
         require(rc == 0, "bootstrap route not qualified (qualify.py routed-apr --stage bootstrap)")
-        log(f"{want}; bootstrap qualified: {text(self.work / 'bootstrap_qualification.json').strip()}")
+        log(f"{want}; bootstrap qualified: {json.dumps(json.loads(text(self.work / 'bootstrap_qualification.json')))}")
 
     def do_boot_apr(self, log: Log) -> None:
         rc = sh(self.apr_cmd(), log, env=tool_env(self.boot_env()))
@@ -218,9 +231,9 @@ class Flow:
     # ---------------------------------------------------------------------------------------- final APR --
     def final_env(self) -> dict:
         return dict(SC_DISTRIBUTION_GUIDES=0, PRE_PLACE_SCRIPT=PRE_PLACE, SC_DIST_HIER_PREFIX="u_pe/u_array_core",
-                    APR_WORKLOAD_POWER_OPT=1, APR_ACTIVITY_FILE=str(self.boot_saif), APR_ACTIVITY_SCOPE="Top/dut",
-                    APR_LEAKAGE_TO_DYNAMIC_RATIO="0.0", APR_DETAIL_WIRE_LENGTH_OPT_EFFORT="high",
-                    SYNTH_RUN=self.synth, RUN_NAME=self.final_run)
+                    APR_DRC_AUTOSTOP_RETRY=1, APR_WORKLOAD_POWER_OPT=1, APR_ACTIVITY_FILE=str(self.boot_saif),
+                    APR_ACTIVITY_SCOPE="Top/dut", APR_LEAKAGE_TO_DYNAMIC_RATIO="0.0",
+                    APR_DETAIL_WIRE_LENGTH_OPT_EFFORT="high", SYNTH_RUN=self.synth, RUN_NAME=self.final_run)
 
     def do_final_apr(self, log: Log) -> None:
         require(self.boot_saif.is_file(), f"no bootstrap SAIF {self.boot_saif}")
@@ -231,13 +244,14 @@ class Flow:
         log(f"make apr returned {rc} (the qualify stage decides)")
         apr_log = self.final / "apr.log"
         checks = [
+            (uncertainty_line(), "the clock uncertainty"),
             ("Enabling workload-aware dynamic-power optimization", "workload power optimization"),
             ("leakageToDynamicRatio=0.0 detail_wirelength_effort=high", "leakage ratio 0 / wire-length effort high"),
             (f"INFO: activity_file={self.boot_saif} scope='Top/dut'", "the bootstrap SAIF as the activity file"),
             (f"Running PRE_PLACE_SCRIPT script: {REPO}/{PRE_PLACE}", "the pre-place script"),
             (guide, "the bootstrap's guide line"),
-            (f"POSTFILL_HOOK: PRE_REPORT_SCRIPT={REPO}/{POSTFILL} next_hook={TARGET_HOOK}", "the post-fill hook armed"),
-            ("POSTFILL_DRC_REPAIR_END", "the post-fill repair ran"),
+            ("INFO: APR_DRC_AUTOSTOP_RETRY ran=", "the post-fill strong-reroute retry check ran"),
+            (f"Running PRE_REPORT_SCRIPT script: {REPO}/{TARGET_HOOK}", "the target's final placement check"),
             ("FINAL_PLACEMENT_CHECK_END", "the final placement check ran"),
             ("Innovus script finished", "Innovus completion"),
         ]
@@ -256,7 +270,7 @@ class Flow:
         for f in ("sc_pin_plan.tsv", "sc_pin_plan.checkPin.rpt"):
             shutil.copy2(self.final / f, self.work / f)
         for line in text(apr_log).splitlines():
-            if line.startswith(("SC_PIN_PLACEMENT", "SC_DISTRIBUTION_GUIDES", "POSTFILL_DRC_REPAIR:")):
+            if line.startswith(("SC_PIN_PLACEMENT", "SC_DISTRIBUTION_GUIDES", "INFO: APR_DRC_AUTOSTOP_RETRY")):
                 log(line)
 
     # ------------------------------------------------------------------------------------------ qualify --
@@ -289,7 +303,8 @@ class Flow:
         q.update(targeted_repair=repaired, area_um2=float(area[1]) if area else None, route=str(self.final))
         if repaired:
             q["repair_plan"] = json.loads((self.final / "repair_plan.json").read_text())
-            q["original_route_archive"] = [str(p) for p in sorted(self.final.glob("before_legalization_*"))]
+            q["original_route_archive"] = [str(p) for p in sorted([*self.final.glob("before_legalization_*"),
+                                                                    *self.final.glob("before_repair_*")])]
         (self.work / "qualification.json").write_text(json.dumps(q, indent=2) + "\n")
         log(json.dumps(q))
 
@@ -319,7 +334,8 @@ class Flow:
             Stage("boot-apr", self.boot, self.do_boot_apr, lambda: [
                 "env      " + " ".join(f"{k}={v}" for k, v in self.boot_env().items()),
                 f"run      {quote(self.apr_cmd())}",
-                f"expect   {expected_guide_line(self.netlist) if self.netlist.is_file() else '(netlist pending)'}",
+                f"expect   {uncertainty_line()}, "
+                f"{expected_guide_line(self.netlist) if self.netlist.is_file() else '(netlist pending)'}",
                 f"gate     qualify.py routed-apr {self.boot} {TOP} --stage bootstrap"],
                   needs=("synth",), adopt=self.adopt_boot),
             Stage("boot-sim", self.boot_saif, self.do_boot_sim, lambda: [
@@ -330,13 +346,13 @@ class Flow:
             Stage("final-apr", self.final, self.do_final_apr, lambda: [
                 "env      " + " ".join(f"{k}={v}" for k, v in self.final_env().items()),
                 f"run      {quote(self.apr_cmd())}",
-                f"expect   SC_PIN_PLACEMENT: fixed="
+                f"expect   {uncertainty_line()}, SC_PIN_PLACEMENT: fixed="
                 f"{port_count(self.netlist, TOP) if self.netlist.is_file() else '?'} ... len_bus=a_len_in LEN_W=8, "
-                "#floatPin=0, POSTFILL_DRC_REPAIR_END, FINAL_PLACEMENT_CHECK_END"], needs=("boot-sim",)),
+                "#floatPin=0, INFO: APR_DRC_AUTOSTOP_RETRY ran=, FINAL_PLACEMENT_CHECK_END"], needs=("boot-sim",)),
             Stage("qualify", self.work / "qualification.json", self.do_qualify, lambda: [
                 f"gate     qualify.py routed-apr {self.final} {TOP} --stage final",
                 f"repair   only residual geometry/antenna markers (< {MAX_REPAIR_MARKERS}, no overlap): "
-                f"innovus -files {REPAIR_TCL.relative_to(REPO)} from the final checkpoint, in place; qualify again"],
+                f"{quote(repair_cmd(self.final))} (from the final checkpoint, in place); qualify again"],
                   needs=("final-apr",)),
             Stage("gate", self.work / "basin/basin_gate.json", self.do_gate,
                   lambda: [f"gate     {quote(self.gate_cmd())}"], needs=("qualify",)),
@@ -346,116 +362,27 @@ class Flow:
 
 
 # ------------------------------------------------------------------------------------------ the repair --
-def repair_plan(source: Path, top: str) -> dict:
-    """What the targeted repair touches, from the route's reports: every geometry marker (diagnosed nets, box) and
-    every antenna sink, or, if the last placement check reports overlaps, the overlapping instances."""
-    log = text(source / "apr.log")
-    checks = list(re.finditer(r"Begin checking placement.*?Finished checkPlace[^\n]*", log, re.S))
-    require(checks, "no placement diagnosis in apr.log")
-    m = re.search(r"Overlapping with other instance:\s*(\d+)", checks[-1][0])
-    overlap = (int(m[1]) if m else 0) or "NRDB-2082" in log[checks[-1].end():]
-    plan = dict(mode="overlap" if overlap else "targeted", checkpoint="route" if overlap else "final",
-                overlap_instances=[], geometry=[], antenna_pins=[])
-    if overlap:
-        names = [n for pair in re.findall(r"NRDB-2082\) INST (\S+) and INST (\S+) are overlapped\.", log) for n in pair]
-        require(names, "no overlap instance names in apr.log")
-        plan["overlap_instances"] = sorted(set(names))
-    else:
-        geometry = text(source / f"{top}.geom.rpt")
-        for g in re.finditer(r"([^\n]+)\nBounds\s*:\s*\(\s*([-0-9.]+),\s*([-0-9.]+)\s*\)\s*\(\s*([-0-9.]+),\s*"
-                             r"([-0-9.]+)\s*\)", geometry):
-            nets = sorted(set(re.findall(r"Regular Wire of Net\s+(\S+)", g[1])))
-            require(nets, f"geometry marker without a regular-net diagnosis: {g[1]}")
-            plan["geometry"].append(dict(diagnosis=g[1], nets=nets, box=[float(g[i]) for i in range(2, 6)]))
-        tot = re.search(r"Total Violations\s*:\s*(\d+)", geometry)
-        require(not tot or int(tot[1]) == len(plan["geometry"]), "some geometry markers were not parsed")
-        net, seen = None, set()
-        for line in text(source / f"{top}.antenna.rpt").splitlines():
-            n = re.match(r"^(\S+)\s+\(\d+\)\s*$", line)
-            if n:
-                net = n[1]
-            p = re.match(r"^\s+(\S+)\s+\(([^)]+)\)\s+(\S+)\s*$", line)
-            if p:
-                require(net, "antenna pin without a net")
-                if (net, p[1], p[3]) not in seen:
-                    plan["antenna_pins"].append(dict(net=net, inst=p[1], pin=p[3], cell=p[2]))
-                    seen.add((net, p[1], p[3]))
-        require(plan["geometry"] or plan["antenna_pins"], "no residual geometry / antenna markers")
-    for f in (f"{top}.{plan['checkpoint']}.enc", f"{top}.{plan['checkpoint']}.enc.dat", f"{top}.syn.v",
-              f"{top}.syn.sdc", "TARGET_DEF"):
-        require((source / f).exists(), f"missing repair input {f}")
-    return plan
-
-
-def tcl_word(x) -> str:
-    return "{" + str(x).replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}") + "}"
-
-
-def tcl_list(xs) -> str:
-    return "[list " + " ".join(tcl_word(x) for x in xs) + "]"
+def repair_cmd(route: Path) -> list[str]:
+    return make_cmd("apr_repair", f"TARGET={route.parent.relative_to(REPO / 'apr/build')}", f"RUN={route.name}")
 
 
 def repair_route(route: Path, log: Log, work: Path) -> None:
-    """Targeted repair in place: archive every file of the route into route/before_legalization_<stamp>/, restore
-    its checkpoint into the route directory, run flow/tcl/repair_route.tcl there."""
-    plan = repair_plan(route, TOP)
-    (work / "repair_plan.json").write_text(json.dumps(plan, indent=2) + "\n")
-    log(f"repair plan: {plan['mode']} from {plan['checkpoint']}.enc, {len(plan['geometry'])} geometry markers, "
-        f"{len(plan['antenna_pins'])} antenna sinks, {len(plan['overlap_instances'])} overlap instances")
-    archive = route / f"before_legalization_{stamp()}_{os.getpid()}"
-    archive.mkdir()
-    for p in list(route.iterdir()):
-        if p != archive:
-            shutil.move(str(p), str(archive / p.name))
-    cp = plan["checkpoint"]
-    for name in (f"{TOP}.{cp}.enc", f"{TOP}.{cp}.enc.dat"):
-        src = archive / name
-        (shutil.copytree(src, route / name, symlinks=True) if src.is_dir() else shutil.copy2(src, route / name))
-    for name in (f"{TOP}.syn.v", f"{TOP}.syn.sdc", "TARGET_DEF"):
-        shutil.copy2(archive / name, route / name)
-    tcf = archive / "astraea_placement_activity.tcf"
-    if tcf.is_file():
-        # Saved power constraints point at the run's local TCF through a symlink: restore it and repoint the link.
-        shutil.copy2(tcf, route / tcf.name)
-        link = route / f"{TOP}.{cp}.enc.dat/libs/power/{tcf.name}"
-        if link.is_symlink():
-            link.unlink()
-            link.symlink_to(route / tcf.name)
-    (route / "repair_plan.json").write_text(json.dumps(plan, indent=2) + "\n")
-    flow = Path(tool_env()["ASTRAEA_FLOW"])
-    (route / "repair_inputs.txt").write_text(f"source={archive}\noutput={route}\nflow={flow}\nmode={plan['mode']}\n"
-                                            f"checkpoint={cp}\n")
-    # The flow's procedures and setup: apr.tcl up to its resume branch, its script directory pinned.
-    s = (flow / "apr/scripts/apr.tcl").read_text()
-    cut = "if {[info exists env(APR_RESUME_FINAL)] &&"
-    require(s.count(cut) == 1, "unexpected apr.tcl structure (resume branch)")
-    s = s.split(cut)[0]
-    line = "set SCRIPT_DIR [file dirname [file normalize [info script]]]"
-    require(s.count(line) == 1, "unexpected apr.tcl structure (SCRIPT_DIR)")
-    s = s.replace(line, "set SCRIPT_DIR $env(FLOW_APR_SCRIPTS)")
-    if plan["mode"] == "targeted":
-        old = "\tif {!$skip_strong_drc_fix} {\n\t    editDeleteViolations\n\t    globalDetailRoute\n\t}"
-        require(old in s, "unexpected apr.tcl final DRC fallback structure")
-        s = s.replace(old, "    if {!$skip_strong_drc_fix} {\n        error \"Targeted checkpoint repair leaves geometry "
-                           "markers; refusing a blind global reroute\"\n    }")
-    (route / "repair_flow_procedures.tcl").write_text(s)
-    lines = [f"set repair_mode {tcl_word(plan['mode'])}", f"set repair_checkpoint {tcl_word(cp)}",
-             f"set repair_instances {tcl_list(plan['overlap_instances'])}", "set repair_ant_pins [list]",
-             "set repair_geometry [list]"]
-    lines += [f"lappend repair_ant_pins {tcl_list([p['inst'], p['pin'], p['net']])}" for p in plan["antenna_pins"]]
-    lines += [f"lappend repair_geometry [list {tcl_list(g['nets'])} {tcl_list(g['box'])}]" for g in plan["geometry"]]
-    (route / "repair_targets.tcl").write_text("\n".join(lines) + "\n")
-    shutil.copy2(REPAIR_TCL, route / "repair.tcl")
-    # The bootstrap/final stages' APR environment plus the checkpoint-repair knobs; the target's own hooks.
-    env = tool_env(dict(SYNTH_RUN="checkpoint_only_repair", APR_LOCAL_CPUS=32, SC_DISTRIBUTION_GUIDES=1,
-                        SKIP_FINAL_HOLD_OPT=1, FORCE_FINAL_HOLD_OPT=0, SKIP_FILLER=0, FORCE_STRONG_FINAL_DRC=0,
-                        DISABLE_POSTROUTE_SWAPVIA=1, DESIGN_ROOT=str(REPO), FLOW_ROOT=str(flow),
-                        FLOW_APR_SCRIPTS=str(flow / "apr/scripts")))
-    cmd = f"set -a; . {REPO}/apr/targets/{TARGET}; set +a; innovus -batch -no_gui -files repair.tcl > apr.log 2>&1"
-    rc = sh(cmd, log, cwd=route, env=env)
-    log(f"repair innovus returned {rc}")
-    require(grep(route / "apr.log", "POP_COUNT_CHECKPOINT_REPAIR_COMPLETE"), f"repair did not complete ({route}/apr.log)")
-    (route / "repair.status").write_text("PASS\n")
+    """Targeted repair of a completed route's residual markers, in place: ASTRAEA's `make apr_repair` (apr_qualify.py
+    repair-prepare plans it from the route's reports, archives every file into route/before_repair_<stamp>/ and
+    restores the checkpoint; apr/scripts/repair_route.tcl repairs; apr_qualify.py qualify --stage final judges it).
+    The route's own TARGET_DEF is sourced; flow/env.sh's environment, 32 local CPUs.  The plan is copied to
+    work/repair_plan.json."""
+    before = set(route.glob("before_repair_*"))
+    rc = sh(repair_cmd(route), log, env=tool_env(dict(APR_LOCAL_CPUS=32)))
+    log(f"make apr_repair returned {rc}")
+    archived = set(route.glob("before_repair_*")) - before
+    # Nothing archived: make stopped before touching the route (repair-prepare refused the plan, or no TARGET_DEF);
+    # its reason is in this stage log, and route/apr.log is still the original run's.
+    require(archived, f"make apr_repair returned {rc} before archiving the route (repair not prepared; the reason is "
+                      "in this stage log)")
+    if (route / "repair_plan.json").is_file():
+        shutil.copy2(route / "repair_plan.json", work / "repair_plan.json")
+    require(grep(route / "apr.log", REPAIR_DONE), f"repair did not complete ({route}/apr.log)")
 
 
 # ------------------------------------------------------------------------------------------------ driver --
@@ -490,9 +417,8 @@ def main() -> int:
             f"shape={a.shape} K={flow.K} M={flow.M} drain={a.drain} fold={a.fold}", f"target={TARGET} top={TOP}",
             f"synthesis={flow.syn}",
             f"bootstrap_route={flow.boot}", f"final_route={flow.final}", f"astraea={tool_env()['ASTRAEA_FLOW']}",
-            f"apr.tcl sha256={sha256(Path(tool_env()['ASTRAEA_FLOW']) / 'apr/scripts/apr.tcl')}",
-            *(f"{sha256(REPO / f)}  {f}" for f in (f"apr/targets/{TARGET}", PRE_PLACE, GUIDES, POSTFILL,
-                                                   TARGET_HOOK))])
+            *(f"{Path(f).name} sha256={sha256(Path(tool_env()['ASTRAEA_FLOW']) / f)}" for f in ASTRAEA_INPUTS),
+            *(f"{sha256(REPO / f)}  {f}" for f in (f"apr/targets/{TARGET}", PRE_PLACE, GUIDES, TARGET_HOOK))])
     try:
         runner.run(flow.stages(), set(a.stages.split(",")) if a.stages else None)
     except FlowError as error:

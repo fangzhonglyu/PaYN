@@ -7,4 +7,5 @@ export TECH=TSMC22
 export PERIOD=2.5
 export CORE_UTIL=${CORE_UTIL:-0.75}
 export CORE_ASPECT=${CORE_ASPECT:-1.000}
-export POST_LOAD_SCRIPT=apr/scripts/set_clock_uncertainty.tcl
+# Implementation clock uncertainty (ASTRAEA apr.tcl): CLOCK_UNCERTAINTY if set, else 5% of PERIOD; setup and hold.
+export APR_CLOCK_UNCERTAINTY=${APR_CLOCK_UNCERTAINTY:-${CLOCK_UNCERTAINTY:-auto}}

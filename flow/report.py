@@ -284,8 +284,9 @@ def block_route(S: list[MeasureSet]) -> list[str]:
                      f"{b.get('pin_proof', {}).get('status', '-')} ({b.get('pin_proof', {}).get('fixed_in_def', '-')})"])
     L += table(["route", "area (um2)", "die (um)", "setup / hold WNS (ns)", "final DRC/antenna", "basin",
                 "pin proof (fixed pins)"], rows, "lrrrlll")
-    L += ["", "Qualification: qualify.py routed-apr --stage final (geometry, antenna, connectivity, placement, timing) "
-          "and basin (tile grid, product-AND operand skew, every pin fixed as planned).", ""]
+    L += ["", "Qualification: qualify.py routed-apr --stage final (ASTRAEA apr_qualify.py: geometry, antenna, "
+          "connectivity, placement, timing) and basin (tile grid, product-AND operand skew, every pin fixed as "
+          "planned).", ""]
     return L
 
 

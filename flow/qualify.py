@@ -6,12 +6,15 @@ tool outputs, prints its verdict and exits 0 on PASS, nonzero otherwise; the JSO
 evidence kept beside the run.  Every gate fails closed: a missing, truncated or unrecognized report rejects.
 
   routed-apr       routed design: Innovus ended cleanly, outputs written, no geometry/antenna/connectivity/
-                   placement violation, setup and hold met.  Default rules read the report files; --stage
-                   reads the Innovus log's final checks (bootstrap: an activity-seed route may keep markers)
+                   placement violation, setup and hold met.  Runs ASTRAEA's apr/scripts/apr_qualify.py qualify:
+                   default rules read the report files (its stage reports); --stage reads the Innovus log's final
+                   checks (bootstrap: an activity-seed route may keep markers)
   routed-gl        routed GL log: max-corner SDF annotated without errors, every SDF diagnostic understood,
                    no timing-check violation at or after reset completion; opt-in approvals are itemized
-  gl-audit         routed-gl strict first; approvals only after a strict failure and only with a rationale
-                   file citing each one; every outcome is appended to a record
+                   (ASTRAEA's apr/scripts/gl_audit.py audit(), with the expected PASS line)
+  gl-audit         ASTRAEA's gl_audit.py on SIMDIR/simulation.log: strict first; approvals only after a strict
+                   failure and only with WORK's rationale file citing each one; every outcome is appended to a
+                   record in WORK
   syn-gl           post-synthesis GL timing view: a routed-gl verdict whose only rejection is SDFCOM_CFTC on
                    DFFRPQ async-reset removal checks
   saif-sc          SC power SAIF: X-free accumulator, transient X within one reporter quantum, clock period,
@@ -25,6 +28,9 @@ evidence kept beside the run.  Every gate fails closed: a missing, truncated or 
   basin            routed single-PE layout: tile-grid correlation and product-AND operand skew (PrimeTime,
                    tcl/pt_basin_skew.tcl) decide grid vs collapsed basin; top-level pins fixed as planned
 
+The routed APR and GL timing rules live in the ASTRAEA flow ($ASTRAEA_FLOW, default ../ASTRAEA beside this repo);
+routed-apr, routed-gl and gl-audit only supply PaYN's arguments and file locations.
+
 Why gates and not eyeballing: persistent X on a live net, an unannotated SDF arc, a default-activity net or a
 collapsed placement stops neither the simulation nor the power report, but each silently changes the number.
 Functional correctness itself is established by the output-checking benches; these gates protect the
@@ -35,19 +41,20 @@ from __future__ import annotations
 import argparse
 import collections
 import csv
-import datetime
+import importlib.util
 import json
 import math
 import os
 import re
 import shlex
-import shutil
 import statistics
 import subprocess
 import sys
 from pathlib import Path
 
+sys.dont_write_bytecode = True      # never cache ASTRAEA's modules into its tree
 FLOW = Path(__file__).resolve().parent
+ASTRAEA_SCRIPTS = Path(os.environ.get("ASTRAEA_FLOW") or FLOW.parent.parent / "ASTRAEA") / "apr/scripts"
 EDA_MODULES = ("synopsys-lib-compiler/2022.03-SP3", "synopsys-synth/2021.06-SP1", "primetime/2021.06-SP1",
                "vcs/2020.12-SP2-1", "innovus/21.14.000", "genus/21.14.000")
 
@@ -69,322 +76,48 @@ def emit_json(result: dict, json_path: Path | None) -> None:
     print(text, end="")
 
 
+def astraea(script: str) -> Path:
+    """An ASTRAEA flow script ($ASTRAEA_FLOW/apr/scripts/<script>)."""
+    path = ASTRAEA_SCRIPTS / script
+    if not path.is_file():
+        raise SystemExit(f"ASTRAEA script not found: {path} (set ASTRAEA_FLOW to the ASTRAEA flow repo)")
+    return path
+
+
+def gl_audit_module():
+    """ASTRAEA's apr/scripts/gl_audit.py as a module: audit(), warning_blocks(), DEFAULT_RESET_RE."""
+    spec = importlib.util.spec_from_file_location("astraea_gl_audit", astraea("gl_audit.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 # ------------------------------------------------------------------------------------------- routed APR --
 
-MESSAGE_SUMMARY_RE = re.compile(r"Message Summary:\s*\d+ warning\(s\),\s*(\d+) error\(s\)")
-INNOVUS_ERROR_RE = re.compile(r"\*\*\s*ERROR:|(?m:^\s*(?:ERROR|Error):)")
-CONNECTIVITY_RE = re.compile(r"\*+ Start: VERIFY CONNECTIVITY \*+(.*?)\*+ End: VERIFY CONNECTIVITY \*+", re.S)
-PLACEMENT_CHECK_RE = re.compile(r"Begin checking placement.*?Finished checkPlace[^\n]*", re.S)
-
-
-def require_nonempty(path: Path, what: str) -> None:
-    require(path.is_file() and path.stat().st_size, f"missing {what} {path}")
-
-
-def innovus_ended_cleanly(log: str) -> None:
-    require('--- Ending "Innovus"' in log, "missing normal Innovus termination")
-    errors = MESSAGE_SUMMARY_RE.findall(log)
-    require(errors and all(int(n) == 0 for n in errors), "Innovus reported errors or lacks an error summary")
-    require(not INNOVUS_ERROR_RE.search(log), "Innovus error diagnostic present")
-
-
-def route_outputs(route: Path, top: str) -> None:
-    for suffix in ("apr.v", "apr.sdf", "spef"):
-        require_nonempty(route / "outputs" / f"{top}.{suffix}", "APR output")
-
-
-def route_slacks(route: Path) -> dict[str, float]:
-    slacks = {}
-    for kind in ("setup", "hold"):
-        match = re.search(r"Slack Time\s*([-+0-9.]+)", (route / "reports" / f"{kind}.rpt").read_text())
-        require(match, f"missing {kind} slack")
-        require(float(match[1]) >= 0, f"{kind} timing violation {match[1]}")
-        slacks[f"{kind}_wns_ns"] = float(match[1])
-    return slacks
-
-
-def last_placement_check(log: str) -> re.Match:
-    checks = list(PLACEMENT_CHECK_RE.finditer(log))
-    require(checks, "missing final placement check")
-    return checks[-1]
-
-
-def report_clean(text: str, count_re: str, clean_re: str) -> bool:
-    """A violation report is clean if its total is 0, or it has no total and states it found none."""
-    count = re.search(count_re, text)
-    return (not count or int(count[1]) == 0) and bool(count or re.search(clean_re, text))
-
-
-def audit_route_reports(route: Path, top: str) -> dict:
-    """Report-file rules: geometry/antenna reports, the last checkPlace in the log, the area report."""
-    log = (route / "apr.log").read_text(errors="replace")
-    require("Innovus script finished" in log or "CHECKPOINT_REPAIR_COMPLETE" in log, "missing flow completion")
-    innovus_ended_cleanly(log)
-    route_outputs(route, top)
-    require(report_clean((route / f"{top}.geom.rpt").read_text(), r"Total Violations\s*:\s*(\d+)",
-                         r"(?m)^No DRC violations were found\s*$"), "geometry violations")
-    require(report_clean((route / f"{top}.antenna.rpt").read_text(),
-                         r"Total number of process antenna violations:\s*(\d+)", r"(?m)^No Violations Found\s*$"),
-            "antenna violations")
-    connectivity = CONNECTIVITY_RE.findall(log)
-    require(connectivity and "Found no problems or warnings." in connectivity[-1], "connectivity failed")
-    last = last_placement_check(log)
-    unplaced = re.search(r"Unplaced\s*=\s*(\d+)", last[0])
-    require(unplaced and int(unplaced[1]) == 0, "unplaced instances")
-    require(not re.findall(r"^([^*\n]+):\s*([1-9]\d*)\s*$", last[0], re.M) and "NRDB-2082" not in log[last.end():],
-            "placement violations")
-    result = dict(status="PASS", geometry_drc=0, antenna_violations=0, connectivity_violations=0,
-                  placement_violations=0)
-    result.update(route_slacks(route))
-    rows = [f for f in (line.split() for line in (route / "reports/area.rpt").read_text().splitlines())
-            if f and f[0] == top]
-    require(len(rows) == 1, f"expected one {top} row in reports/area.rpt, found {len(rows)}")
-    result["area_um2"] = float(rows[0][2])
-    require(result["area_um2"] > 0, "zero design area")
-    return result
-
-
-def audit_route_log(route: Path, top: str, stage: str) -> dict:
-    """Innovus-log rules: the final verifyGeometry/verifyConnectivity/verifyProcessAntenna counts and checkPlace.
-
-    A bootstrap route only seeds switching activity for the independent final APR, so it may keep geometry or
-    antenna markers and placement overlaps; connectivity, timing and a clean Innovus run are still required.
-    """
-    route_outputs(route, top)
-    log = (route / "apr.log").read_text(errors="replace")
-    require("Innovus script finished" in log or "POP_COUNT_CHECKPOINT_REPAIR_COMPLETE" in log,
-            "missing APR or checkpoint-repair completion")
-    innovus_ended_cleanly(log)
-    for name in (f"{top}.syn.sdc", "reports/area.rpt"):
-        require_nonempty(route / name, "APR input/report")
-    drc = re.findall(r"Verification Complete\s*:\s*(\d+) Viols\.", log)   # [-2] geometry, [-1] connectivity
-    antenna = re.findall(r"Verification Complete:\s*(\d+) Violations", log)
-    connectivity = CONNECTIVITY_RE.findall(log)
-    require(len(drc) >= 2 and antenna and connectivity, "missing final physical checks")
-    final = stage == "final"
-    require(not final or int(drc[-2]) == 0, f"final geometry DRC {drc[-2]}")
-    require(int(drc[-1]) == 0 and "Found no problems or warnings." in connectivity[-1], "final connectivity failed")
-    require(not final or int(antenna[-1]) == 0, f"final antenna violations {antenna[-1]}")
-    slacks = route_slacks(route)
-    last = last_placement_check(log)
-    overlap = re.search(r"Overlapping with other instance:\s*(\d+)", last[0])
-    overlaps = int(overlap[1]) if overlap else 0
-    late_overlap = "NRDB-2082" in log[last.end():]
-    require(not final or (overlaps == 0 and not late_overlap),
-            f"final placement overlaps: instances={overlaps}, later_router_warning={late_overlap}")
-    return dict(slacks, geometry_drc=int(drc[-2]), connectivity_violations=0, antenna_violations=int(antenna[-1]),
-                placement_overlapping_instances=overlaps, placement_late_overlap_warning=late_overlap,
-                qualification=stage)
-
-
 def cmd_routed_apr(args) -> int:
-    try:
-        if args.stage:
-            result = audit_route_log(args.route, args.top, args.stage)
-        else:
-            result = audit_route_reports(args.route, args.top)
-    except (QualifyError, OSError) as error:
-        raise SystemExit(f"route not qualified: {error}")
-    if args.stage:
-        if args.json_path:
-            args.json_path.write_text(json.dumps(result, indent=2) + "\n")
-        print(json.dumps(result))
-    else:
-        emit_json(result, args.json_path)
-    return 0
+    """ASTRAEA's apr_qualify.py qualify on ROUTE: --stage final|bootstrap judges the Innovus log's final checks,
+    no --stage the report files (its stage reports).  The verdict JSON (status, the reason on FAIL) is printed and
+    written to --json; exit 0 on PASS.  On FAIL the reason line ("APR route not qualified: ...", stderr) is the last
+    line of the output, after the JSON: the child runs unbuffered (-u), so callers that keep the output's tail see
+    the reason."""
+    cmd = [sys.executable, "-B", "-u", str(astraea("apr_qualify.py")), "qualify", "--route", str(args.route),
+           "--top", args.top, "--stage", args.stage or "reports"]
+    return subprocess.run(cmd + (["--json", str(args.json_path)] if args.json_path else [])).returncode
 
 
 # -------------------------------------------------------------------------------------------- routed GL --
 
 DEFAULT_WORKLOAD_PASS = "PASS: streaming SC SAIF captured; 384 batches x 8 cycles"
-TIMING_CHECK = r"\$(?:setuphold|recrem|setup|hold|width|period|recovery|removal|skew|timeskew|fullskew|nochange)"
-SDF_CITE_RE = re.compile(r"(\S+\.sdf), (\d+)")
 RATIONALE_NAME = "gl_validator_args_rationale.txt"
 RECORD_NAME = "gl_validator_args.txt"
 
 
-def warning_blocks(text: str, category: str) -> list[str]:
-    """Bodies of every VCS 'Warning-[category]' diagnostic (up to the next blank line)."""
-    return re.findall(rf"Warning-\[{category}\](.*?)(?=\n\s*\n|\Z)", text, re.S)
-
-
-class SdfLines:
-    """SDF files cited by VCS diagnostics, each read once."""
-
-    def __init__(self) -> None:
-        self.files: dict[str, list[str]] = {}
-
-    def line(self, path: str, line_no: int) -> str:
-        if path not in self.files:
-            self.files[path] = Path(path).read_text(errors="replace").splitlines()
-        return self.files[path][line_no - 1]
-
-
-def approve_negative_iopath(text: str, max_ps: float, sdf: SdfLines, reasons: list[str]) -> list[dict]:
-    """Opt-in: accept SDFCOM_NDI only for small negative IOPATH (or INTERCONNECT) delays.
-
-    VCS clamps a negative IOPATH delay to zero (and cannot honor it on a COND path even with -negdelay); a negative
-    INTERCONNECT delay is clamped the same way.  Either clamp only lengthens that arc.  Each diagnostic must cite an
-    SDF file and line; that line must be an IOPATH or INTERCONNECT entry whose negative values are all no more negative
-    than -max_ps.  Every approved clamp is returned for the qualification record.
-    """
-    approved = []
-    for block in warning_blocks(text, "SDFCOM_NDI"):
-        where = SDF_CITE_RE.search(block)
-        inst = re.search(r'instance:\s*([^"\s]+)', block)
-        if not where or not inst:
-            reasons.append("SDFCOM_NDI diagnostic lacks SDF file/line or instance")
-            continue
-        path, line_no = where[1], int(where[2])
-        try:
-            line = sdf.line(path, line_no)
-        except (OSError, IndexError):
-            reasons.append(f"SDFCOM_NDI cites unreadable SDF line {path}:{line_no}")
-            continue
-        negatives = [float(x) for x in re.findall(r"(-\d+(?:\.\d+)?)", line)]
-        if ("IOPATH" not in line and "INTERCONNECT" not in line) or not negatives:
-            reasons.append(f"SDFCOM_NDI at {path}:{line_no} is not a negative IOPATH or INTERCONNECT entry")
-            continue
-        worst_ps = min(negatives) * 1000.0
-        if worst_ps < -max_ps:
-            reasons.append(f"SDFCOM_NDI at {path}:{line_no} is {worst_ps:.1f} ps, beyond -{max_ps} ps")
-            continue
-        approved.append({"instance": inst[1], "sdf": path, "line": line_no,
-                         "entry": " ".join(line.split()), "most_negative_ps": worst_ps})
-    return approved
-
-
-def approve_annotated_interconnect(text: str, sdf: SdfLines, reasons: list[str]) -> list[dict]:
-    """Opt-in: accept SDFCOM_IWSBA only where VCS still annotates the delay.
-
-    Innovus can write a netlist `assign` alias between a flop output and a port net.  VCS then warns that the SDF
-    INTERCONNECT crosses that continuous assignment or instance boundary, and states that the interconnect is
-    still annotated.  Each diagnostic must carry that statement, name the source and destination pins, and cite
-    an SDF line that is a non-negative INTERCONNECT entry.  Every approval is returned.
-    """
-    approved = []
-    for block in warning_blocks(text, "SDFCOM_IWSBA"):
-        where = SDF_CITE_RE.search(block)
-        # VCS wraps the message by length, so any whitespace (a line break included) may separate its words.
-        pins = re.search(r"INTERCONNECT from\s+(\S+)\s+to\s+(\S+)\s+has\s+(Continuous\s+Assignment|Instance)\s+at"
-                         r"\s+(\S+?):(\d+)", block)
-        if "INTERCONNECT will still be annotated" not in block or not where or not pins:
-            reasons.append("SDFCOM_IWSBA diagnostic lacks the annotated-interconnect statement, SDF line or pins")
-            continue
-        path, line_no = where[1], int(where[2])
-        try:
-            line = sdf.line(path, line_no)
-        except (OSError, IndexError):
-            reasons.append(f"SDFCOM_IWSBA cites unreadable SDF line {path}:{line_no}")
-            continue
-        if not line.lstrip().startswith("(INTERCONNECT") or re.search(r"\(-|:-", line):
-            reasons.append(f"SDFCOM_IWSBA at {path}:{line_no} is not a non-negative INTERCONNECT entry")
-            continue
-        approved.append({"sdf": path, "line": line_no, "entry": " ".join(line.split()),
-                         "source": pins[1], "destination": pins[2], "netlist_object": " ".join(pins[3].split()),
-                         "netlist": f"{pins[4]}:{pins[5]}"})
-    return approved
-
-
-def audit_routed_gl(text: str, expected_pass: str = DEFAULT_WORKLOAD_PASS,
-                    approve_negative_iopath_clamp_ps: float | None = None,
-                    approve_iwsba: bool = False) -> dict:
-    """Timing qualification of one GL simulation log (VCS compile + run output, +sdfverbose)."""
-    text = re.sub(r"\x1b\[[0-9;]*m", "", text)
-    reasons: list[str] = []
-    if "sdf corner = max" not in text or "[INFO] $sdf_annotate(" not in text:
-        reasons.append("missing max-corner SDF annotation evidence")
-    if not re.search(r"SDF annotation completed:", text):
-        reasons.append("SDF annotation did not complete")
-    if expected_pass not in text:
-        reasons.append("missing complete expected workload: " + expected_pass)
-    if re.search(r"\+define\+(?:ARM_UD_MODEL|ARM_EN_X_SQUASH|NO_SDF)\b|\+notimingcheck\b|\+nospecify\b", text):
-        reasons.append("timing model or timing checks disabled in command")
-
-    sdf_errors = [int(x) for x in re.findall(r"Total errors:\s*(\d+)", text)]
-    sdf_warning_totals = [int(x) for x in re.findall(r"Total warnings:\s*(\d+)", text)]
-    if not sdf_errors or any(sdf_errors):
-        reasons.append("SDF annotation errors or absent error summary")
-    if not sdf_warning_totals:
-        reasons.append("missing SDF warning summary")
-    warnings = collections.Counter(re.findall(r"Warning-\[([^]]+)\]", text))
-    sdf_warnings = {key: value for key, value in warnings.items() if key.startswith("SDF")}
-    # UHICD is the known hierarchical-output warning: VCS applies the DEVICE delay to the source port.  Every
-    # other SDF diagnostic must be investigated: missing paths, checks, cells, negative-limit conversions.
-    allowed_sdf = {"SDFCOM_UHICD"}
-    sdf = SdfLines()
-    approved_clamps: list[dict] = []
-    if approve_negative_iopath_clamp_ps is not None and "SDFCOM_NDI" in sdf_warnings:
-        approved_clamps = approve_negative_iopath(text, approve_negative_iopath_clamp_ps, sdf, reasons)
-        if len(approved_clamps) == sdf_warnings["SDFCOM_NDI"]:
-            allowed_sdf.add("SDFCOM_NDI")
-    approved_interconnects: list[dict] = []
-    if approve_iwsba and "SDFCOM_IWSBA" in sdf_warnings:
-        approved_interconnects = approve_annotated_interconnect(text, sdf, reasons)
-        if len(approved_interconnects) == sdf_warnings["SDFCOM_IWSBA"]:
-            allowed_sdf.add("SDFCOM_IWSBA")
-    unexpected_sdf = sorted(set(sdf_warnings) - allowed_sdf)
-    if unexpected_sdf:
-        reasons.append("unapproved SDF warnings: " + ", ".join(unexpected_sdf))
-    if re.search(r"(?:Error|Fatal)-\[SDF|SDF (?:Error|Fatal)", text):
-        reasons.append("SDF error diagnostic present")
-    suppressed = "All future warnings not reported" in text
-    if suppressed or sum(sdf_warning_totals) != sum(sdf_warnings.values()):
-        reasons.append("SDF warning details incomplete; rerun with +sdfverbose")
-    if any("DEVICE Delay on port" not in block or "applied" not in block
-           for block in warning_blocks(text, "SDFCOM_UHICD")):
-        reasons.append("UHICD diagnostic lacks the expected DEVICE-delay fallback")
-
-    # Startup timing reports are allowed only when every reported event precedes reset completion.
-    resets = [float(x) for x in re.findall(r"Performed reset at time\s+(\d+(?:\.\d+)?)", text)]
-    reset_ps = resets[0] if len(resets) == 1 else None
-    if reset_ps is None:
-        reasons.append("expected exactly one reset-complete timestamp")
-    timings = []
-    headers = list(re.finditer(r"Timing violation in[^\n]*\n", text))
-    for index, header in enumerate(headers):
-        end = headers[index + 1].start() if index + 1 < len(headers) else len(text)
-        match = re.match(rf"\s*({TIMING_CHECK}\s*\(.*?\);)", text[header.end():end], re.S)
-        if not match:
-            reasons.append("unparsed timing-violation record: " + header[0].strip())
-            continue
-        check = " ".join(match[1].split())
-        events = [float(m[2]) for m in re.finditer(r"([^,():]+):\s*(\d+(?:\.\d+)?)", check)
-                  if m[1].strip().lower() not in {"limit", "limits", "threshold"}]
-        if not events:
-            reasons.append("timing-violation record lacks event timestamps")
-        startup = bool(events) and reset_ps is not None and max(events) < reset_ps
-        timings.append({"header": header[0].strip(), "check": check,
-                        "event_times_ps": events, "before_reset_complete": startup})
-    # Fail closed if a simulator emits a timing check without the known header.
-    if len(re.findall(rf"(?m)^\s*{TIMING_CHECK}\s*\(", text)) != len(headers):
-        reasons.append("timing-check and violation-header counts disagree")
-    late = sum(not item["before_reset_complete"] for item in timings)
-    if late:
-        reasons.append(f"{late} timing violations reach or follow reset completion")
-    return {
-        "status": "FAIL" if reasons else "PASS",
-        "rejection_reasons": reasons,
-        "sdf_errors": sdf_errors,
-        "sdf_warning_totals": sdf_warning_totals,
-        "sdf_warning_categories": sdf_warnings,
-        "all_warning_categories": dict(warnings),
-        "sdf_warning_details_suppressed": suppressed,
-        "approve_negative_iopath_clamp_ps": approve_negative_iopath_clamp_ps,
-        "approved_negative_iopath_clamps": approved_clamps,
-        "approve_annotated_interconnect": approve_iwsba,
-        "approved_annotated_interconnects": approved_interconnects,
-        "reset_complete_time_ps": reset_ps,
-        "timing_violation_reports": len(headers),
-        "startup_timing_violations": sum(item["before_reset_complete"] for item in timings),
-        "post_reset_timing_violations": late,
-        "timing_records": timings,
-    }
-
-
 def cmd_routed_gl(args) -> int:
-    result = audit_routed_gl(args.log.read_text(errors="replace"), args.expected_pass,
-                             args.approve_negative_iopath_clamp_ps, args.approve_annotated_interconnect)
+    """One audit of LOG by ASTRAEA's gl_audit.audit(): max SDF corner, --expected-pass required, reset completion
+    from the benches' "Performed reset at time" line; the approvals given are applied directly."""
+    gl = gl_audit_module()
+    result = gl.audit(args.log.read_text(errors="replace"), [args.expected_pass], gl.DEFAULT_RESET_RE, "max",
+                      args.approve_negative_iopath_clamp_ps, args.approve_annotated_interconnect)
     emit_json(result, args.json_path)
     return 0 if result["status"] == "PASS" else 1
 
@@ -395,62 +128,29 @@ def clamp_ps(text: str) -> str:
     return text
 
 
-def write_gl_record(result: dict, json_path: Path, log_path: Path) -> None:
-    text = json.dumps(result, indent=2) + "\n"
-    json_path.write_text(text)
-    log_path.write_text(text)
-
-
 def cmd_gl_audit(args) -> int:
     """Strict first; approvals only after a strict failure, each cited by WORK/gl_validator_args_rationale.txt.
 
-    Writes SIMDIR/timing_qualification_strict.json (+ timing_validation_strict.log) and the governing
-    SIMDIR/timing_qualification.json (+ timing_validation.log when approvals were applied), and appends one
+    Runs ASTRAEA's apr/scripts/gl_audit.py on SIMDIR/simulation.log with the expected text of
+    SIMDIR/expected_pass.txt (or --expected-pass).  Writes SIMDIR/timing_qualification_strict.json and the
+    governing SIMDIR/timing_qualification.json (the strict verdict unless approvals were applied), and appends one
     line per audit to WORK/gl_validator_args.txt.  Approvals listed there must be reviewed before quoting.
+    With the output captured to a file (as every caller does), the child's stdout (the record line) is flushed at its
+    exit, after its stderr messages: the last line is the record line, or the no-approvals hint below.
     """
     simdir, work = args.simdir, args.work
     expected = args.expected_pass or (simdir / "expected_pass.txt").read_text().rstrip("\n")
-    text = (simdir / "simulation.log").read_text(errors="replace")
-    strict = audit_routed_gl(text, expected)
-    write_gl_record(strict, simdir / "timing_qualification_strict.json", simdir / "timing_validation_strict.log")
-    flags = ([("--approve-negative-iopath-clamp-ps", args.approve_negative_iopath_clamp_ps)]
-             if args.approve_negative_iopath_clamp_ps is not None else []) + \
-            ([("--approve-annotated-interconnect", None)] if args.approve_annotated_interconnect else [])
-    used = " ".join(f"{flag} {value}" if value else flag for flag, value in flags)
-    if strict["status"] == "PASS":
-        used = ""
-        shutil.copy2(simdir / "timing_qualification_strict.json", simdir / "timing_qualification.json")
-    else:
-        print("strict audit FAILED:", strict["rejection_reasons"], file=sys.stderr)
-        rationale = work / RATIONALE_NAME
-        if not flags:
-            print(f"No approvals given. Investigate, write {rationale}, then rerun with the --approve-* flags "
-                  "it cites.", file=sys.stderr)
-            return 1
-        if not (rationale.is_file() and rationale.stat().st_size):
-            print(f"Approvals '{used}' need a rationale file: {rationale}", file=sys.stderr)
-            return 1
-        cited = rationale.read_text(errors="replace")
-        for flag, _ in flags:
-            if flag not in cited:
-                print(f"{rationale} does not cite {flag}", file=sys.stderr)
-                return 1
-        ps = args.approve_negative_iopath_clamp_ps
-        approved = audit_routed_gl(text, expected, float(ps) if ps is not None else None,
-                                   args.approve_annotated_interconnect)
-        write_gl_record(approved, simdir / "timing_qualification.json", simdir / "timing_validation.log")
-    final = json.loads((simdir / "timing_qualification.json").read_text())
-    clamps = final["approved_negative_iopath_clamps"]
-    line = (f"{datetime.datetime.now().isoformat(timespec='seconds')} {simdir} strict={strict['status']} "
-            f"strict_reasons={strict['rejection_reasons']} approvals_used='{used}' "
-            f"sdf_warnings={final['sdf_warning_categories']} ndi_clamps={len(clamps)} "
-            f"worst_clamp_ps={min([c['most_negative_ps'] for c in clamps] or [0])} "
-            f"iwsba={len(final['approved_annotated_interconnects'])} "
-            f"post_reset_violations={final['post_reset_timing_violations']} status={final['status']}")
-    with (work / RECORD_NAME).open("a") as record:
-        record.write(line + "\n")
-    print(line)
-    return 0 if final["status"] == "PASS" else 1
+    approvals = ([f"--approve-negative-iopath-clamp-ps={args.approve_negative_iopath_clamp_ps}"]
+                 if args.approve_negative_iopath_clamp_ps is not None else []) + \
+                (["--approve-annotated-interconnect"] if args.approve_annotated_interconnect else [])
+    cmd = [sys.executable, "-B", str(astraea("gl_audit.py")), "--log", str(simdir / "simulation.log"),
+           "--json", str(simdir / "timing_qualification.json"), f"--expect={expected}",
+           "--rationale", str(work / RATIONALE_NAME), "--record", str(work / RECORD_NAME), *approvals]
+    rc = subprocess.run(cmd).returncode
+    if rc and not approvals:
+        print(f"No approvals given. Investigate, write {work / RATIONALE_NAME}, then rerun with the --approve-* "
+              "flags it cites.", file=sys.stderr)
+    return rc
 
 
 def cmd_syn_gl(args) -> int:
@@ -459,7 +159,7 @@ def cmd_syn_gl(args) -> int:
     log = args.log.read_text(errors="replace")
     verdict = json.loads(args.json.read_text())
     reasons = [r for r in verdict["rejection_reasons"] if r != "unapproved SDF warnings: SDFCOM_CFTC"]
-    blocks = warning_blocks(log, "SDFCOM_CFTC")
+    blocks = gl_audit_module().warning_blocks(log, "SDFCOM_CFTC")
     bad = [b for b in blocks if not (re.search(r"module: DFFRPQ\w+", b)
                                      and re.search(r"\$hold\(posedge CK[^,]*,\s*negedge R", " ".join(b.split())))]
     if bad:

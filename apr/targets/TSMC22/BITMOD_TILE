@@ -8,4 +8,7 @@ export PERIOD=2.5
 export TSMC22_HPK=${TSMC22_HPK:-1}
 export CORE_UTIL=${CORE_UTIL:-0.70}
 export CORE_ASPECT=${CORE_ASPECT:-1.000}
-export POST_LOAD_SCRIPT=${POST_LOAD_SCRIPT:-apr/scripts/set_clock_uncertainty_setup_only.tcl}
+# Implementation clock uncertainty (ASTRAEA apr.tcl), setup and hold set separately: CLOCK_UNCERTAINTY for setup and
+# CLOCK_UNCERTAINTY_HOLD for hold if set, each else 5% of PERIOD (a larger setup margin must not tighten hold).
+export APR_CLOCK_UNCERTAINTY=${APR_CLOCK_UNCERTAINTY:-${CLOCK_UNCERTAINTY:-auto}}
+export APR_CLOCK_UNCERTAINTY_HOLD=${APR_CLOCK_UNCERTAINTY_HOLD:-${CLOCK_UNCERTAINTY_HOLD:-auto}}
