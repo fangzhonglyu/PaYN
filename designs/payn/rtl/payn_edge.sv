@@ -96,6 +96,11 @@ endmodule
 //   W, per (v, k, m): w_bit = b_w > ((x(M*cyc + m) ^ mask) >> 1), i.e.
 //     b_w > (w_words[m] ^ (lane bits of the mask >> 1)); PaynStreamGen already
 //     folded the phase bits into the lane words.
+//   K not a power of two (K/M/N heatmap only; PaynStreamGen header): lane
+//     k = G*g + r is lane r of a G-lane group g with phase p + g.  Its
+//     encoder is PaynKaEncoder #(G, r) on that group phase (one PB-bit
+//     constant add per group, shared by every row) and its comparators read
+//     the group's words w_words[g*M + m].  At power-of-two K, G = K, g = 0.
 //
 // INT mode, raw-bit bypass after the SC stream logic, one AO21 per bit:
 //
@@ -134,8 +139,8 @@ module PaynEdge #(
     input logic [N_W*K-1:0] w_signs_in,
 
     input logic [$clog2(128/M + 1)-1:0] cyc,
-    input logic [6 - $clog2(K) - 1:0] phase,
-    input logic [M*(WIDTH-1)-1:0] w_words,
+    input logic [6 - $clog2(K & -K) - 1:0] phase,
+    input logic [K/(K & -K)*M*(WIDTH-1)-1:0] w_words,
 
     // INT mode: registered mode bit and raw bit-plane operands, same packing
     // as a_bits / w_bits.
@@ -150,7 +155,10 @@ module PaynEdge #(
 );
     localparam int TW = WIDTH - 1;
     localparam int LM = $clog2(M);
-    localparam int LB = $clog2(K);
+    localparam int G = K & -K;                     // lanes per phase group
+    localparam int Q = K / G;                      // phase groups (1 at power-of-two K)
+    localparam int LB = $clog2(G);
+    localparam int PB = 6 - LB;
 
     // Lane bits of the mask in the 7-bit threshold: d[i] = lane[i] sits in
     // mask bit 7-i, i.e. threshold bit 6-i.
@@ -162,10 +170,9 @@ module PaynEdge #(
 
     initial begin
         // K8/M16 and K16/M8 are the production shapes; the K/M/N sweeps also
-        // build K, M in {1, 2, 4, 8, 16} independently.
-        assert ((K == 1 || K == 2 || K == 4 || K == 8 || K == 16 || K == 32) &&
-                (M == 1 || M == 2 || M == 4 || M == 8 || M == 16) && WIDTH == 8)
-            else $fatal(1, "PaynEdge is built for the C-BSG block: K, M powers of two (K <= 32, M <= 16), WIDTH=8 (got K=%0d M=%0d WIDTH=%0d)",
+        // build K in 1..32 and M in {1, 2, 4, 8, 16} independently.
+        assert (K >= 1 && K <= 32 && (M == 1 || M == 2 || M == 4 || M == 8 || M == 16) && WIDTH == 8)
+            else $fatal(1, "PaynEdge is built for the C-BSG block: K 1..32, M a power of two (M <= 16), WIDTH=8 (got K=%0d M=%0d WIDTH=%0d)",
                         K, M, WIDTH);
         assert (N_H > 0 && N_W > 0)
             else $fatal(1, "N_H and N_W must be positive");
@@ -214,16 +221,22 @@ module PaynEdge #(
     // functional bench's NEG_KA_EQ_B control forces it to min(b, L).
     logic [N_H*K*WIDTH-1:0] ka_flat;
 
+    // Phase of lane group g (= phase at Q = 1).
+    logic [PB-1:0] group_phase [Q];
+    for (genvar g = 0; g < Q; g++) begin : g_group_phase
+        assign group_phase[g] = phase + PB'(g);
+    end
+
     for (genvar row = 0; row < N_H; row++) begin : g_a_row
         for (genvar depth = 0; depth < K; depth++) begin : g_a_depth
             logic [WIDTH-1:0] ka;
             logic ka_hi_gt;
             logic ka_hi_eq;
 
-            PaynKaEncoder #(.K(K), .LANE(depth)) u_ka (
+            PaynKaEncoder #(.K(G), .LANE(depth % G)) u_ka (
                 .b(a_binary_q[(row*K + depth)*WIDTH +: WIDTH]),
                 .len(a_len_q[row*WIDTH +: WIDTH]),
-                .phase,
+                .phase(group_phase[depth / G]),
                 .ka(ka_flat[(row*K + depth)*WIDTH +: WIDTH])
             );
 
@@ -245,12 +258,12 @@ module PaynEdge #(
 
     for (genvar col = 0; col < N_W; col++) begin : g_w_col
         for (genvar depth = 0; depth < K; depth++) begin : g_w_depth
-            localparam logic [TW-1:0] LANE_MASK = lane_threshold_mask(depth);
+            localparam logic [TW-1:0] LANE_MASK = lane_threshold_mask(depth % G);
 
             for (genvar lane = 0; lane < M; lane++) begin : g_w_lane
                 logic [TW-1:0] threshold;
 
-                assign threshold = w_words[lane*TW +: TW] ^ LANE_MASK;
+                assign threshold = w_words[((depth / G)*M + lane)*TW +: TW] ^ LANE_MASK;
                 assign sc_w_bits[(col*K + depth)*M + lane] =
                     w_binary_q[(col*K + depth)*WIDTH +: WIDTH] >
                     {1'b0, threshold};

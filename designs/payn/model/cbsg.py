@@ -449,14 +449,21 @@ def geometry(K=8, M=16):
     """Block geometry of a K-lane, M-position PE.  Lane k of block j of a slice carries the slice-local column
     d = K*j + k.  Its mask bitrev8(d mod 64) splits into the lane bits bitrev(k) at [7:8-log2 K], hard-wired, and
     PB = 6 - log2 K phase bits bitrev(p) just below, p = j mod 2^PB from the block-phase register; bits [1:0] are 0.
-    MASK[k, p] is that mask, WBANK the W words in sample order (t = M*c + m), CYC = 128 / M the longest block."""
-    # Production shapes are SHAPES; the K/M/N sweeps also use any power-of-two K <= 32, M <= 16 (K M decoupled).
-    if (K, M) not in SHAPES.values() and not (K in (1, 2, 4, 8, 16, 32) and M in (1, 2, 4, 8, 16)):
-        raise ValueError(f"unsupported PE shape K{K}/M{M}; supported: {', '.join(SHAPES)} and power-of-two "
-                         f"K <= 32, M <= 16")
-    lk = K.bit_length() - 1
-    pb = 6 - lk
-    mask = (_bit_reverse(np.arange(K)[:, None], lk) << (8 - lk)) | (_bit_reverse(np.arange(1 << pb)[None, :], pb) << 2)
+    MASK[k, p] is that mask, WBANK the W words in sample order (t = M*c + m), CYC = 128 / M the longest block.
+    K not a power of two (the K/M/N heatmap): K = G*Q, G = K & -K, Q odd; lane k = G*g + r has lane bits bitrev(r)
+    at [7:8-log2 G] and the group phase bitrev_PB((Q*p + g) mod 2^PB), PB = 6 - log2 G, as payn_stream_gen.sv builds
+    it; the masks repeat every NPH = 2^PB blocks.  At power-of-two K, G = K, Q = 1 and g = 0."""
+    # Production shapes are SHAPES; the K/M/N sweeps also use K 1..32 and power-of-two M <= 16 (K M decoupled).
+    if (K, M) not in SHAPES.values() and not (1 <= K <= 32 and M in (1, 2, 4, 8, 16)):
+        raise ValueError(f"unsupported PE shape K{K}/M{M}; supported: {', '.join(SHAPES)} and K 1..32, power-of-two "
+                         f"M <= 16")
+    G = K & -K
+    lg = G.bit_length() - 1
+    pb = 6 - lg
+    k = np.arange(K)[:, None]
+    p = np.arange(1 << pb)[None, :]
+    group_phase = ((K // G) * p + k // G) % (1 << pb)
+    mask = (_bit_reverse(k % G, lg) << (8 - lg)) | (_bit_reverse(group_phase, pb) << 2)
     return SimpleNamespace(K=K, M=M, PB=pb, NPH=1 << pb, CYC=L_MAX // M, MASK=mask.astype(np.int64),
                            WBANK=sobol_bank(DV_K, M), name=f"K{K}/M{M}")
 
@@ -491,7 +498,7 @@ def _sign_bits(b, s, what):
 def block_schedule(D, slice_len=0, K=8):
     """Block order of one call: the reduction axis is cut into slices (the whole D for plain, chunk_d for chunked,
     one head for per-head), every slice into blocks of K lanes from its first column, the last one padded with zero
-    magnitude.  Block j of a slice has phase j mod (64 / K).  Returns [(slice, j, lo, hi, phase, last_in_slice)]
+    magnitude.  Block j of a slice has phase j mod (64 / (K & -K)), the mask period in blocks.  Returns [(slice, j, lo, hi, phase, last_in_slice)]
     with the call-local column range [lo, hi)."""
     sl = slice_len or D
     out = []
@@ -500,7 +507,7 @@ def block_schedule(D, slice_len=0, K=8):
         nb = -(-(s_hi - s_lo) // K)
         for j in range(nb):
             lo = s_lo + K * j
-            out.append((s, j, lo, min(lo + K, s_hi), j % (N_MASKS // K), j == nb - 1))
+            out.append((s, j, lo, min(lo + K, s_hi), j % (N_MASKS // (K & -K)), j == nb - 1))
     return out
 
 

@@ -12,7 +12,7 @@ export TOP=payn_array
 export TECH=TSMC22
 export PERIOD=2.5
 export TSMC22_HPK=1
-export POST_LOAD_SCRIPT=apr/scripts/set_clock_uncertainty.tcl
+export POST_LOAD_SCRIPT=${POST_LOAD_SCRIPT:-apr/scripts/set_clock_uncertainty.tcl}
 # Read-only final placement audit (the post-fill repair chains to it).
 export PRE_REPORT_SCRIPT=apr/scripts/check_final_placement.tcl
 export CORE_UTIL=${CORE_UTIL:-0.70}

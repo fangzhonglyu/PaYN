@@ -5,7 +5,7 @@
 // SC power + output-checking bench for payn_array (A-first C-BSG streams, one
 // PE).  Shape from +define+PAYN_M=8 (K16/M8, default) or 16 (K8/M16), K =
 // 128/M lanes; SC_NH x SC_NW tiles (default 8 x 8).  The K/M/N sweeps set
-// +define+PAYN_K too (K, M powers of two, K <= 32, M <= 16); SC_NH = 1 needs the
+// +define+PAYN_K too (K 1..32, M a power of two <= 16); SC_NH = 1 needs the
 // drain register (one half, one read edge).
 //
 // One plain call of SC_BATCHES blocks (D = K * SC_BATCHES reduction columns)
@@ -298,9 +298,11 @@ module Top;
 
         void'($value$plusargs("DRAIN_SAMPLE_LATE_PS=%d", drain_sample_late_ps));
 
-        assert ((K == 1 || K == 2 || K == 4 || K == 8 || K == 16 || K == 32) &&
-                (M == 1 || M == 2 || M == 4 || M == 8 || M == 16) && WIDTH == 8)
-            else $fatal(1, "PaYN SC power bench needs K, M powers of two (K <= 32, M <= 16), WIDTH=8 (got K=%0d M=%0d)", K, M);
+        assert (K >= 1 && K <= 32 && (M == 1 || M == 2 || M == 4 || M == 8 || M == 16) && WIDTH == 8)
+            else $fatal(1, "PaYN SC power bench needs K 1..32 and M a power of two <= 16, WIDTH=8 (got K=%0d M=%0d)", K, M);
+        // The ladder's 128-column chunks must start at phase 0 (whole blocks).
+        assert (WORKLOAD == 0 || 128 % K == 0)
+            else $fatal(1, "SC_LADDER needs K to divide 128 (got K=%0d)", K);
         assert (N_H % 2 == 0 || (N_H == 1 && DRAIN == 1))
             else $fatal(1, "SC_NH = %0d: odd N_H only as 1 with the drain register", N_H);
         assert (N_BLOCKS > 0)

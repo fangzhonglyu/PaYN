@@ -221,11 +221,12 @@ class SdfLines:
 
 
 def approve_negative_iopath(text: str, max_ps: float, sdf: SdfLines, reasons: list[str]) -> list[dict]:
-    """Opt-in: accept SDFCOM_NDI only for small negative IOPATH delays.
+    """Opt-in: accept SDFCOM_NDI only for small negative IOPATH (or INTERCONNECT) delays.
 
-    VCS clamps a negative IOPATH delay to zero (and cannot honor it on a COND path even with -negdelay).  Each
-    diagnostic must cite an SDF file and line; that line must be an IOPATH entry whose negative values are all no
-    more negative than -max_ps.  Every approved clamp is returned for the qualification record.
+    VCS clamps a negative IOPATH delay to zero (and cannot honor it on a COND path even with -negdelay); a negative
+    INTERCONNECT delay is clamped the same way.  Either clamp only lengthens that arc.  Each diagnostic must cite an
+    SDF file and line; that line must be an IOPATH or INTERCONNECT entry whose negative values are all no more negative
+    than -max_ps.  Every approved clamp is returned for the qualification record.
     """
     approved = []
     for block in warning_blocks(text, "SDFCOM_NDI"):
@@ -241,8 +242,8 @@ def approve_negative_iopath(text: str, max_ps: float, sdf: SdfLines, reasons: li
             reasons.append(f"SDFCOM_NDI cites unreadable SDF line {path}:{line_no}")
             continue
         negatives = [float(x) for x in re.findall(r"(-\d+(?:\.\d+)?)", line)]
-        if "IOPATH" not in line or not negatives:
-            reasons.append(f"SDFCOM_NDI at {path}:{line_no} is not a negative IOPATH entry")
+        if ("IOPATH" not in line and "INTERCONNECT" not in line) or not negatives:
+            reasons.append(f"SDFCOM_NDI at {path}:{line_no} is not a negative IOPATH or INTERCONNECT entry")
             continue
         worst_ps = min(negatives) * 1000.0
         if worst_ps < -max_ps:

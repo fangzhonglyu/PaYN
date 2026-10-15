@@ -36,7 +36,8 @@
 module PaynIntCombiner #(
     parameter int N_H = 8,
     parameter int OWIDTH = 24,
-    parameter int OUT_W = 32
+    parameter int OUT_W = 32,
+    parameter bit CAPTURES = 1      // 0: capture is tied low (drain-register builds)
 ) (
     input  logic clk,
     input  logic reset,
@@ -54,7 +55,9 @@ module PaynIntCombiner #(
         // it is not an INT configuration.
         assert (N_H >= 1)
             else $fatal(1, "N_H (%0d) must be at least 1", N_H);
-        assert (OUT_W >= OWIDTH + N_H - 1)
+        // Only where it can capture: a drain-register build ties capture low,
+        // so nothing of the tree survives (the K/M/N sweeps' N_H = 10 there).
+        assert (!CAPTURES || OUT_W >= OWIDTH + N_H - 1)
             else $fatal(1, "OUT_W (%0d) must hold a %0d-bit tile shifted by %0d",
                         OUT_W, OWIDTH, N_H - 1);
     end

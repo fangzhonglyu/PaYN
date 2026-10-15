@@ -183,8 +183,10 @@
 `define PAYN_M 8
 `endif
 // PAYN_K: lanes per block; default 128 / M (the production shapes K16/M8 and
-// K8/M16).  The K/M/N sweeps set K and M independently (powers of two,
-// K <= 32, M <= 16) and N_H = N_W = 1..8 (N_H = 1 with the drain register only).
+// K8/M16).  The K/M/N sweeps set K and M independently (K 1..32, M a power of
+// two <= 16; K not a power of two runs Q = K / (K & -K) lane-group phases,
+// PaynStreamGen header) and N_H = N_W = 1, 2, 4, 6, ... (N_H = 1 with the drain
+// register only; INT mode is defined for N_H = N_W = 8).
 `ifndef PAYN_K
 `define PAYN_K (128 / `PAYN_M)
 `endif
@@ -251,20 +253,19 @@ module payn_array #(
     output logic int_out_valid
 );
     initial begin
-        assert ((K == 1 || K == 2 || K == 4 || K == 8 || K == 16 || K == 32) &&
-                (M == 1 || M == 2 || M == 4 || M == 8 || M == 16) && WIDTH == 8)
-            else $fatal(1, "payn_array needs K, M powers of two (K <= 32, M <= 16; production K16/M8 or K8/M16), WIDTH=8 (got K=%0d M=%0d WIDTH=%0d)",
+        assert (K >= 1 && K <= 32 && (M == 1 || M == 2 || M == 4 || M == 8 || M == 16) && WIDTH == 8)
+            else $fatal(1, "payn_array needs K 1..32 and M a power of two <= 16 (production K16/M8 or K8/M16), WIDTH=8 (got K=%0d M=%0d WIDTH=%0d)",
                         K, M, WIDTH);
     end
 
     localparam int CYCLES = 128 / M;               // cycles per 128-sample block
     localparam int CW = $clog2(CYCLES + 1);
-    localparam int PB = 6 - $clog2(K);
+    localparam int PB = 6 - $clog2(K & -K);        // phase bits (lane groups of K & -K)
 
     //------------------------------------------------------- block clock --
     logic [CW-1:0] cyc;
     logic [PB-1:0] phase;
-    logic [M*(WIDTH-1)-1:0] w_words;
+    logic [K/(K & -K)*M*(WIDTH-1)-1:0] w_words;
 
     // The read-out ends a slice like a drain does: it arms the slice restart.
     logic rng_drain;
@@ -350,7 +351,7 @@ module payn_array #(
     // DRAIN = 1: never captures (acc_out_east is 0 there), so synthesis keeps
     // nothing of it; the instance stays for the power-class hierarchy.
     PaynIntCombiner #(
-        .N_H(N_H), .OWIDTH(OWIDTH), .OUT_W(32)
+        .N_H(N_H), .OWIDTH(OWIDTH), .OUT_W(32), .CAPTURES(DRAIN == 0)
     ) u_combiner (
         .clk, .reset,
         .capture((DRAIN == 0) & int_mode & shift_in & ~ring_q),
