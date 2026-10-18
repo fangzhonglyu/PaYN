@@ -1,0 +1,13 @@
+#!/bin/bash
+# bitmod 8x8 PE tile with pe_scratch_h PEs (designs/baselines/bitmod/bitmod_tile_h.sv): the BITMOD_TILE design with
+# each PE split into submodules for the area / power breakdown (flow/bitmod_hier.sh).  Same knobs as BITMOD_TILE.
+# PERIOD may be overridden for synthesis only (an over-constrained netlist that closes routed timing at 400 MHz);
+# make sim / power_apr then run at the default 2.5 ns.
+export TOP=tile_h
+export TECH=TSMC22
+export SRC_SV="baselines/bitmod/bitmod_tile_h.sv"
+export PERIOD=${PERIOD:-2.5}
+export TSMC22_HPK=${TSMC22_HPK:-1}
+export MULTIBIT_INFER=${MULTIBIT_INFER:-1}
+export CLOCK_GATE=${CLOCK_GATE:-1}
+export RTL_PREFLIGHT_CMD=${RTL_PREFLIGHT_CMD:-true}

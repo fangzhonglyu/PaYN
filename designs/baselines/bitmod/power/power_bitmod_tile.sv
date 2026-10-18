@@ -183,16 +183,32 @@ module Top;
     // while delivering the same value at the same capture edge, so cycle
     // semantics are unchanged and the launch is insertion-independent.  This is
     // the methodology the other power benches already use.
+    //
+    // Operand data is relaunched 2-state (a cast to a `bit` type maps X/Z to 0
+    // and leaves 0/1 unchanged).  The controller's resetless term registers are
+    // flushed in S_DUMMY, so after the switch to the measured mode they hold X
+    // on idle beats until the first valid element reaches them, and that X
+    // reached i_w_sem inside the SAIF window for ~9 cycles.  The tile ignores
+    // operands on non-valid beats (the drained matrix was identical either way),
+    // but X toggles are not switching activity and the routed-SAIF gate rejects
+    // them.  Control signals are relaunched unchanged, and X operands on a valid
+    // beat inside the window are fatal, so a real stimulus fault cannot be masked.
+    typedef bit [LANE_ROWS*16-1:0] a_bits_t;
+    typedef bit [LANE_COLS*4-1:0]  w_sem_bits_t;
+    typedef bit [2:0]              w_bsig_bits_t;
+    typedef bit [COL_LEN*8-1:0]    w_scale_bits_t;
     always @(negedge clk) begin
+        if (monitor_x && enc_vld === 1'b1 && $isunknown({enc_a, enc_w_sem, enc_w_bsig}))
+            $fatal(1, "[X-FAIL] controller drove X operands on a valid beat during SAIF");
         enc_vld_d             <= enc_vld;
         enc_fin_d             <= enc_fin;
         enc_last_d            <= enc_last;
         enc_vld_first_elem_d  <= enc_vld_first_elem;
         enc_vld_first_group_d <= enc_vld_first_group;
-        enc_a_d               <= enc_a;
-        enc_w_sem_d           <= enc_w_sem;
-        enc_w_bsig_d          <= enc_w_bsig;
-        enc_w_scale_d         <= enc_w_scale;
+        enc_a_d               <= a_bits_t'(enc_a);
+        enc_w_sem_d           <= w_sem_bits_t'(enc_w_sem);
+        enc_w_bsig_d          <= w_bsig_bits_t'(enc_w_bsig);
+        enc_w_scale_d         <= w_scale_bits_t'(enc_w_scale);
     end
 
     always @(o_drain_row)
@@ -429,6 +445,11 @@ module Top;
             end
         if (nonzero_drains == 0)
             $fatal(1, "[FUNC-FAIL] every drained accumulator is zero -- the tile did no work");
+        // Drained matrix as "DRAIN i j hex" lines, so a gate-level run can be compared line for line with an RTL
+        // run of the same stimulus (flow/bitmod_hier.sh).  Printing only; no effect on the run or its PASS lines.
+        for (int i = 0; i < ROW_LEN; ++i)
+            for (int j = 0; j < COL_LEN; ++j)
+                $display("DRAIN %0d %0d %h", i, j, actual[i][j]);
 
         $display("PASS: bitmod tile power SAIF captured; mode=%0d beats=%0d, %0d MAC cycles in window (%0d total), %0d useful MAC, %0d/%0d drains nonzero",
                  MODE, BEATS, window_cycles, MAC_CYCLES, MAC_TOTAL,

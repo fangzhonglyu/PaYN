@@ -1,0 +1,11 @@
+#!/bin/bash
+# bitmod tile with pe_scratch_h PEs, APR (flow/bitmod_hier.sh).  The clock comes from the synthesis SDC.
+export TARGET=TSMC22/BITMOD_TILE_H
+export SYNTH_RUN=${SYNTH_RUN:?set SYNTH_RUN to the synthesis run name}
+export TOP=tile_h
+export TECH=TSMC22
+export PERIOD=${PERIOD:-2.5}
+export TSMC22_HPK=${TSMC22_HPK:-1}
+export CORE_UTIL=${CORE_UTIL:-0.70}
+export CORE_ASPECT=${CORE_ASPECT:-1.000}
+export APR_CLOCK_UNCERTAINTY=${APR_CLOCK_UNCERTAINTY:-${CLOCK_UNCERTAINTY:-auto}}

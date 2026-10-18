@@ -1,0 +1,14 @@
+#!/bin/bash
+# FlexPosit core (designs/baselines/flexposit): the 8x8 bit-serial Posit(P, es) x FP8 output-stationary array of
+# FlexPosit (MICRO 2026) -- per-column SerialPosit decoders + beat FIFOs, 64 PEs (bit-serial shift-add multiplier
+# + block-floating accumulator), cycle generator, per-column FP16 readout (normalize, power-of-two rescale,
+# convert).  Operand FIFOs stay in the bench, as for the BOS mesh.  N*N/P MAC/cycle: 16 at P=4 ... 8 at P=8.
+# Provenance and methodology: designs/baselines/flexposit/README.md; flow: flow/flexposit.sh.
+export TOP=flexposit_core
+export TECH=TSMC22
+export SRC_SV="baselines/flexposit/flexposit_core.sv"
+export PERIOD=2.5
+export MULTIBIT_INFER=${MULTIBIT_INFER:-1}
+export CLOCK_GATE=${CLOCK_GATE:-1}
+# The output-checking RTL sweep is flow/flexposit.sh's `rtl` stage (it needs generated stimulus).
+export RTL_PREFLIGHT_CMD=${RTL_PREFLIGHT_CMD:-true}

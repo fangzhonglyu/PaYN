@@ -1,0 +1,11 @@
+#!/bin/bash
+# FlexPosit core (8x8) APR.  Same knobs as the BOS array routes (flow/flexposit.sh exports them).
+export TARGET=TSMC22/FLEXPOSIT_CORE
+export SYNTH_RUN=${SYNTH_RUN:?set SYNTH_RUN to the synthesis run name}
+export TOP=flexposit_core
+export TECH=TSMC22
+export PERIOD=2.5
+export CORE_UTIL=${CORE_UTIL:-0.75}
+export CORE_ASPECT=${CORE_ASPECT:-1.000}
+# Implementation clock uncertainty (ASTRAEA apr.tcl): CLOCK_UNCERTAINTY if set, else 5% of PERIOD; setup and hold.
+export APR_CLOCK_UNCERTAINTY=${APR_CLOCK_UNCERTAINTY:-${CLOCK_UNCERTAINTY:-auto}}

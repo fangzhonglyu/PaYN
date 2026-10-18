@@ -185,8 +185,9 @@ SAIF_RESERVED = {"SAIFILE", "INSTANCE", "NET", "PORT"}
 # comparator outputs from a mapped SAIF while the RNG bank stays visible and drives the same workload.
 SC_OPERANDS = ("in_bits", "w_bits", "in_sign", "w_sign", "a_bits", "a_sign", "random_values")
 SC_ACCUMULATORS = ("acc_value\\[", "acc_out\\[")
-# Top/dut architectural outputs of the binary arrays (BOS acc_out_east; bitmod tile drain rails).
-BINARY_OUTPUTS = ("ofm\\[", "acc_value\\[", "drain_out\\[", "acc_out_east\\[", "o_drain_row\\[", "o_drain_dat\\[")
+# Top/dut architectural outputs of the binary arrays (BOS acc_out_east; bitmod tile drain rails; FlexPosit FP16 lanes).
+BINARY_OUTPUTS = ("ofm\\[", "acc_value\\[", "drain_out\\[", "acc_out_east\\[", "o_drain_row\\[", "o_drain_dat\\[",
+                  "out_data\\[")
 
 
 def saif_lines(path: Path) -> list[str] | None:
